@@ -47,17 +47,23 @@ rsync -a --delete "$CLAUDE_DIR/bin/" "$REPO/automations/bin/" 2>/dev/null || tru
 # 6. LaunchAgents
 echo "[github-sync] Syncing LaunchAgents..."
 ls ~/Library/LaunchAgents/ai.hmz.*.plist 2>/dev/null | while read f; do
-  cp "$f" "$REPO/automations/launchagents/" 2>/dev/null || true
+  DEST="$REPO/automations/launchagents/$(basename $f)"
+  cp "$f" "$DEST" 2>/dev/null || true
+  # Scrub tokens from LaunchAgent plists before committing
+  sed -i '' 's/ghp_[A-Za-z0-9]\{20,\}/[REDACTED_GITHUB_TOKEN]/g' "$DEST" 2>/dev/null || true
+  sed -i '' 's/pat[A-Za-z0-9._]\{20,\}/[REDACTED_PAT]/g' "$DEST" 2>/dev/null || true
+  sed -i '' 's/sk-[A-Za-z0-9]\{20,\}/[REDACTED_SK]/g' "$DEST" 2>/dev/null || true
 done
 
-# 7. Installed repos — README/SKILL.md only
+# 7. Installed repos — README/SKILL.md only (max 50 repos, 2s per repo timeout)
 echo "[github-sync] Syncing installed repo docs..."
-ls ~/installed-repos/ 2>/dev/null | while read REPONAME; do
+COUNT=0
+ls ~/installed-repos/ 2>/dev/null | head -50 | while read REPONAME; do
   SRC="$HOME/installed-repos/$REPONAME"
   [ -d "$SRC" ] || continue
   DEST="$REPO/installed-repos/$REPONAME"
   mkdir -p "$DEST"
-  find "$SRC" -maxdepth 3 \( -name "README.md" -o -name "SKILL.md" -o -name "AGENTS.md" \) \
+  find "$SRC" -maxdepth 2 \( -name "README.md" -o -name "SKILL.md" -o -name "AGENTS.md" \) \
     -exec cp {} "$DEST/" \; 2>/dev/null || true
   [ -z "$(ls -A $DEST 2>/dev/null)" ] && echo "# $REPONAME" > "$DEST/README.md"
 done
