@@ -172,3 +172,20 @@ This repo updates automatically every morning at **6:30 AM PKT**:
 ---
 
 *Auto-generated and maintained by Claude AI System · Updated daily*
+
+---
+
+## 📦 Complete GitHub Portfolio (8 Repos)
+
+| Repo | Contents | Size |
+|---|---|---|
+| [claude-ai-system](https://github.com/hmzainjamil/claude-ai-system) | **Master repo** — everything combined | ~15MB |
+| [claude-ai-skills](https://github.com/hmzainjamil/claude-ai-skills) | 45 active production skills | ~1MB |
+| [claude-ai-agents](https://github.com/hmzainjamil/claude-ai-agents) | 210 specialist agents | ~2MB |
+| [claude-ai-workflows](https://github.com/hmzainjamil/claude-ai-workflows) | 4 HMZ daily sweeps | ~500KB |
+| [claude-ai-automations](https://github.com/hmzainjamil/claude-ai-automations) | 45 automation scripts + 6 LaunchAgents | ~500KB |
+| [hmz-n8n-workflows](https://github.com/hmzainjamil/hmz-n8n-workflows) | **8,159 n8n automation workflows** | ~150MB |
+| [hmz-skills-archive](https://github.com/hmzainjamil/hmz-skills-archive) | **3,200 curated AI skills** (from 9,528 raw) | ~26MB |
+| [hmz-installed-repos](https://github.com/hmzainjamil/hmz-installed-repos) | **126 AI tool repos** (full code) + 20 guides | ~366MB |
+
+**Total: 8 repos · ~560MB · 100% public · auto-updates daily**
