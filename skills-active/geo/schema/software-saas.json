@@ -1,0 +1,18 @@
+{
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "@id": "https://YOURDOMAIN.com/#software",
+  "name": "YOUR_SOFTWARE_NAME",
+  "url": "https://YOURDOMAIN.com",
+  "description": "YOUR_SOFTWARE_DESCRIPTION",
+  "applicationCategory": "BusinessApplication",
+  "operatingSystem": "Web, Windows, macOS, Linux",
+  "offers": {
+    "@type": "AggregateOffer",
+    "lowPrice": "XX",
+    "highPrice": "XXX",
+    "priceCurrency": "USD",
+    "offerCount": "3",
+    "offers": [
+      {
+     

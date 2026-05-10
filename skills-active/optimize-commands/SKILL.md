@@ -642,3 +642,70 @@ cd ~/installed-repos/apify-org/mcpc
 npm install
 npx mcpc --help    # run any MCP server from CLI
 ```
+
+---
+
+## APIFY FULL ORG STACK — AUTO-ROUTING (always-on)
+
+Installed at: `~/installed-repos/apify-org/` (22 repos)
+
+### Top-Tier Repos
+
+| Repo | Stars | Purpose | Trigger phrases |
+|---|---|---|---|
+| **crawlee** | 23k★ | Web scraping + browser automation (Node.js/TypeScript) | "crawlee" / "web crawler" / "scrape website" / "browser automation node" |
+| **crawlee-python** | 9k★ | Web scraping for Python — AI/LLM data extraction | "crawlee python" / "python scraper" / "python crawler" / "scrape for llm" |
+| **fingerprint-suite** | 2.1k★ | Browser fingerprinting — anonymize scrapers | "fingerprint" / "anti-detect" / "browser fingerprint" / "scraper anonymize" |
+| **apify-mcp-server** | 1.2k★ | MCP server — AI agents scrape any website via MCP | "apify mcp" / "apify mcp server" / "scrape via mcp" / "apify agent mcp" |
+| **proxy-chain** | 987★ | Node.js proxy server (SSL, SOCKS5, upstream chaining) | "proxy server" / "proxy chain" / "socks5" / "upstream proxy" |
+| **got-scraping** | 750★ | HTTP client optimized for scraping | "got-scraping" / "http scraping client" / "got http" |
+| **mcpc** | 594★ | Universal MCP CLI client | "mcpc" / "mcp cli" / "run mcp from terminal" |
+| **apify-cli** | 215★ | Apify CLI — create/deploy/manage Actors | "apify cli" / "deploy actor" / "apify create" |
+| **mcp-server-rag-web-browser** | 203★ | MCP Server for RAG Web Browser Actor | "rag web browser" / "mcp rag browser" / "scrape for rag" |
+| **apify-sdk-js** | 176★ | Official Apify SDK for JavaScript/TypeScript | "apify sdk js" / "apify sdk node" / "apify sdk typescript" |
+| **apify-sdk-python** | 167★ | Official Apify SDK for Python | "apify sdk python" / "python actor sdk" |
+| **actor-scraper** | 136★ | Generic scraping actors with simple UI | "actor scraper" / "apify scraper actor" / "generic scraper" |
+| **apify-client-python** | 93★ | Apify API client for Python | "apify client python" / "apify api python" |
+| **apify-client-js** | 84★ | Apify API client for JavaScript | "apify client js" / "apify api node" |
+| **tester-mcp-client** | 77★ | MCP client for testing Apify Actors | "tester mcp" / "test mcp actor" |
+| **mcp-client-capabilities** | 76★ | Index of all MCP clients + capabilities | "mcp capabilities" / "mcp client index" / "which mcp client" |
+| **rag-web-browser** | 72★ | RAG Web Browser Actor — feed LLM with live web content | "rag browser" / "web rag" / "live web llm" / "scrape for rag pipeline" |
+| **actor-templates** | 54★ | Apify Actor starter templates | "actor template" / "new apify actor" / "apify boilerplate" |
+| **actor-whitepaper** | 88★ | Actor serverless microapp concept whitepaper | "actor whitepaper" / "actor architecture" |
+| **awesome-skills** | 173★ | Community Apify agent skills | "apify awesome skills" / "apify agent skills collection" |
+
+### Quick Start
+
+```bash
+# Crawlee — scrape any website (Node.js)
+cd ~/installed-repos/apify-org/crawlee
+npm install
+# See examples/
+
+# Crawlee Python — scrape for AI/RAG pipelines
+cd ~/installed-repos/apify-org/crawlee-python
+pip install crawlee
+
+# Apify MCP Server — wire AI agents to web scraping
+cd ~/installed-repos/apify-org/apify-mcp-server
+npm install
+# Add to ~/.mcp.json for Claude Code MCP integration
+
+# Apify CLI — create and deploy Actors
+cd ~/installed-repos/apify-org/apify-cli
+npm install -g apify-cli
+apify create my-actor --template apify/hello-world
+
+# RAG Web Browser — feed live web to LLM
+cd ~/installed-repos/apify-org/rag-web-browser
+# Use via Apify MCP server or direct API
+```
+
+### Key Integration: apify-mcp-server + Claude Code
+
+The `apify-mcp-server` is already wired as MCP in `~/.mcp.json`. It gives Claude access to:
+- Social media scraping (LinkedIn, Instagram, Twitter)
+- Search engine results (Google, Bing)
+- Maps data (Google Maps, Yelp)
+- E-commerce (Amazon, eBay, Shopify)
+- Any website via RAG Web Browser Actor
