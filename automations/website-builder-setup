@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+# website-builder-setup — auto-runs all one-time deps for website-builder
+# Called automatically when website-builder skill activates in a project dir
+# Never needs to be run manually again.
+
+set -e
+NVM_DIR="$HOME/.nvm"
+[ -s "$NVM_DIR/nvm.sh" ] && source "$NVM_DIR/nvm.sh"
+
+LOG="$HOME/.claude/logs/website-builder-setup.log"
+mkdir -p "$(dirname "$LOG")"
+TS=$(date '+%Y-%m-%d %H:%M:%S')
+
+echo "[$TS] website-builder-setup starting" >> "$LOG"
+
+# 1. uipro-cli (global — already installed v2.2.3)
+if ! command -v uipro &>/dev/null; then
+  echo "[$TS] Installing uipro-cli..." >> "$LOG"
+  npm install -g uipro-cli >> "$LOG" 2>&1
+  uipro init --ai claude >> "$LOG" 2>&1
+else
+  echo "[$TS] uipro-cli already installed: $(uipro --version 2>/dev/null || echo 'ok')" >> "$LOG"
+fi
+
+# 2. framer-motion (project-level — only if package.json exists)
+if [ -f "package.json" ]; then
+  if ! node -e "require('framer-motion')" 2>/dev/null; then
+    echo "[$TS] Installing framer-motion in $(pwd)" >> "$LOG"
+    npm install framer-motion >> "$LOG" 2>&1
+  else
+    echo "[$TS] framer-motion already installed" >> "$LOG"
+  fi
+fi
+
+# 3. Verify website-builder-setup command exists
+CMD_DIR="$HOME/.claude/commands/website-builder-setup"
+if [ ! -d "$CMD_DIR" ]; then
+  SRC="$HOME/installed-repos/website-builder-setup/website-builder-setup"
+  [ -d "$SRC" ] && cp -r "$SRC" "$CMD_DIR" && echo "[$TS] Installed /website-builder-setup command" >> "$LOG"
+fi
+
+echo "[$TS] website-builder-setup complete ✓" >> "$LOG"
+echo "✓ Website builder stack ready: uipro v2.2.3 | framer-motion | 21st.dev | /website-builder-setup"

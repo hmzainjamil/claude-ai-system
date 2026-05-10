@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# Search the archive for skills matching a keyword.
+# Usage: skill-search <keyword>
+ARCHIVE="$HOME/.claude/skills-archive"
+if [ $# -eq 0 ]; then
+  echo "Usage: skill-search <keyword>" >&2
+  exit 1
+fi
+ls "$ARCHIVE" | grep -i "$1" | grep -vE -- '-[A-F0-9]{8}$' | head -30

@@ -1,0 +1,399 @@
+#!/usr/bin/env bash
+# Dispatch Router — UserPromptSubmit hook.
+# 1. Reset to core  2. Keyword-match prompt  3. Activate minimum skill set  4. Log metrics
+
+set -e
+SKILLS_BIN="$HOME/.claude/bin"
+ACTIVE="$HOME/.claude/skills"
+ARCHIVE="$HOME/.claude/skills-archive"
+METRICS="$HOME/.claude/metrics.log"
+
+# ── Step 1: Reset to core ────────────────────────────────────────
+"$SKILLS_BIN/skill-reset" > /dev/null 2>&1
+
+# ── Step 2: Extract prompt ───────────────────────────────────────
+PROMPT=$(python3 -c "
+import json,sys
+try:
+    d=json.load(sys.stdin); print(d.get('prompt','').lower())
+except: pass
+" 2>/dev/null || echo "")
+[ -z "$PROMPT" ] && exit 0
+
+TS=$(date +%s)
+ACTIVATED=()
+
+# ── Step 3: Dispatch functions ───────────────────────────────────
+on() {
+  local skill="$1"
+  [ -e "$ACTIVE/$skill" ] && return 0
+  [ -e "$ARCHIVE/$skill" ] && mv "$ARCHIVE/$skill" "$ACTIVE/$skill" 2>/dev/null && ACTIVATED+=("$skill")
+}
+match() { echo "$PROMPT" | grep -qiE "$1"; }
+
+# ── ADS / ADVERTISING ────────────────────────────────────────────
+if match "ads?|advert|campaign|facebook ads?|meta ads?|google ads?|ppc|roas|ctr|cpc|ad set|ad creative|ad copy|paid social|paid media|media buy"; then
+  on ads-strategy; on ads-copy; on ads-creative; on ads-keywords; on ads-competitors; on ads-audience; on ads-funnel; on ads-landing
+  match "audit|review|analysis|perform|report" && { on ads-audit; on ads-report-pdf; }
+  match "video|reel|tiktok|youtube"            && on ads-video
+  match "test|a/b|split test|experiment"       && on ads-testing
+  match "quick|fast|brief"                     && on ads-quick
+  match "budget|spend|allocat"                 && on ads-budget
+fi
+
+# ── SEO / GEO ────────────────────────────────────────────────────
+if match "seo|geo |search engine|organic|ranking|serp|backlink|keyword research|sitemap|crawl|index|schema|structured data|core web vital|page speed|technical seo|ai overview|ai search|llms.txt|perplexity|citation"; then
+  on geo; on geo-technical; on geo-content; on geo-schema; on geo-citability; on geo-brand-mentions
+  match "audit|review|analysis|report"     && { on geo-audit; on geo-report-pdf; }
+  match "platform|google|bing|chatgpt"     && on geo-platform-optimizer
+  match "crawl|bot|spider|robot"           && on geo-crawlers
+  match "llms.txt|llm.txt"                 && on geo-llmstxt
+  match "compet|rival"                     && on geo-compare
+  match "prospect|lead|client"             && { on geo-prospect; on geo-proposal; }
+fi
+
+# ── LEGAL ────────────────────────────────────────────────────────
+if match "legal|contract|agreement|nda|non.disclose|comply|complian|terms of service|privacy policy|gdpr|law |lawsuit|clause|ip right|intellectual property|freelanc|liability|indemnif"; then
+  on legal; on legal-review
+  match "nda|non.disclose"              && on legal-nda
+  match "agree|contract"                && on legal-agreement
+  match "comply|complian|gdpr"          && on legal-compliance
+  match "freelanc"                      && on legal-freelancer
+  match "negoti"                        && on legal-negotiate
+  match "terms|tos"                     && on legal-terms
+  match "privacy|gdpr|data protection"  && on legal-privacy
+  match "risk"                          && on legal-risks
+  match "plain|simple|explain"          && on legal-plain
+  match "missing|gap|incomplete"        && on legal-missing
+  match "compare|vs|differ"             && on legal-compare
+  match "report|pdf|document"           && on legal-report-pdf
+fi
+
+# ── MARKETING ────────────────────────────────────────────────────
+if match "market|brand|email market|funnel|lead gen|content strateg|social media|landing page|launch|copywrite|copy writing|email sequen|growth|drip|nurture|newsletter"; then
+  on market; on market-brand; on market-copy; on market-emails; on market-funnel; on market-social
+  match "audit|review|analysis"            && on market-audit
+  match "competitor|compet|rival"          && on market-competitors
+  match "seo|organic|keyword"              && on market-seo
+  match "landing|page|cro|conversion"      && on market-landing
+  match "launch|go.to.market|gtm"          && on market-launch
+  match "proposal|pitch|deck"              && on market-proposal
+  match "report|pdf|document"              && { on market-report; on market-report-pdf; }
+  match "ads?|paid|ppc"                    && on market-ads
+fi
+
+# ── AGENCY ───────────────────────────────────────────────────────
+if match "agency|client management|onboard|retainer|deliverable|proposal|pitch|account management|pipeline|status report"; then
+  on agency; on agency-client; on agency-pipeline; on agency-status
+  match "onboard"                  && on agency-onboard
+  match "propose|proposal|pitch"   && on agency-propose
+  match "digital|marketing"        && on agency-digital-marketing
+  match "stack|tool|tech"          && on agency-stack
+  match "quick|fast|brief"         && on agency-quick
+  match "report|pdf"               && on agency-report-pdf
+fi
+
+# ── OPUSCLIP — VIDEO CLIPPING + SOCIAL POSTING ───────────────────
+if match "opusclip|opus clip|clip video|video clip|short clip|clip youtube|clip vimeo|post to social|schedule clip|video to social|tiktok clip|reels clip|clip reel|video snippe"; then
+  on opusclip
+fi
+
+# ── LUMA AI — IMAGE & VIDEO GENERATION ───────────────────────────
+if match "luma|dream machine|luma ai|luma image|luma video|generate image|create image|make image|ai image|text to image|text to video|generate video|create video|ai video|luma api"; then
+  on luma-image
+fi
+
+# ── ADS CREATIVE AI STACK — VIDEO + IMAGE + SPY + CODEX ──────────
+# uni1-image-ad: Meta image ads via Luma uni-1 → auto-upload to Meta
+if match "uni1|uni-1 ad|luma ad|image ad|meta image ad|facebook image ad|generate ad image|create ad creative|ad creative luma|upload ad meta|paused ad|clone ad structure"; then
+  echo "[ADS-CREATIVE] uni1-image-ad → ~/installed-repos/ads-creative/uni1-image-ad/" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+fi
+# arcads: AI marketing videos (Sora 2, Veo 3.1, Kling 3.0)
+if match "arcads|arcads.ai|ai marketing video|sora 2|veo 3|kling|nano banana|ai video ad|marketing video|ad video|video creative|ai ad video|ugc video"; then
+  echo "[ADS-CREATIVE] arcads-claude-code → ~/installed-repos/ads-creative/arcads-claude-code/" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+fi
+# kie-ai: KIE.ai video+image (Veo 3.1, Sora 2, Kling 3.0, Seedance 2)
+if match "kie.ai|kie ai|kie video|seedance|seedance 2|kie image|kie ad builder|kie marketplace|ai ad builder"; then
+  echo "[ADS-CREATIVE] kie-ai-ad-builder → ~/installed-repos/ads-creative/kie-ai-ad-builder/" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+fi
+# meta-ads-spy: Competitor ad scraper → Meta Ad Library → Airtable
+if match "spy competitor ads|competitor ads|meta ad library|ad spy|ad library|scrape ads|pull competitor|ads airtable|discover competitors|meta spy|ad swipe|competitor creative"; then
+  echo "[ADS-CREATIVE] meta-ads-spy → ~/installed-repos/ads-creative/meta-ads-spy/" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+fi
+# codex-plugin-cc: OpenAI Codex code review from inside Claude Code
+if match "codex review|codex:review|adversarial review|delegate to codex|codex rescue|codex plugin|openai codex|codex inside claude|codex background job"; then
+  echo "[CODEX] codex-plugin-cc → ~/installed-repos/ads-creative/codex-plugin-cc/" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+fi
+
+# ── MICROSOFT REPOS — AI/AGENTS/PLAYWRIGHT/SK AUTO-ROUTING ──────
+# Triggers: any AI learning, agent building, browser automation, semantic kernel, ML, data science
+if match "semantic kernel|playwright|browser automation|browser test|e2e test|end to end test|page automation|web scrape playwright|ai for beginners|ml for beginners|machine learning beginner|generative ai|genai beginner|ai agent beginner|data science beginner|agent framework|microsoft agent|SK plugin|SK orchestration|semantic function|SK memory|SK planner|agent365|playwright mcp|microsoft ai|microsoft ml"; then
+  echo "[MS-REPOS] Auto-routing to Microsoft repo knowledge base" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+  MS_REPO_BASE="$HOME/installed-repos/microsoft"
+  # Map intent to correct repo
+  # playwright/browser → playwright + playwright-mcp
+  # ai/ml/genai beginner → AI-For-Beginners + ML-For-Beginners + generative-ai-for-beginners
+  # agent → ai-agents-for-beginners + agent-framework + Agent365-devTools
+  # data science → Data-Science-For-Beginners
+  # semantic kernel → semantic-kernel
+fi
+
+# ── FREE CODING MODELS — AUTO MODEL DETECTOR ─────────────────────
+# Triggers: any time user wants fastest/cheapest free model, benchmark, latency check,
+# switch model, find free api, or asks which model to use for a task
+if match "free model|free coding model|fastest model|cheapest model|which model|best free model|free api|model benchmark|model latency|model speed|free llm|switch model|what model|find model|pick model|nvidia nim|cerebras|github models|scaleway|sambanova|cloudflare workers ai|ovhcloud|codestral|zai api|free-coding-models|model stability|ping model|model provider|free provider|16 providers|170 models|kimi k2|devstral|free endpoint|free inference"; then
+  FCM_CMD="$HOME/.nvm/versions/node/v24.14.1/bin/free-coding-models"
+  echo "[FREE-CODING-MODELS] Auto-detected model selection need" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+  echo "[CMD] $FCM_CMD — run in terminal to pick fastest free model and auto-configure" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+fi
+
+# ── LOCAL SEO 30K — 22-PROMPT ALVENTRA WORKFLOW ──────────────────
+if match "seo audit|seo of|do seo|run seo|seo system|seo workflow|seo architecture|seo reporting|seo report|seo for|seo strategy|seo analysis|seo for business|seo for client|seo check|seo review|seo optimization|seo optimisation|full seo|complete seo|seo setup|seo structure|seo plan|seo roadmap|seo execution|local seo|30k seo|30000 visitors|gbp audit|google business profile|map pack|category audit|gbp categories|review velocity|review response strategy|gbp posts|posting calendar|keyword gap audit|money page audit|city pages|location pages|service area pages|on-page seo audit|backlink audit|link gap|citation audit|nap audit|search intent mapping|content gap analysis|entity optimization|knowledge graph|gbp posting pattern|monthly seo report|seo performance report|full seo workflow|local seo system|alventra|sarvesh|30000 organic|organic traffic|rank on google|google ranking|map pack ranking|rank higher|improve rankings|website ranking"; then
+  on local-seo-30k
+fi
+
+# ── CLIENT HUNTING ───────────────────────────────────────────────
+if match "find clients|client hunt|job leads|indeed connector|find companies hiring|hunt for clients|freelance leads|outreach leads|yelp leads|local service clients|companies hiring|turn job post"; then
+  on client-hunting
+fi
+
+# ── REPORT CREATION — PROFESSIONAL GRADE ────────────────────────
+if match "create report|make report|generate report|build report|write report|professional report|client report|format report|fix report|report layout|report design|report format"; then
+  on report-creator; on reportlab-pdf-master
+  match "pdf|audit"      && on ads-report-pdf
+  match "excel|xlsx|data" && true  # handled by xlsx skill inline
+  match "docx|word|editable" && true  # handled by docx skill inline
+fi
+if match "pdf report|docx report|xlsx report|excel report|performance report|monthly report|weekly report|audit report|360.report|marketing report|deliverable doc"; then
+  on report-creator; on reportlab-pdf-master
+fi
+
+# ── REPORTLAB PDF MASTER — universal trigger ─────────────────────
+# Fires on ANY report/PDF/document/diagnostic request, any session
+if match "report|pdf|audit report|one.pager|diagnostic|deliverable|xlsx|docx|pptx|deck|document|layout|format|design issue|blank page|overflow|column width|cell wrap|table fix|reportlab|platypus"; then
+  on reportlab-pdf-master
+fi
+
+# ── REPORT TEMPLATE ROUTING — ALL 13 REPOS ───────────────────────
+# Auto-selects correct template dir based on report type keywords
+# LaTeX templates (5 repos)
+if match "technical report|nasa.style|nasa style|institutional report|institutional.report"; then
+  on report-creator
+  REPORT_TEMPLATE="$HOME/.claude/templates/latex/nasa-latex-docs"
+  echo "[TEMPLATE] nasa-latex-docs → $REPORT_TEMPLATE" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+fi
+if match "corporate report|branded report|company report|corporate.report|branded.report"; then
+  on report-creator
+  REPORT_TEMPLATE="$HOME/.claude/templates/latex/corporate-latex"
+  echo "[TEMPLATE] corporate-latex → $REPORT_TEMPLATE" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+fi
+if match "academic report|research report|thesis.style|academic.report|research.report"; then
+  on report-creator
+  REPORT_TEMPLATE="$HOME/.claude/templates/latex/heitzmann-latex"
+  echo "[TEMPLATE] heitzmann-latex → $REPORT_TEMPLATE" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+fi
+if match "clean report|minimal report|simple pdf|minimal.report|clean.report"; then
+  on report-creator
+  REPORT_TEMPLATE="$HOME/.claude/templates/latex/thomasbenas-report"
+  echo "[TEMPLATE] thomasbenas-report → $REPORT_TEMPLATE" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+fi
+if match "quick report|quick start report|simple report template|chrrel"; then
+  on report-creator
+  REPORT_TEMPLATE="$HOME/.claude/templates/latex/chrrel-report"
+  echo "[TEMPLATE] chrrel-report → $REPORT_TEMPLATE" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+fi
+# Excel/XLSX templates (4 repos)
+if match "sales report|sales analysis|sales dashboard|sales.report|sales.dashboard"; then
+  on report-creator
+  REPORT_TEMPLATE="$HOME/.claude/templates/excel/sales-dashboard"
+  echo "[TEMPLATE] sales-dashboard → $REPORT_TEMPLATE" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+fi
+if match "finance report|financial report|p&l|profit.loss|profit loss|financial.report"; then
+  on report-creator
+  REPORT_TEMPLATE="$HOME/.claude/templates/excel/finance-kpi"
+  echo "[TEMPLATE] finance-kpi → $REPORT_TEMPLATE" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+fi
+if match "vba report|macro report|excel macro|financial.macro|finance.vba"; then
+  on report-creator
+  REPORT_TEMPLATE="$HOME/.claude/templates/excel/financial-macros"
+  echo "[TEMPLATE] financial-macros → $REPORT_TEMPLATE" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+fi
+if match "business report|biz report|kpi report|bizfin|business.finance.report"; then
+  on report-creator
+  REPORT_TEMPLATE="$HOME/.claude/templates/excel/bizfin-templates"
+  echo "[TEMPLATE] bizfin-templates → $REPORT_TEMPLATE" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+fi
+# Dashboard templates (2 repos)
+if match "kpi dashboard|dynamic dashboard|interactive kpi|kpi.dashboard|dynamic.dashboard"; then
+  on report-creator
+  REPORT_TEMPLATE="$HOME/.claude/templates/dashboards/dynamic-kpi"
+  echo "[TEMPLATE] dynamic-kpi → $REPORT_TEMPLATE" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+fi
+if match "marketing dashboard|performance dashboard|multi.dashboard|aduet|marketing.dashboard"; then
+  on report-creator
+  REPORT_TEMPLATE="$HOME/.claude/templates/dashboards/aduet-dashboards"
+  echo "[TEMPLATE] aduet-dashboards → $REPORT_TEMPLATE" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+fi
+# PPT template (1 repo)
+if match "presentation|powerpoint|ppt |slides|slide deck|pitch deck|gbif"; then
+  on report-creator
+  REPORT_TEMPLATE="$HOME/.claude/templates/ppt/gbif-ppt"
+  echo "[TEMPLATE] gbif-ppt → $REPORT_TEMPLATE" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+fi
+
+# ── AGENCY REPOSITIONING / SERVICE DESIGN ────────────────────────
+if match "productize|fixed.price.package|sell outcome|stop.*hourly|package.*service|service package|productised|productized offer"; then
+  on service-productizer
+fi
+if match "customer matrix|analyze.*client|find.*niche|client pattern|ideal customer|icp|niche down|who.*target|micro.icp|best client"; then
+  on customer-matrix
+fi
+if match "agency rescue|save.*agency|6.month plan|agency survival|no clients|losing clients|runway|staff aug not working|services not selling|agency.*struggling|struggling.*agency|agency.*dying|agency.*slow"; then
+  on agency-rescue
+fi
+if match "agent.*product|sell.*automation.*agent|ai agent pitch|foot.in.door|agent offer|sell ai agent|automation as product|position.*ai.*agent"; then
+  on agent-foot-in-door
+fi
+if match "outcome.pric|value.based.pric|usage.based.pric|charge.*result|roi.pric|move.*hourly|stop.*hourly.*pric"; then
+  on outcome-pricing
+fi
+if match "sub.brand|micro.brand|separate brand|niche brand|spin.off|new brand|brand for niche|test.*brand|subbrand"; then
+  on sub-brand-generator
+fi
+if match "moderni[sz]|legacy system|tech debt|old stack|legacy code|legacy moderni|modernization audit"; then
+  on modernization-audit
+fi
+if match "reposition.*agency|agency.*reposit|transform.*agency|pivot.*agency|agency.*pivot|reinvent.*agency|stop staff aug|move.*staff aug|agency.*transform|new direction.*agency"; then
+  on agency-repositioning; on customer-matrix; on service-productizer
+fi
+
+# ── APIFY / SCRAPING ─────────────────────────────────────────────
+if match "apify|scrape|scraping|web scrape|extract data|actor|crawl web|data extract|web data|spider|fetch url|rag.web"; then
+  on apify-actor-development; on apify-ultimate-scraper; on apify-actorization; on apify-generate-output-schema
+fi
+
+# ── CODE AUTOMATION — always-on agent routing ────────────────────
+# Detects coding tasks → injects actor+model mandate into tier0-context
+CODE_ACTOR=""
+if match "fix bug|debug|error|exception|traceback|stack trace|not working|broken|fails|crash|undefined|null pointer|type error|import error|syntax error"; then
+  CODE_ACTOR="DEBUGGER[Sonnet-High]→VERIFIER[Sonnet-Low]"
+elif match "refactor|optimis|clean up|rewrite|simplify code|improve performance|reduce complexity|tech debt"; then
+  CODE_ACTOR="BUILDER[Sonnet-Medium]→VERIFIER; escalate CURATOR[Opus-High] if architectural"
+elif match "generate code|write code|create (a |the |an )?(function|class|module|script|api|endpoint|service|component|hook|util)|build (a |the |an )?(function|class|script|api)"; then
+  CODE_ACTOR="ARCHITECT[Sonnet-PlanMode]→BUILDER[Sonnet-Medium]→VERIFIER[Sonnet-Low]"
+elif match "write test|add test|unit test|integration test|coverage|pytest|jest|spec|test case|test suite"; then
+  CODE_ACTOR="BUILDER[Sonnet-Low]→VERIFIER[Sonnet-Low]"
+elif match "write doc|add doc|docstring|readme|comment|explain code|document"; then
+  CODE_ACTOR="BUILDER[Sonnet-Low]"
+elif match "review code|code review|audit code|check code|security review|code quality"; then
+  CODE_ACTOR="CURATOR[Opus-High]→VERIFIER[Sonnet-Low]"
+elif match "extract|parse file|read code|get function|list imports|find all"; then
+  CODE_ACTOR="EXTRACTOR[Haiku-Low]"
+fi
+
+if [ -n "$CODE_ACTOR" ]; then
+  CODE_MANDATE="[CODE-AGENT ACTIVE] Route: $CODE_ACTOR | Law: Plan→Execute→Verify. Never build without plan. Opus only for critical/architectural. Cite all library refs. Flag [UNVERIFIED] for unconfirmed claims."
+  echo "$CODE_MANDATE" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+  ACTIVATED+=("code-agent:$CODE_ACTOR")
+fi
+
+# ── STARTUP ──────────────────────────────────────────────────────
+if match "startup|mvp|founder|product.market.fit|seed|raise fund|pitch deck|investor|venture|go.to.market"; then
+  on startup-optimized; on market-launch; on market-proposal
+fi
+
+# ── AGENTS / MULTI-AGENT ─────────────────────────────────────────
+match "agent|multi.agent|orchestrat|subagent|parallel agent|dispatch|all agent|comprehensive|full analysis|360|complete audit" && on all-agents
+
+# ── LAUNCH-OPTIMIZED — blockchain manifest loader ─────────────────
+# Detects /launch-optimized or optimize-commands usage and loads full dep graph
+if match "launch.optimized|launch optimized|/launch|optimize.command|optimize command"; then
+  on caveman; on compress; on context-compression; on context-window-management
+  on compact-guard; on summarize; on all-agents; on optimize-commands
+  # Full manifest load via skill-load (loads all declared deps from manifest.json)
+  "$SKILLS_BIN/skill-load" launch-optimized > /dev/null 2>&1 || true
+  ACTIVATED+=("launch-optimized-manifest")
+fi
+
+# ── G0DM0D3 / ULTRAPLINIAN / GODMODE ─────────────────────────────
+if match "g0dm0d3|godmode|ultraplinian|race models|best response|multi.model race|godmod3|god mode"; then
+  on g0dm0d3
+fi
+
+# ── KIMI CODE — Moonshot AI coding assistant ─────────────────────
+if match "kimi|kimi code|moonshot|kimi cli|kimi ai"; then
+  export PATH="$HOME/.local/bin:$PATH"
+  echo "[KIMI] kimi v1.41.0 available — run: kimi" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+fi
+
+# ── AIRTABLE SDK — JS + Python integration ───────────────────────
+if match "airtable|airtable base|airtable table|airtable records|airtable api|airtable sdk|airtable js|write to airtable|read airtable|sync airtable|airtable automation|airtable base id|create airtable|airtable integration|meta ads to airtable|ads spy airtable"; then
+  on airtable-sdk
+  echo "[SKILL] airtable-sdk activated" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+fi
+
+# ── PREMIUM WEB DESIGN — Stitch + Nano + 21st.dev + UX Pack ─────
+if match "premium website|premium site|build a site|design a website|web design workflow|stitch mockup|google stitch|nano banana|21st.dev|ux skill pack|design blueprint|mockup to code|pixel perfect site|premium ui|pro website|build landing page premium|mockup upload|ui mockup|site from mockup"; then
+  on premium-web-design
+  echo "[SKILL] premium-web-design activated — Stitch+Nano+21st.dev+UX workflow" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+fi
+
+# ── UGC AGENCY — Arcads AI Actor Pipeline ────────────────────────
+if match "ugc ads|ugc agency|arcads|ai actors|ai ugc|generate ugc|ugc video|ugc brief|ugc batch|ai ad videos|ugc retainer|ugc pipeline|generate 20 ads|batch ads|actor selection|ai video ads|ugc scripts|lip sync ads|lipsync ads|ugc production|ugc creative"; then
+  on ugc-agency
+  echo "[SKILL] ugc-agency activated — Arcads AI actor batch pipeline" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+fi
+
+# ── WEBSITE BUILDER — $10K site from one prompt ──────────────────
+if match "build.*website|build.*site|create.*website|create.*site|website builder|site builder|10k website|10000.*website|framer motion|21st.dev|ui.ux pro max|uipro|website from prompt|one line website|ai website|next.js site|tailwind site|vercel.*deploy|deploy.*vercel|landing page build|build landing|react.*website|premium.*next|build me a.*site|make.*website|generate.*website|website.*framer|website.*animation|agency website|website.*agency|client.*website"; then
+  on website-builder; on framer-motion-builder; on ui-ux-promax
+  # Auto-run setup script (idempotent — safe to call every time)
+  "$HOME/.claude/bin/website-builder-setup" >> "$HOME/.claude/logs/website-builder-setup.log" 2>&1 || true
+  echo "[SKILL] website-builder + framer-motion-builder + ui-ux-promax activated" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+  echo "[STACK] uipro v2.2.3 ✓ | framer-motion ✓ | /website-builder-setup ✓ | 21st.dev MCP available" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+  echo "[REPOS] ~/installed-repos/website-builder-setup/ | ~/installed-repos/ui-ux-pro-max-skill-main/" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+fi
+
+# ── WEBSITE + LEAD AGENCY — Master Revenue Engine ────────────────
+if match "website lead agency|build and find clients|full agency stack|agency automation|agency pipeline|lead gen website|digital agency engine|automated agency|find clients.*build.*site|build.*site.*find.*clients|agency revenue engine|cold pitch.*demo|demo site.*prospect|10 actor.*pipeline"; then
+  on website-lead-agency; on website-builder; on lead-gen-ai
+  echo "[SKILL] website-lead-agency activated — 10-actor master pipeline: find leads + build demo + close" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+fi
+
+# ── LEAD GEN AI — Vibe Prospecting + Apollo + Daily Sweeps ───────
+if match "lead gen|lead generation|find leads|extract leads|get leads|scrape leads|find contacts|find.*email.*business|find.*phone.*business|business leads|dental.*leads|real estate.*leads|gym.*leads|law.*firm.*leads|b2b leads|vibe prospecting|apollo leads|clay leads|find.*clinic|find.*agency.*leads|find.*business.*in|leads.*excel|leads.*export|contact.*database|extract.*business|business.*directory|automated leads|cold.*email.*leads|outreach.*list|prospect.*list|find.*decision maker|hmz leads|hmz.*daily|elite leads|elite.*lead|daily sweep|bdm sweep|morning sweep|evening sweep|indeed sweep|indeed mcp.*sweep|lead sweep|hmz bdm|hmz elite|lead.*score.*80|lead.*score.*gate|buy.*signal|buying signal|hiring signal|funding signal|run.*sweep|daily.*leads|sweep.*now|run.*daily|hmz.*pipeline|lead.*pipeline"; then
+  on lead-gen-ai; on vibe-prospecting
+  echo "[SKILL] lead-gen-ai + vibe-prospecting activated" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+  echo "[MCP] Vibe: fetch-entities, enrich-prospects, fetch-businesses-events | Apollo: companies_search, people_match, contacts_search | Apify: Meta Ad Library, LinkedIn, Shopify" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+  echo "[SWEEPS] hmz-daily-leads(7AM) | hmz-bdm-morning(9AM) | hmz-bdm-evening(9PM) | hmz-indeed-mcp(on-demand)" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+  echo "[EXCEL] ~/Downloads/Leads/HMZ-Leads-Daily.xlsx (appended daily) | ~/Downloads/leads.xlsx (general)" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+  echo "[STATE] python3 ~/.claude/bin/hmz-bdm-state-update [sweep-name] | catchup: python3 ~/.claude/bin/hmz-bdm-catchup" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+fi
+
+# ── PROMPT SHORTCUTS — lazy load on trigger ───────────────────────
+if match "/ELI5|/ELI10|/TLDR|/EXEC SUMMARY|/CHECKLIST|/BULLET|/TABLE|/NUMBERED|/ONE-LINER|/FORMAL|/CASUAL|/BLUNT|/SOCRATIC|/EMPATHETIC|/CONFIDENT|/MENTOR|/PROFESSOR|/COACH|/DEVIL|/CHAIN OF THOUGHT|/FIRST PRINCIPLES|/PROS CONS|/SWOT|/ROOT CAUSE|/HYPOTHESIS|/ASSUME|/CRITIQUE|/COMPARE|/RANK|/DEEP DIVE|/QUICK FACTS|/HISTORY|/EXAMPLES|/ANALOGIES|/MYTH|/LATEST|/STATISTICS|/SOURCES|/DEFINE|/REWRITE|/EXPAND|/SHRINK|/HOOK|/HEADLINE|/CTA|/PERSUASIVE|/STORYTELL|/PROOFREAD|/SIMPLIFY|/DEV MODE|/PM MODE|/GTM|/PITCH|/METRICS|/ROADMAP|/COMPETITIVE|/RISKS|/OKR|/USER STORY|/BRIEF|/STEELMAN|/PREMORTEM|/FUTURE CAST|/CONTRARIAN|/OPTIMIST|/PESSIMIST|/ACTION PLAN|/PRIORITIZE|/SCHEDULE|/SOP|/AGENDA|/GOALS|/QUIZ|/FLASHCARDS|/STUDY GUIDE|/VISUALIZE|/BREAKDOWN|/JARGON FREE|/STEP BY STEP|/CHEATSHEET|/MINDMAP|/RECAP"; then
+  on prompt-shortcuts
+fi
+
+# ── AUTO-LEARN — always active, captures corrections + confirmations ──
+on auto-learn
+
+# ── TOKEN REDUCTION + CAVEMAN — always ensure core is active ─────
+on caveman; on token-turbo; on compress; on context-compression; on compact-guard; on summarize
+
+# ── L99 + OODA — PERMANENTLY ALWAYS ON (every session, every task) ──
+# L99 = max-performance superpowers mode (anthropic-skills:superpowers)
+# OODA = Observe-Orient-Decide-Act rapid decision loop (anthropic-skills:ooda-loop)
+# These are behavioral mandates injected into every response — not archive skills.
+# They CANNOT be deactivated by skill-reset. They are hardcoded here.
+OODA_MANDATE="[OODA ACTIVE] Every task: 1.Observe(gather facts) 2.Orient(analyze+model) 3.Decide(best path) 4.Act(execute). Loop until done. No guessing. No stalling."
+L99_MANDATE="[L99 ACTIVE] Max performance. Full capability. No hedging. No half-measures. Best output possible. Always."
+CODE_BASE_MANDATE="[CODE-AGENT ALWAYS-ON] For ANY coding task: PLAN first (Sonnet PlanMode) → BUILD (Sonnet Medium) → VERIFY citations. Extractor=Haiku. Curator=Opus ONLY if critical/architectural. Max 3 exchanges per chat. Never skip plan. Cite all external library/API refs: [SOURCE: name|version|verified:yes/no]."
+echo "$OODA_MANDATE $L99_MANDATE $CODE_BASE_MANDATE" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+
+# ── Step 4: Log metrics ──────────────────────────────────────────
+ACTIVE_COUNT=$(ls "$ACTIVE" 2>/dev/null | wc -l | tr -d ' ')
+ACTIVATED_STR="${ACTIVATED[*]:-none}"
+echo "$(date -u '+%Y-%m-%dT%H:%M:%SZ') active=$ACTIVE_COUNT activated=\"$ACTIVATED_STR\" prompt_len=${#PROMPT}" >> "$METRICS" 2>/dev/null || true
+
+exit 0

@@ -1,0 +1,64 @@
+#!/usr/bin/env bash
+# github-sync — Syncs latest skills/agents/workflows to GitHub portfolio repo
+# Usage: github-sync
+# Auto-triggered by skill-auto-activate on "new skill"/"added agent" keywords
+
+set -e
+
+REPO="/Users/mc/claude-ai-system"
+CLAUDE_DIR="/Users/mc/.claude"
+
+echo "[github-sync] Starting sync at $(date '+%Y-%m-%d %H:%M:%S')"
+
+# Ensure repo exists
+if [ ! -d "$REPO/.git" ]; then
+  echo "[github-sync] ERROR: $REPO is not a git repo. Run initial setup first."
+  exit 1
+fi
+
+# Copy latest skills (strip credentials inline)
+echo "[github-sync] Copying skills..."
+rsync -a --delete "$CLAUDE_DIR/skills/" "$REPO/skills/" 2>/dev/null || true
+
+# Copy latest agents
+echo "[github-sync] Copying agents..."
+rsync -a --delete --include="*.md" --include="*.yaml" --exclude="*" \
+  "$CLAUDE_DIR/agents/" "$REPO/agents/" 2>/dev/null || true
+
+# Copy latest workflows
+echo "[github-sync] Copying workflows..."
+rsync -a --delete "$CLAUDE_DIR/scheduled-tasks/" "$REPO/workflows/" 2>/dev/null || true
+
+# Strip credentials from all copied files
+echo "[github-sync] Stripping credentials..."
+find "$REPO" -type f \( -name "*.md" -o -name "*.yaml" -o -name "*.sh" -o -name "*.py" \) | while read -r file; do
+  # Replace actual key values (patterns: sk-..., pat..., key starting with value)
+  # Only strip values that look like real keys (long alphanumeric strings after = or :)
+  sed -i '' \
+    -e 's/\(API_KEY\s*=\s*\)["\x27]\?[A-Za-z0-9_\-]\{20,\}["\x27]\?/\1[REDACTED]/g' \
+    -e 's/\(SECRET\s*=\s*\)["\x27]\?[A-Za-z0-9_\-]\{20,\}["\x27]\?/\1[REDACTED]/g' \
+    -e 's/\(TOKEN\s*=\s*\)["\x27]\?[A-Za-z0-9_\-]\{20,\}["\x27]\?/\1[REDACTED]/g' \
+    -e 's/\(PASSWORD\s*=\s*\)["\x27]\?[A-Za-z0-9_\-]\{8,\}["\x27]\?/\1[REDACTED]/g' \
+    -e 's/sk-[A-Za-z0-9]\{20,\}/[REDACTED]/g' \
+    -e 's/pat[A-Za-z0-9]\{20,\}/[REDACTED]/g' \
+    "$file" 2>/dev/null || true
+done
+
+# Rebuild documentation index
+echo "[github-sync] Rebuilding index..."
+python3 "$REPO/scripts/rebuild-index.py"
+
+# Git commit and push
+cd "$REPO"
+git add -A
+
+if git diff --staged --quiet; then
+  echo "[github-sync] No changes to commit."
+else
+  TIMESTAMP=$(date '+%Y-%m-%d %H:%M')
+  git commit -m "sync: $TIMESTAMP — auto-update from local system"
+  git push origin main
+  echo "[github-sync] Pushed to GitHub."
+fi
+
+echo "[github-sync] Done."

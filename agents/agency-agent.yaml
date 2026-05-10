@@ -1,0 +1,63 @@
+# Elementec Agency Bot — OpenClaw Agent Config
+# Deploy: connect via Agent37 gateway at $AGENT37_GATEWAY_URL
+
+name: ElementecAgency
+version: "1.0"
+model: claude-sonnet-4-6
+memory: true
+
+channels:
+  - telegram
+  - whatsapp
+
+skills:
+  - elementec-visuals
+  - client-acquisition
+  - proposal-writer
+  - wan-image-gen
+
+tools:
+  - wan_image_gen:
+      api_key: "${DASHSCOPE_API_KEY}"
+      default_model: "wanx2.1-t2i-plus"
+  - apollo_prospecting:
+      api: "mcp__8b8885d8-497d-4b96-be50-89e1511947c7"
+  - gmail_outreach:
+      api: "mcp__6571c2f7-65a4-4525-a004-8739fb7fd123"
+  - google_drive:
+      api: "mcp__869546d5-f143-47e7-bb7a-99a378684c0b"
+  - canva:
+      api: "mcp__dc6c0dea-e3a4-4bd1-9f01-609c23a18463"
+
+confirm_required:
+  - send_email
+  - generate_invoice
+  - upload_to_drive
+  - post_to_social
+
+workflows:
+  new_client_brief:
+    trigger: "client sends brief"
+    steps:
+      - extract_brief_details
+      - select_elementec_template
+      - generate_visuals_via_wan27
+      - package_deliverables
+      - send_delivery_email
+      - generate_invoice
+
+  daily_outreach:
+    trigger: "09:00 IST daily"
+    steps:
+      - pull_10_prospects_from_apollo
+      - personalize_linkedin_messages
+      - draft_cold_emails
+      - log_to_crm
+
+  weekly_retainer:
+    trigger: "Monday 10:00 IST"
+    steps:
+      - check_active_retainer_clients
+      - generate_weekly_creatives
+      - upload_to_gdrive
+      - send_delivery_notification
