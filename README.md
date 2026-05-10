@@ -2,7 +2,7 @@
 
 # 🤖 Claude AI System — Complete Automation Portfolio
 
-**Built by Hamza Jamilur Rahman (hmzainjamil)**  
+**Built by Hafiz Muhammad Zulqarnain (hmzainjamil)**  
 *Senior PPC & Paid Media Specialist | AI Automation Engineer*
 
 [![Skills](https://img.shields.io/badge/Skills-45_Active_%7C_9528_Archived-blue?style=flat-square)](./skills-active/)
@@ -17,7 +17,7 @@
 
 ## 👤 About
 
-**Hamza Jamilur Rahman** — Digital marketing and AI automation specialist with 5+ years running Google Ads, Meta Ads, and performance campaigns for e-commerce, lead generation, and B2B clients worldwide.
+**Hafiz Muhammad Zulqarnain** — Digital marketing and AI automation specialist with 5+ years running Google Ads, Meta Ads, and performance campaigns for e-commerce, lead generation, and B2B clients worldwide.
 
 This repository is my **live AI automation system** — everything I've built with Claude Code to automate client acquisition, campaign management, content production, and agency operations.
 
