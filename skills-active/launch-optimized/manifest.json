@@ -1,0 +1,274 @@
+{
+  "name": "launch-optimized",
+  "version": "4.0",
+  "description": "Blockchain-gated manifest — self-realizing skill/MCP/agent loader for /launch-optimized",
+  "trigger_keywords": [
+    "launch-optimized", "launch optimized", "/launch",
+    "hmz", "zulqarnain", "bdm sweep", "job sweep", "find jobs",
+    "360", "full audit", "full analysis", "comprehensive",
+    "all agents", "all skills", "all mcps", "full stack"
+  ],
+
+  "always_load": [
+    "launch-optimized",
+    "optimize-commands",
+    "caveman",
+    "compress",
+    "all-agents",
+    "openclaw-agent37"
+  ],
+
+  "intent_map": {
+
+    "hmz_bdm": {
+      "keywords": ["hmz", "zulqarnain", "bdm", "job sweep", "find jobs", "paid ads jobs", "media buyer jobs", "google ads jobs", "meta ads jobs", "upwork", "peopleperhour", "arc.dev", "linkedin jobs"],
+      "load_skills": [
+        "proposal-writer",
+        "client-acquisition",
+        "anthropic-skills:job-finder-agent",
+        "anthropic-skills:job-search-assistant",
+        "anthropic-skills:job-search-and-auto-apply",
+        "anthropic-skills:leads-generator-advanced-mastery-guide-for-claud",
+        "anthropic-skills:performance-marketing-agent",
+        "anthropic-skills:ppc-ultra-command-stack",
+        "anthropic-skills:linkedin-personal-branding-client-acquisition-claud",
+        "anthropic-skills:pd-outbound-dm-writer",
+        "anthropic-skills:pd-linkedin-content-writer",
+        "anthropic-skills:pd-linkedin-profile-optimizer"
+      ],
+      "load_mcps": ["computer-use", "Chrome-Control", "Apify"],
+      "load_agents": ["job-finder-agent", "linkedin-sourcer", "outbound-prospecting-engine"],
+      "scripts": [
+        "/Users/mc/Downloads/HMZ/career-report/scrapes/sweep.sh",
+        "/Users/mc/Downloads/HMZ/career-report/scrapes/parse.py",
+        "/Users/mc/Downloads/HMZ/career-report/scrapes/score.py",
+        "/Users/mc/Downloads/HMZ/career-report/scrapes/build_report.py",
+        "/Users/mc/Downloads/HMZ/career-report/scrapes/freelancer_sweep_v17.py",
+        "/Users/mc/Downloads/HMZ/career-report/scrapes/freelancer_score_v17.py"
+      ],
+      "output_dir": "/Users/mc/Downloads/"
+    },
+
+    "ads_paid_media": {
+      "keywords": ["ads", "meta ads", "google ads", "facebook ads", "ppc", "roas", "cpc", "ctr", "media buy", "campaign", "ad creative", "ad copy", "paid social", "paid search", "performance marketing", "media buyer"],
+      "load_skills": [
+        "ads-strategy", "ads-copy", "ads-creative", "ads-keywords",
+        "ads-competitors", "ads-audience", "ads-funnel", "ads-landing",
+        "market-ads", "ads-video",
+        "anthropic-skills:meta-ads-campaign",
+        "anthropic-skills:google-ads-campaign",
+        "anthropic-skills:meta-ads-analyst",
+        "anthropic-skills:meta-ads-audit-and-reporting",
+        "anthropic-skills:360-meta-ads-performance-analysis-from-last-30-days-report",
+        "anthropic-skills:ppc-ultra-command-stack",
+        "anthropic-skills:ppc-reporting-insight-pack",
+        "anthropic-skills:performance-marketing-agent",
+        "anthropic-skills:3-stage-high-roas-meta-funnel-for-premium-short-cycle-offers",
+        "anthropic-skills:competitor-traffic-acquisition-via-google-ads",
+        "anthropic-skills:search-term-leak-wasted-spend",
+        "anthropic-skills:ab-test-design-archive",
+        "anthropic-skills:ads-reporting-automation",
+        "anthropic-skills:campaign-planner-calendar-hub",
+        "anthropic-skills:analytics-tracking"
+      ],
+      "load_mcps": ["Microsoft-Clarity", "Apify"],
+      "load_agents": ["meta-ads", "google-ads", "adcp-media-buy", "retargeting-strategy", "performance-marketer"]
+    },
+
+    "seo_geo_aeo": {
+      "keywords": ["seo", "geo", "aeo", "search ranking", "organic", "schema", "crawl", "sitemap", "backlink", "llms.txt", "ai overview", "perplexity", "citation", "e-e-a-t", "core web vital", "structured data"],
+      "load_skills": [
+        "geo", "geo-technical", "geo-content", "geo-schema", "geo-citability",
+        "anthropic-skills:answer-engine-optimization-aeo-coach",
+        "anthropic-skills:backlink-strategy-agent-360-whitehat-link-building-workflow",
+        "anthropic-skills:web-quality-core-web-vitals-seo",
+        "anthropic-skills:web-quality-tech-qa",
+        "anthropic-skills:keyword-research-planner-mcp"
+      ],
+      "load_mcps": ["Apify", "Microsoft-Clarity"],
+      "load_agents": ["seo-aeo-best-practices", "seo-aeo-audit", "geo-report", "geo-platform-optimizer"]
+    },
+
+    "lead_gen_outbound": {
+      "keywords": ["lead gen", "leads", "outbound", "prospect", "cold email", "cold outreach", "b2b", "find clients", "get clients", "pipeline", "sales funnel", "apollo", "crm"],
+      "load_skills": [
+        "client-acquisition", "agency-orchestrator",
+        "anthropic-skills:leads-generator-advanced-mastery-guide-for-claud",
+        "anthropic-skills:leadgen-omnichannel-demand",
+        "anthropic-skills:pd-outbound-dm-writer",
+        "anthropic-skills:email-sequence-skill-for-claud",
+        "anthropic-skills:email-lifecycle-marketing-expert",
+        "anthropic-skills:funnel-building-as-a-service-traffic-trust-automation",
+        "anthropic-skills:competitor-intel-swipefile"
+      ],
+      "load_mcps": ["Vibe-Prospecting", "Apollo", "Apify", "Gmail"],
+      "load_agents": ["lead-generation-and-demand", "outbound-prospecting-engine", "cold-email-sequence-generator", "enrich-lead"]
+    },
+
+    "linkedin_personal_brand": {
+      "keywords": ["linkedin", "linkedin posts", "linkedin content", "personal brand", "linkedin profile", "linkedin outreach", "b2b content"],
+      "load_skills": [
+        "anthropic-skills:linkedin-personal-branding-client-acquisition-claud",
+        "anthropic-skills:pd-linkedin-profile-optimizer",
+        "anthropic-skills:pd-linkedin-content-writer",
+        "anthropic-skills:pd-linkedin-content-analyzer",
+        "anthropic-skills:pd-outbound-dm-writer",
+        "anthropic-skills:leadgen-omnichannel-demand"
+      ],
+      "load_mcps": ["Apify", "Slack"],
+      "load_agents": ["linkedin-automation", "linkedin-sourcer", "social-publisher"]
+    },
+
+    "reddit_social_comments": {
+      "keywords": ["reddit", "comment", "subreddit", "post", "r/ppc", "r/googleads", "r/facebookads", "facebook group", "social engagement", "value comment"],
+      "load_skills": [
+        "market-social",
+        "anthropic-skills:messaging-hierarchy-offer-angles",
+        "anthropic-skills:pd-outbound-dm-writer"
+      ],
+      "load_mcps": ["computer-use", "Chrome-Control"],
+      "load_agents": ["social-publisher", "marketing-content-strategy"],
+      "rules": {
+        "reddit_post_cap": 1,
+        "reddit_comment_cap": 3,
+        "comment_subreddits": ["r/PPC", "r/FacebookAds", "r/GoogleAds", "r/digital_marketing", "r/entrepreneur", "r/freelance", "r/Upwork"]
+      }
+    },
+
+    "content_video_creative": {
+      "keywords": ["video", "edit", "ad creative", "ugc", "content", "reel", "tiktok video", "youtube", "creative brief", "hook", "script"],
+      "load_skills": [
+        "ads-creative", "ads-video",
+        "elementec-visuals", "wan-image-gen",
+        "anthropic-skills:youtube-thumbnail-mastery-360-capability",
+        "anthropic-skills:remotion-video-director",
+        "anthropic-skills:slack-gif-creator",
+        "anthropic-skills:canvas-design"
+      ],
+      "load_mcps": ["Canva", "computer-use"],
+      "load_agents": ["video-editing", "meta-ad-creative-generation", "blitzreels-video-editing"]
+    },
+
+    "website_funnel_cro": {
+      "keywords": ["website", "landing page", "funnel", "cro", "conversion", "wordpress", "elementor", "web design", "page speed", "lp", "squeeze page"],
+      "load_skills": [
+        "anthropic-skills:analyzing-landing-page-funnels",
+        "anthropic-skills:landing-page-funnel-analyst",
+        "anthropic-skills:funnel-building-as-a-service-traffic-trust-automation",
+        "anthropic-skills:market-funnel-launch-strategy-for-claud",
+        "anthropic-skills:web-design-guidelines",
+        "anthropic-skills:web-artifacts-builder",
+        "anthropic-skills:rontend-design",
+        "anthropic-skills:stitch-to-claud-app-builder"
+      ],
+      "load_mcps": ["B12-Website-Generator", "Canva", "Microsoft-Clarity", "computer-use"],
+      "load_agents": ["agentic-website-design", "elementor-development", "funnel-validator"]
+    },
+
+    "report_document_output": {
+      "keywords": ["report", "pdf", "pptx", "powerpoint", "word doc", "docx", "spreadsheet", "xlsx", "google sheet", "google doc", "presentation", "deliverable"],
+      "load_skills": [
+        "anthropic-skills:pdf",
+        "anthropic-skills:pptx",
+        "anthropic-skills:docx",
+        "anthropic-skills:xlsx",
+        "anthropic-skills:doc-coauthoring",
+        "anthropic-skills:write-plan",
+        "anthropic-skills:planning-with-files"
+      ],
+      "load_mcps": ["PowerPoint", "Word", "PDF-Viewer", "Google-Drive"]
+    },
+
+    "agency_client_ops": {
+      "keywords": ["agency", "client", "proposal", "onboard", "scope", "retainer", "deliverable", "invoice", "contract", "brief"],
+      "load_skills": [
+        "proposal-writer", "agency-run", "agency-orchestrator", "client-acquisition",
+        "anthropic-skills:gtm-strategy",
+        "anthropic-skills:messaging-hierarchy-offer-angles",
+        "anthropic-skills:brand-guidelines"
+      ],
+      "load_mcps": ["Gmail", "Google-Calendar", "Slack"],
+      "load_agents": ["client-proposal", "client-onboarding", "sales-agency-outbound"]
+    },
+
+    "automation_agentic": {
+      "keywords": ["automate", "automation", "n8n", "make.com", "zapier", "workflow", "agentic", "ai agent", "orchestrat", "multi-agent", "crm", "gohighlevel", "whatsapp bot", "chatbot"],
+      "load_skills": [
+        "all-agents",
+        "anthropic-skills:mcp-builder",
+        "anthropic-skills:mcp-apify-tool-builder",
+        "anthropic-skills:skill-creator",
+        "anthropic-skills:schedule"
+      ],
+      "load_mcps": ["Scheduled-Tasks", "Apify", "computer-use"],
+      "load_agents": ["agent-orchestrator", "marketing-automation", "gohighlevel", "whatsapp-automation"]
+    },
+
+    "research_scrape": {
+      "keywords": ["scrape", "extract", "research", "apify", "actor", "web data", "firecrawl", "competitor intel", "monitor", "price track"],
+      "load_skills": [
+        "apify-actor-development", "apify-ultimate-scraper",
+        "anthropic-skills:apify-ecommerce",
+        "anthropic-skills:mcp-apify-tool-builder",
+        "anthropic-skills:competitor-intel-swipefile",
+        "anthropic-skills:firecrawl"
+      ],
+      "load_mcps": ["Apify"],
+      "load_agents": ["apify-lead-generation", "apify-competitor-intelligence"]
+    },
+
+    "full_360_audit": {
+      "keywords": ["360", "full audit", "comprehensive", "complete analysis", "all channels", "everything", "full report"],
+      "load_skills": "__ALL__",
+      "load_mcps": "__ALL__",
+      "load_agents": "__ALL__",
+      "note": "Loads maximum capability set — runs all relevant agents in parallel"
+    }
+  },
+
+  "mcp_registry": {
+    "computer-use": "Mac control, screenshots, clicks, keyboard",
+    "Chrome-Control": "Browser navigation, JS, tab management",
+    "Apify": "10,000+ web scraping actors, parallel extraction",
+    "Gmail": "Email search, draft, send, labels",
+    "Google-Calendar": "Events, scheduling, reminders",
+    "Google-Drive": "File search, create, read, share",
+    "Slack": "Messages, channels, search, canvas",
+    "Canva": "Design generation, brand kits, export",
+    "PowerPoint": "Deck creation, slides, PDF export",
+    "Word": "Document creation, formatting, export",
+    "PDF-Viewer": "Read, annotate, save PDFs",
+    "Microsoft-Clarity": "Session recordings, heatmaps, UX data",
+    "B12-Website-Generator": "Full website generation",
+    "Vibe-Prospecting": "Lead enrichment, business match, entity search",
+    "Apollo": "Sequence load, enrich lead, prospect search",
+    "Scheduled-Tasks": "Cron jobs, scheduled remote agents",
+    "code-review-graph": "Structural analysis, impact radius, architecture"
+  },
+
+  "blockchain_gate_rules": {
+    "principle": "Self-realization — load ONLY what the task requires, nothing more",
+    "on_launch": [
+      "1. Parse task intent from user prompt",
+      "2. Match against intent_map keywords",
+      "3. Atomically load matched skill blocks + MCPs + agents",
+      "4. Execute task in parallel across all loaded capabilities — BURST all sub-tasks to llm-burst",
+      "5. Judge best responses, synthesize winner, Claude writes final output",
+      "6. Unload all non-core skills after task completes"
+    ],
+    "multi_llm_burst": {
+      "enabled": true,
+      "command": "~/.claude/bin/llm-burst",
+      "models": ["g0dm0d3", "groq", "gemini", "deepseek", "ollama", "gpt4o", "glm", "gemma4"],
+      "protocol": "fire_all_parallel → score_all → pick_winner → synthesize_top3 → claude_final_output",
+      "judge_weights": {"completeness": 25, "structure": 10, "actionability": 10, "length": 30, "g0dm0d3_bonus": 20},
+      "fallback": "If all burst models fail, Claude handles directly",
+      "token_savings": "85-95% — sub-tasks never hit Claude quota"
+    },
+    "max_parallel_agents": 8,
+    "token_budget": "85-95% savings via llm-burst + Tier 0 model routing",
+    "always_unload_after": true,
+    "never_load_without_match": true,
+    "fallback": "If intent unclear, ask user to specify or default to hmz_bdm + ads_paid_media + report_document_output"
+  }
+}

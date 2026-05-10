@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# Deactivate one or more skills (move from active back to archive).
+# Usage: skill-off <skill-name> [more...]
+set -e
+ARCHIVE="$HOME/.claude/skills-archive"
+ACTIVE="$HOME/.claude/skills"
+if [ $# -eq 0 ]; then
+  echo "Usage: skill-off <skill-name> [more...]" >&2
+  exit 1
+fi
+for name in "$@"; do
+  if [ -e "$ACTIVE/$name" ]; then
+    mv "$ACTIVE/$name" "$ARCHIVE/$name"
+    echo "- $name"
+  else
+    echo "? $name (not active)" >&2
+  fi
+done

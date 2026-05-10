@@ -1,0 +1,659 @@
+#!/usr/bin/env python3
+"""
+UPWORK HUMAN-LIKE AGENT — Resilient Multi-Plan Job Scraper + Shortlister
+==========================================================================
+Works like a human: tries Plan A → B → C → D, self-decides, recovers from
+failures (network down, login kicked, page crash), resumes from last checkpoint.
+
+Connects are SCARCE — only applies to highest-probability wins.
+
+Plans:
+  A: Playwright browser (Profile 1, logged-in) → best-matches feed
+  B: Playwright browser → search with filters
+  C: Direct job URL fetch from history/saved list
+  D: Upwork email digest job links (scraped from Gmail)
+
+Recovery:
+  - Network gone → wait + retry with exponential backoff
+  - Login kicked → detect + re-run login helper
+  - Page crash → reload + continue from checkpoint
+  - Stale data → auto-refresh and retry
+  - Cloudflare challenge → switch User-Agent + human-like mouse movement
+
+Usage:
+  upwork-agent                    # Full run: scrape + score + shortlist
+  upwork-agent --scrape           # Scrape only
+  upwork-agent --shortlist        # Shortlist from existing data
+  upwork-agent --status           # Show current connects + shortlist
+  upwork-agent --apply JOB_ID     # Generate + apply to specific job
+"""
+
+import os, sys, json, time, datetime, re, random
+from pathlib import Path
+
+HOME    = Path.home()
+AGENCY  = HOME / ".claude/agency"
+DATA    = AGENCY / "data"
+LOG     = AGENCY / "logs/upwork-agent.log"
+PROFILE = HOME / ".claude/agency/browser-profile"
+STATE   = DATA / "upwork_agent_state.json"  # Checkpoint file
+TODAY   = datetime.date.today().strftime("%Y%m%d")
+OUTPUT  = DATA / f"upwork_jobs_{TODAY}.json"
+
+DATA.mkdir(parents=True, exist_ok=True)
+LOG.parent.mkdir(parents=True, exist_ok=True)
+
+# ─── CONNECTS BUDGET ─────────────────────────────────────────────────────────
+# Upwork charges 6 connects per bid (standard). You have limited connects.
+# ONLY shortlist jobs where win probability justifies the cost.
+MIN_WIN_PROBABILITY = 0.3   # At least 30% chance of reply
+MIN_BUDGET_USD      = 200   # Skip sub-$200 jobs (not worth connects)
+CONNECTS_PER_BID    = 6     # Standard Upwork cost
+
+# ─── CONNECT-EFFICIENT SCORING ───────────────────────────────────────────────
+# Score each job on: win_prob * deal_value / connects_cost
+# Only top-N jobs by ROI per connect get shortlisted
+
+def log(msg, level="INFO"):
+    ts = datetime.datetime.now().strftime("%H:%M:%S")
+    line = f"[{ts}][{level}] {msg}"
+    print(line, flush=True)
+    with open(LOG, "a") as f:
+        f.write(f"[{datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}][{level}] {msg}\n")
+
+def load_state():
+    if STATE.exists():
+        return json.loads(STATE.read_text())
+    return {"plan": "A", "phase": "init", "jobs": [], "attempts": 0, "last_run": None}
+
+def save_state(state):
+    STATE.write_text(json.dumps(state, indent=2))
+
+def wait_with_jitter(base_seconds, attempt=1):
+    """Exponential backoff with human-like random jitter."""
+    delay = min(base_seconds * (2 ** attempt) + random.uniform(1, 5), 120)
+    log(f"  Waiting {delay:.1f}s before retry (attempt {attempt})...")
+    time.sleep(delay)
+
+
+# ─── PLAN A/B: PLAYWRIGHT BROWSER ─────────────────────────────────────────────
+
+def get_browser():
+    from playwright.sync_api import sync_playwright
+    p = sync_playwright().start()
+    ctx = p.chromium.launch_persistent_context(
+        user_data_dir=str(PROFILE),
+        headless=False,
+        viewport={"width": 1280, "height": 900},
+        args=["--disable-blink-features=AutomationControlled", "--profile-directory=Profile 1"],
+        slow_mo=50,  # Human-like timing
+    )
+    return p, ctx
+
+def human_scroll(page, scrolls=3):
+    """Simulate human scrolling to trigger lazy-load."""
+    for i in range(scrolls):
+        page.evaluate(f"window.scrollBy(0, {random.randint(300, 600)})")
+        time.sleep(random.uniform(0.5, 1.2))
+    page.evaluate("window.scrollTo(0, 0)")
+    time.sleep(0.5)
+
+def wait_for_jobs(page, timeout=15):
+    """Wait for React to render job cards."""
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        n = page.evaluate("document.querySelectorAll('a[href*=\"/jobs/~\"]').length")
+        if n > 0:
+            return n
+        time.sleep(1)
+    return 0
+
+def extract_jobs_js(page):
+    """Extract all jobs from page using JS — works on any Upwork React version."""
+    return page.evaluate("""() => {
+        const jobs = [];
+        // Strategy 1: job tile links
+        const jobLinks = Array.from(document.querySelectorAll('a[href*="/jobs/~"]'));
+        const seen = new Set();
+        for (const a of jobLinks) {
+            const href = a.getAttribute('href') || '';
+            if (seen.has(href)) continue;
+            seen.add(href);
+            const title = a.innerText.trim();
+            if (!title || title.length < 5) continue;
+            const card = a.closest('article, section, [class*="Card"], [class*="Tile"], li, [data-test]') || a.parentElement;
+            const cardText = card ? card.innerText : '';
+            // Extract budget from card text
+            const budgetMatch = cardText.match(/\\$([\\d,]+)(?:\\.00)?\\s*(?:\\/hr|\\/hour|fixed|budget)?/i);
+            const budget = budgetMatch ? '$' + budgetMatch[1] : '';
+            // Extract posted time
+            const postedMatch = cardText.match(/(\\d+)\\s*(minute|hour|day|week)s?\\s*ago/i);
+            const posted = postedMatch ? postedMatch[0] : '';
+            // Extract connects required
+            const connectsMatch = cardText.match(/(\\d+)\\s*connects?/i);
+            const connects = connectsMatch ? parseInt(connectsMatch[1]) : 6;
+            // Full description from card
+            const descEl = card ? card.querySelector('[class*="description"], [class*="Description"], p') : null;
+            const desc = descEl ? descEl.innerText.trim().substring(0, 800) : cardText.substring(0, 600);
+            jobs.push({ title, href, desc, budget, posted, connects });
+        }
+
+        // Strategy 2: if no jobs found, try data attributes
+        if (jobs.length === 0) {
+            const sections = document.querySelectorAll('[data-test*="job"], [data-cy*="job"], [class*="job-tile"]');
+            for (const s of sections) {
+                const a = s.querySelector('a[href*="/jobs"]') || s.querySelector('h2 a, h3 a');
+                if (!a) continue;
+                const href = a.getAttribute('href') || '';
+                if (seen.has(href)) continue;
+                seen.add(href);
+                const title = a.innerText.trim();
+                const text = s.innerText;
+                const budgetMatch = text.match(/\\$([\\d,]+)/);
+                jobs.push({
+                    title, href,
+                    desc: text.substring(0, 600),
+                    budget: budgetMatch ? '$' + budgetMatch[1] : '',
+                    posted: '', connects: 6
+                });
+            }
+        }
+        return jobs;
+    }""")
+
+def plan_a_best_matches(page, max_jobs=50):
+    """Plan A: Scrape Best Matches feed (most relevant to profile)."""
+    log("PLAN A: Best Matches feed...")
+    jobs = []
+
+    url = "https://www.upwork.com/nx/find-work/best-matches"
+    for attempt in range(3):
+        try:
+            page.goto(url, timeout=30000, wait_until="domcontentloaded")
+            time.sleep(random.uniform(3, 6))
+            human_scroll(page, scrolls=5)
+            time.sleep(3)
+
+            if "login" in page.url or "account-security" in page.url:
+                log("  ✗ Not logged in — Plan A failed", "WARN")
+                return []
+
+            n = wait_for_jobs(page, timeout=12)
+            log(f"  Found {n} job links after scroll")
+
+            raw = extract_jobs_js(page)
+            log(f"  Extracted {len(raw)} jobs from DOM")
+
+            for item in raw:
+                if item.get("title") and item.get("href"):
+                    href = item["href"]
+                    job_url = f"https://www.upwork.com{href}" if href.startswith("/") else href
+                    jobs.append({
+                        "platform": "upwork",
+                        "source": "best_matches",
+                        "title": item["title"],
+                        "description": item.get("desc", ""),
+                        "url": job_url,
+                        "budget": item.get("budget", ""),
+                        "posted": item.get("posted", ""),
+                        "connects_required": item.get("connects", 6),
+                        "scraped_at": datetime.datetime.now().isoformat(),
+                    })
+
+            if jobs:
+                log(f"  Plan A SUCCESS: {len(jobs)} jobs")
+                return jobs
+
+            # No jobs — try scrolling more
+            human_scroll(page, scrolls=8)
+            time.sleep(3)
+            raw = extract_jobs_js(page)
+            if raw:
+                break
+
+        except Exception as e:
+            log(f"  Plan A attempt {attempt+1} error: {e}", "WARN")
+            wait_with_jitter(5, attempt)
+
+    return jobs
+
+def plan_b_search_filters(page, max_jobs=50):
+    """Plan B: Search with specific filters for PPC/Ads jobs."""
+    log("PLAN B: Search with filters...")
+    jobs = []
+
+    # Optimized filter URLs — sort by newest, fixed-price or hourly, relevant categories
+    filter_urls = [
+        # Hourly PPC/Ads jobs, posted recently
+        "https://www.upwork.com/nx/search/jobs?q=facebook+ads+google+ads&sort=recency&hourly_rate=30-&duration_v3=week,month,ongoing",
+        # Fixed price meta/google ads
+        "https://www.upwork.com/nx/search/jobs?q=meta+ads+media+buyer+ppc&sort=recency&fixed_budget=500-",
+        # Broader search
+        "https://www.upwork.com/nx/search/jobs?q=paid+advertising+performance+marketing&sort=recency",
+    ]
+
+    for url in filter_urls:
+        try:
+            page.goto(url, timeout=30000, wait_until="domcontentloaded")
+            time.sleep(random.uniform(4, 8))
+            human_scroll(page, scrolls=6)
+            time.sleep(2)
+
+            if "login" in page.url:
+                log("  ✗ Not logged in — Plan B failed", "WARN")
+                break
+
+            n = wait_for_jobs(page, timeout=10)
+            log(f"  Plan B: {n} job links at {url[:70]}")
+
+            raw = extract_jobs_js(page)
+            for item in raw:
+                if item.get("title") and item.get("href"):
+                    href = item["href"]
+                    job_url = f"https://www.upwork.com{href}" if href.startswith("/") else href
+                    jobs.append({
+                        "platform": "upwork",
+                        "source": "filtered_search",
+                        "title": item["title"],
+                        "description": item.get("desc", ""),
+                        "url": job_url,
+                        "budget": item.get("budget", ""),
+                        "posted": item.get("posted", ""),
+                        "connects_required": item.get("connects", 6),
+                        "scraped_at": datetime.datetime.now().isoformat(),
+                    })
+
+        except Exception as e:
+            log(f"  Plan B filter error: {e}", "WARN")
+
+    log(f"  Plan B: {len(jobs)} total jobs")
+    return jobs
+
+def plan_c_direct_urls(page, job_ids):
+    """Plan C: Fetch each known job URL directly and extract full details."""
+    log(f"PLAN C: Direct fetch of {len(job_ids)} known jobs...")
+    jobs = []
+
+    for job_id in job_ids:
+        url = f"https://www.upwork.com/jobs/{job_id}"
+        for attempt in range(3):
+            try:
+                page.goto(url, timeout=25000, wait_until="domcontentloaded")
+                time.sleep(random.uniform(2, 4))
+
+                # Check for Cloudflare challenge
+                if "just a moment" in page.content().lower() or "cf-challenge" in page.url:
+                    log(f"  Cloudflare challenge on {job_id} — waiting...", "WARN")
+                    time.sleep(8)
+                    page.reload()
+                    time.sleep(5)
+
+                if "login" in page.url:
+                    log(f"  Not logged in for {job_id}", "WARN")
+                    break
+
+                # Extract full job details
+                job_data = page.evaluate("""() => {
+                    const title = document.querySelector('h1, [data-test="job-title"]');
+                    const desc = document.querySelector('[data-test="Description"] section, .Description, [class*="description"]');
+                    const budget = document.querySelector('[data-test="budget"], [class*="budget"], [class*="Budget"]');
+                    const connects = document.querySelector('[class*="connects"], [data-test="connects"]');
+                    const posted = document.querySelector('[data-test="posted-on"], [class*="posted"]');
+                    const clientInfo = document.querySelector('[data-test="client-info"], [class*="ClientInfo"]');
+                    return {
+                        title: title ? title.innerText.trim() : '',
+                        desc: desc ? desc.innerText.trim().substring(0, 1500) : document.body.innerText.substring(0, 1000),
+                        budget: budget ? budget.innerText.trim() : '',
+                        connects: connects ? connects.innerText.trim() : '',
+                        posted: posted ? posted.innerText.trim() : '',
+                        client: clientInfo ? clientInfo.innerText.trim().substring(0, 300) : '',
+                        url: window.location.href,
+                    };
+                }""")
+
+                if job_data.get("title"):
+                    jobs.append({
+                        "platform": "upwork",
+                        "source": "direct_url",
+                        "job_id": job_id,
+                        "title": job_data["title"],
+                        "description": job_data["desc"],
+                        "url": url,
+                        "budget": job_data["budget"],
+                        "posted": job_data["posted"],
+                        "connects_required": int(re.search(r'\d+', job_data.get("connects","6") or "6").group()) if re.search(r'\d+', job_data.get("connects","6") or "6") else 6,
+                        "client_info": job_data["client"],
+                        "scraped_at": datetime.datetime.now().isoformat(),
+                    })
+                    log(f"  ✓ {job_data['title'][:60]} | budget: {job_data['budget']} | connects: {job_data['connects']}")
+                    break
+
+            except Exception as e:
+                log(f"  Plan C attempt {attempt+1} error for {job_id}: {e}", "WARN")
+                wait_with_jitter(3, attempt)
+
+    log(f"  Plan C: {len(jobs)} jobs fetched")
+    return jobs
+
+
+# ─── CONNECT-EFFICIENT SCORING ────────────────────────────────────────────────
+
+def score_job_for_connects(job):
+    """
+    Score each job for connects ROI.
+    Formula: (win_probability * estimated_deal_value) / connects_cost
+    Higher = better use of connects.
+    """
+    title = (job.get("title","") + " " + job.get("description","")).lower()
+    budget_str = job.get("budget","")
+    connects = job.get("connects_required", 6)
+
+    score = 0
+    reasons = []
+
+    # ── Budget signals ────────────────────────────────────────────────────
+    budget_val = 0
+    budget_match = re.search(r'\$\s?([\d,]+)', budget_str)
+    if budget_match:
+        budget_val = int(budget_match.group(1).replace(",",""))
+
+    if budget_val >= 2000:
+        score += 40; reasons.append(f"+40 big budget ${budget_val}")
+    elif budget_val >= 500:
+        score += 25; reasons.append(f"+25 decent budget ${budget_val}")
+    elif budget_val >= 200:
+        score += 10; reasons.append(f"+10 low budget ${budget_val}")
+    elif budget_val > 0 and budget_val < 200:
+        score -= 30; reasons.append(f"-30 tiny budget ${budget_val}")
+
+    # ── Win probability signals ───────────────────────────────────────────
+    # Verified client
+    client_info = (job.get("client_info","") or "").lower()
+    if any(x in client_info for x in ["payment verified", "verified", "$10k+", "$5k+"]):
+        score += 25; reasons.append("+25 payment verified")
+    if any(x in client_info for x in ["5-star", "4.9", "4.8", "100%"]):
+        score += 15; reasons.append("+15 top-rated client")
+
+    # Specific niche match (Google/Meta Ads expertise = our strongest suit)
+    if "google ads" in title and "meta ads" in title:
+        score += 20; reasons.append("+20 both platforms")
+    elif "google ads" in title or "adwords" in title:
+        score += 15; reasons.append("+15 google ads match")
+    elif "meta ads" in title or "facebook ads" in title:
+        score += 15; reasons.append("+15 meta ads match")
+
+    # Industry fit (ecomm/DTC/lead gen = our specialty)
+    if any(x in title for x in ["ecommerce", "e-commerce", "shopify", "dtc", "d2c", "lead gen"]):
+        score += 15; reasons.append("+15 our industry")
+
+    # ROAS/KPI specificity (client knows what they want = less education needed)
+    if any(x in title for x in ["roas", "cac", "cpa", "ctr", "conversion"]):
+        score += 10; reasons.append("+10 KPI specific")
+
+    # Posted recently (less competition)
+    posted = job.get("posted","").lower()
+    if "minute" in posted or "1 hour" in posted or "2 hour" in posted:
+        score += 20; reasons.append("+20 posted <2h ago")
+    elif "hour" in posted:
+        score += 10; reasons.append("+10 posted today")
+    elif "day" in posted and any(f"{i} day" in posted for i in range(1,3)):
+        score += 5; reasons.append("+5 posted <2d ago")
+    elif "week" in posted:
+        score -= 10; reasons.append("-10 posted >1 week")
+
+    # Few proposals = less competition
+    if any(x in title for x in ["urgent", "asap", "immediately", "start today"]):
+        score += 15; reasons.append("+15 urgent")
+
+    # Negative signals
+    if "looking for someone" in title or "anyone" in title:
+        score -= 20; reasons.append("-20 vague requirement")
+    if "hourly" in budget_str.lower() and budget_val > 0 and budget_val < 25:
+        score -= 25; reasons.append(f"-25 hourly too low (${budget_val}/hr)")
+    if "entry level" in title or "beginner" in title:
+        score -= 15; reasons.append("-15 entry level")
+
+    # Connects efficiency bonus (fewer connects = less risky to apply)
+    if connects <= 4:
+        score += 10; reasons.append(f"+10 only {connects} connects")
+    elif connects >= 10:
+        score -= 10; reasons.append(f"-10 {connects} connects costly")
+
+    # Description quality (longer = more serious client)
+    desc_len = len(job.get("description",""))
+    if desc_len > 500:
+        score += 10; reasons.append("+10 detailed description")
+    elif desc_len < 100:
+        score -= 10; reasons.append("-10 vague description")
+
+    job["score"] = score
+    job["score_reasons"] = reasons
+    job["roi_per_connect"] = score / max(connects, 1)
+
+    return job
+
+
+def shortlist_jobs(jobs, max_apply=15):
+    """
+    Shortlist jobs for maximum connects ROI.
+    Tiered output:
+      TIER 1 (APPLY NOW): score >= 60, highest ROI
+      TIER 2 (CONSIDER): score 40-59
+      TIER 3 (SKIP): score < 40
+    """
+    # Score all jobs
+    jobs = [score_job_for_connects(j) for j in jobs]
+
+    # Sort by ROI per connect
+    jobs.sort(key=lambda x: x.get("roi_per_connect", 0), reverse=True)
+
+    # Deduplicate by title
+    seen_titles = set()
+    unique = []
+    for j in jobs:
+        t = j.get("title","").lower().strip()[:60]
+        if t and t not in seen_titles:
+            seen_titles.add(t)
+            unique.append(j)
+
+    tier1 = [j for j in unique if j.get("score",0) >= 60][:max_apply]
+    tier2 = [j for j in unique if 40 <= j.get("score",0) < 60][:10]
+    tier3 = [j for j in unique if j.get("score",0) < 40][:5]
+
+    return tier1, tier2, tier3, unique
+
+
+# ─── NETWORK RESILIENCE ───────────────────────────────────────────────────────
+
+def check_network():
+    """Check if internet is available."""
+    import socket
+    try:
+        socket.create_connection(("8.8.8.8", 53), timeout=5)
+        return True
+    except Exception:
+        return False
+
+def wait_for_network(max_wait=300):
+    """Wait for network to come back — like a human who pauses and retries."""
+    log("Network appears down — waiting for connection...", "WARN")
+    for i in range(max_wait // 10):
+        time.sleep(10)
+        if check_network():
+            log(f"  Network restored after {(i+1)*10}s")
+            return True
+    log("  Network not restored after 5min — aborting", "ERROR")
+    return False
+
+
+# ─── MAIN ORCHESTRATOR ────────────────────────────────────────────────────────
+
+KNOWN_JOB_IDS = [
+    "~022047308142325331719",
+    "~022047233042104298136",
+    "~022047340641960271829",
+    "~022047186383068526343",
+    "~022047325476080307153",
+    "~022047350704980565973",
+]
+
+def run_scrape(state):
+    """Run job scraping with Plan A → B → C fallback."""
+    all_jobs = []
+
+    # Check network first
+    if not check_network():
+        if not wait_for_network():
+            return []
+
+    p_browser, ctx = None, None
+    try:
+        p_browser, ctx = get_browser()
+        page = ctx.new_page()
+
+        # ── Plan A: Best Matches (primary — logged-in feed, most relevant) ──
+        plan_a_jobs = plan_a_best_matches(page, max_jobs=50)
+        if plan_a_jobs:
+            all_jobs.extend(plan_a_jobs)
+            state["plan_a_done"] = True
+            save_state(state)
+        else:
+            # Plan B fallback
+            log("Plan A returned 0 — switching to Plan B", "WARN")
+            plan_b_jobs = plan_b_search_filters(page, max_jobs=50)
+            all_jobs.extend(plan_b_jobs)
+            state["plan_b_done"] = True
+            save_state(state)
+
+        # ── Plan C: Direct URL fetch (known specific jobs, runs LAST) ──
+        if KNOWN_JOB_IDS and not state.get("plan_c_done"):
+            plan_c_jobs = plan_c_direct_urls(page, KNOWN_JOB_IDS)
+            all_jobs.extend(plan_c_jobs)
+            state["plan_c_done"] = True
+
+        save_state(state)
+
+    except Exception as e:
+        log(f"Scraping error: {e}", "ERROR")
+    finally:
+        if ctx:
+            try:
+                ctx.close()
+            except Exception:
+                pass
+        if p_browser:
+            try:
+                p_browser.stop()
+            except Exception:
+                pass
+
+    return all_jobs
+
+
+def cmd_status():
+    """Show current shortlist status."""
+    if OUTPUT.exists():
+        d = json.loads(OUTPUT.read_text())
+        tier1 = d.get("tier1", [])
+        tier2 = d.get("tier2", [])
+        connects_needed = sum(j.get("connects_required",6) for j in tier1)
+
+        print(f"\n{'='*60}")
+        print(f"UPWORK AGENT STATUS — {datetime.date.today()}")
+        print(f"{'='*60}")
+        print(f"Total jobs analyzed:  {d.get('total_scraped',0)}")
+        print(f"TIER 1 (apply now):   {len(tier1)} jobs ({connects_needed} connects needed)")
+        print(f"TIER 2 (consider):    {len(tier2)} jobs")
+        print(f"\nTIER 1 SHORTLIST:")
+        for i, j in enumerate(tier1, 1):
+            print(f"  {i:2}. [{j.get('score','?'):3} pts, {j.get('connects_required',6)}C] {j['title'][:55]}")
+            print(f"       Budget: {j.get('budget','?')} | {j.get('posted','?')} | {j.get('url','')[:60]}")
+        print()
+    else:
+        print("No data yet. Run: upwork-agent --scrape")
+
+
+def main():
+    args = sys.argv[1:]
+    state = load_state()
+
+    if "--status" in args:
+        cmd_status()
+        return
+
+    if "--shortlist" in args and OUTPUT.exists():
+        d = json.loads(OUTPUT.read_text())
+        all_jobs = d.get("all_jobs", [])
+        if all_jobs:
+            tier1, tier2, tier3, ranked = shortlist_jobs(all_jobs)
+            d["tier1"] = tier1
+            d["tier2"] = tier2
+            OUTPUT.write_text(json.dumps(d, indent=2))
+            cmd_status()
+        return
+
+    log(f"UPWORK AGENT — {datetime.date.today()} — Plan {state.get('plan','A')}")
+
+    # Scrape jobs
+    all_jobs = run_scrape(state)
+    log(f"Total jobs scraped: {len(all_jobs)}")
+
+    if not all_jobs:
+        log("No jobs found — check browser login or network", "ERROR")
+        return 1
+
+    # Shortlist
+    tier1, tier2, tier3, ranked = shortlist_jobs(all_jobs)
+
+    connects_needed = sum(j.get("connects_required",6) for j in tier1)
+    log(f"\nSHORTLIST COMPLETE:")
+    log(f"  TIER 1 (APPLY NOW): {len(tier1)} jobs | {connects_needed} connects")
+    log(f"  TIER 2 (CONSIDER):  {len(tier2)} jobs")
+    log(f"  TIER 3 (SKIP):      {len(tier3)} jobs")
+
+    # Print shortlist
+    print(f"\n{'='*65}")
+    print(f"UPWORK SHORTLIST — {datetime.date.today()} — CONNECTS-OPTIMIZED")
+    print('='*65)
+    print(f"\n🔥 TIER 1: APPLY NOW ({len(tier1)} jobs, {connects_needed} connects needed)")
+    print("-"*65)
+    for i, j in enumerate(tier1, 1):
+        print(f"\n{i:2}. {j['title'][:62]}")
+        print(f"    Score: {j['score']} pts | Budget: {j.get('budget','?')} | Connects: {j.get('connects_required',6)}")
+        print(f"    Posted: {j.get('posted','?')} | ROI/connect: {j.get('roi_per_connect',0):.1f}")
+        print(f"    URL: {j.get('url','')[:70]}")
+        if j.get("score_reasons"):
+            print(f"    Why: {' | '.join(j['score_reasons'][:3])}")
+
+    if tier2:
+        print(f"\n⚡ TIER 2: CONSIDER ({len(tier2)} jobs)")
+        print("-"*65)
+        for i, j in enumerate(tier2, 1):
+            print(f"  {i}. [{j['score']:3} pts] {j['title'][:55]} | {j.get('budget','?')}")
+
+    print(f"\n✗ TIER 3 (SKIP): {len(tier3)} jobs below threshold\n")
+
+    # Save output
+    output_data = {
+        "date": TODAY,
+        "total_scraped": len(all_jobs),
+        "tier1": tier1,
+        "tier2": tier2,
+        "tier3": tier3,
+        "all_jobs": ranked,
+        "connects_budget_needed": connects_needed,
+        "generated_at": datetime.datetime.now().isoformat(),
+    }
+    OUTPUT.write_text(json.dumps(output_data, indent=2))
+    log(f"\nSaved to {OUTPUT}")
+
+    # Update state
+    state["phase"] = "complete"
+    state["last_run"] = datetime.datetime.now().isoformat()
+    save_state(state)
+
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main() or 0)

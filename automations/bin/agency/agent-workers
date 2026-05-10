@@ -1,0 +1,466 @@
+#!/usr/bin/env python3
+"""
+AGENCY MULTI-AGENT ORCHESTRATOR — Claude + Agent37 + OpenClaw Integration
+Spawns parallel specialized agents for each pipeline phase.
+
+AGENT ARCHITECTURE:
+  agent-researcher  → Apify RAG scraping of 10 platforms in parallel threads
+  agent-writer      → Proposal generation via Groq/GLM/Ollama LLM chain
+  agent-qa          → Quality Review — scores + regenerates below threshold
+  agent-submitter   → OpenClaw computer-use: Brave browser auto-submit
+  agent-emailer     → Email sequence management + dedup enforcement
+  agent-reporter    → Daily report aggregation + Gmail MCP drafts
+
+ROUTING:
+  Claude Code (this process)  → orchestrator + final synthesis
+  Agent37 (remote/cloud)      → long-running parallel tasks (writer, researcher)
+  OpenClaw (local gateway)    → computer-use browser automation (submitter)
+  Groq/GLM/Ollama (Tier 0)   → LLM inference (zero Claude tokens)
+
+OPENCLAW TASK FORMAT:
+  openclaw-bridge task "<TASK>" → routes to Agent37 agent:main:main session
+  Supports: screenshot, click, type, navigate, read page content
+"""
+import os, sys, json, datetime, subprocess, time, threading
+from pathlib import Path
+
+HOME    = Path.home()
+AGENCY  = HOME / ".claude/agency"
+BRIDGE  = HOME / ".claude/bin/openclaw-bridge"
+BIN_DIR = HOME / ".claude/bin/agency"
+
+# Agent37 session names (OpenClaw sessions)
+AGENTS = {
+    "researcher": "agent:agency:researcher",
+    "writer":     "agent:agency:writer",
+    "qa":         "agent:agency:qa",
+    "submitter":  "agent:agency:submitter",
+    "emailer":    "agent:agency:emailer",
+    "reporter":   "agent:agency:reporter",
+}
+
+TODAY = datetime.date.today().strftime("%Y%m%d")
+
+
+def log(msg):
+    ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    print(f"[AGENTS {ts}] {msg}")
+
+
+def openclaw_task(task_desc, agent="submitter", timeout=120):
+    """
+    Route a computer-use task to Agent37 via OpenClaw bridge.
+    Returns (success, output_text).
+    """
+    if not BRIDGE.exists():
+        log(f"openclaw-bridge not found at {BRIDGE}")
+        return False, "bridge not found"
+
+    session = AGENTS.get(agent, "agent:main:main")
+    cmd = [str(BRIDGE), "send", task_desc, f"--target {session}"]
+    try:
+        result = subprocess.run(
+            [str(BRIDGE), "send", task_desc],
+            capture_output=True, text=True, timeout=timeout
+        )
+        success = result.returncode == 0
+        out = (result.stdout + result.stderr).strip()
+        if success:
+            log(f"✓ openclaw [{agent}]: {task_desc[:60]}")
+        else:
+            log(f"✗ openclaw [{agent}] failed: {out[:100]}")
+        return success, out
+    except subprocess.TimeoutExpired:
+        log(f"✗ openclaw [{agent}] timeout ({timeout}s)")
+        return False, "timeout"
+    except Exception as ex:
+        log(f"✗ openclaw [{agent}] error: {ex}")
+        return False, str(ex)
+
+
+def openclaw_browser_submit(platform, url, proposal_text, account_email):
+    """
+    Use OpenClaw computer-use to submit a proposal via Brave browser.
+    Constructs a structured task instruction for the agent.
+    """
+    task = (
+        f"[BROWSER_SUBMIT] Platform={platform} Account={account_email} "
+        f"URL={url} "
+        f"Task: Open Brave browser, navigate to {url}, "
+        f"find the Apply/Bid/Message button, paste this proposal text into the cover letter field: "
+        f"[PROPOSAL_START]{proposal_text[:300]}[PROPOSAL_END] "
+        f"then click Submit. Take a screenshot after submission and return the page title."
+    )
+    return openclaw_task(task, agent="submitter", timeout=180)
+
+
+def agent37_run_script(script_name, args="", agent="writer", async_mode=False):
+    """
+    Run an agency script as an Agent37 task (cloud execution).
+    If async_mode=True: fire-and-forget (non-blocking).
+    """
+    task = (
+        f"[EXEC_SCRIPT] Run ~/.claude/bin/agency/{script_name} {args} "
+        f"and return the JSON output. Report completion status."
+    )
+    if async_mode:
+        # Fire-and-forget via openclaw-bridge in background thread
+        def _run():
+            openclaw_task(task, agent=agent)
+        t = threading.Thread(target=_run, daemon=True)
+        t.start()
+        return True, "async started"
+    return openclaw_task(task, agent=agent)
+
+
+# ── PARALLEL RESEARCH AGENT ───────────────────────────────────────────────────
+
+def agent_researcher_parallel(platforms=None):
+    """
+    Spawn parallel research threads — each platform gets its own thread.
+    Uses Apify RAG Web Browser via the discover-jobs script.
+    Threads call agent37_run_script; results merged into jobs_{TODAY}.json.
+    """
+    if platforms is None:
+        platforms = ["linkedin","indeed","reddit","naukri","peopleperhour",
+                     "freelancer","guru","bark","twitter","upwork"]
+
+    log(f"Spawning {len(platforms)} research threads (Apify RAG)")
+    results = {}
+    threads = []
+
+    def _scrape(pl):
+        success, out = openclaw_task(
+            f"[RESEARCH_AGENT] Platform={pl} "
+            f"Run: python3 ~/.claude/bin/agency/discover-jobs --platform {pl} --json-only "
+            f"Return: job count found",
+            agent="researcher"
+        )
+        results[pl] = {"success": success, "output": out[:200]}
+        log(f"  Researcher [{pl}]: {'✓' if success else '✗'} {out[:50]}")
+
+    for pl in platforms:
+        t = threading.Thread(target=_scrape, args=(pl,), daemon=True)
+        threads.append(t)
+        t.start()
+        time.sleep(0.3)  # stagger starts
+
+    for t in threads:
+        t.join(timeout=60)
+
+    success_count = sum(1 for r in results.values() if r["success"])
+    log(f"Research complete: {success_count}/{len(platforms)} platforms responded")
+    return results
+
+
+# ── PARALLEL WRITER AGENT ─────────────────────────────────────────────────────
+
+def agent_writer_batch(jobs, batch_size=10, workers=4):
+    """
+    Split jobs into worker batches, submit each batch to Agent37 writer agents.
+    Each worker processes batch_size jobs in parallel.
+    All results collected into proposals_{TODAY}.json.
+    """
+    log(f"Writer agents: {len(jobs)} jobs → {workers} workers × {batch_size} batch")
+
+    batches = [jobs[i:i+batch_size] for i in range(0, len(jobs), batch_size)]
+    results = {}
+
+    def _write_batch(batch_idx, batch):
+        job_ids = [j.get("url","")[:50] for j in batch[:3]]
+        task = (
+            f"[WRITER_AGENT] Batch {batch_idx+1} "
+            f"Run: python3 ~/.claude/bin/agency/generate-proposals --batch {batch_idx} "
+            f"Jobs: {len(batch)} | Sample: {job_ids} "
+            f"Return: proposals generated count"
+        )
+        ok, out = openclaw_task(task, agent="writer", timeout=300)
+        results[batch_idx] = {"success": ok, "count": len(batch), "output": out[:100]}
+        log(f"  Writer batch {batch_idx+1}: {'✓' if ok else '✗'} ({len(batch)} jobs)")
+
+    threads = []
+    for i, batch in enumerate(batches[:workers]):
+        t = threading.Thread(target=_write_batch, args=(i, batch), daemon=True)
+        threads.append(t)
+        t.start()
+
+    for t in threads:
+        t.join(timeout=600)
+
+    return results
+
+
+# ── QA AGENT ──────────────────────────────────────────────────────────────────
+
+def agent_qa_review(proposals_file):
+    """
+    QA agent reviews proposals against the 6-point Quality Review rubric.
+    Rejects/flags below-threshold proposals.
+    Returns (passed, improved, failed) counts.
+    """
+    task = (
+        f"[QA_AGENT] Load {proposals_file} "
+        f"For each proposal: check banned openers, word count (platform limits), "
+        f"DigiMinds mention, CTA presence, job specificity, filler phrases. "
+        f"Score 0-100. Flag below 75. Return JSON with pass/fail breakdown."
+    )
+    success, out = openclaw_task(task, agent="qa", timeout=300)
+    log(f"QA review: {'✓' if success else 'local fallback'}")
+
+    # Always also run local QR (guaranteed fallback)
+    local_qr = subprocess.run(
+        [sys.executable, str(BIN_DIR / "generate-proposals"), "--qr-only"],
+        capture_output=True, text=True, timeout=300
+    )
+    return {"openclaw": success, "local_qr": local_qr.returncode == 0}
+
+
+# ── SUBMITTER AGENT (OpenClaw browser) ───────────────────────────────────────
+
+def agent_submitter_run(proposals_file=None):
+    """
+    OpenClaw computer-use: submit proposals via Brave browser.
+    Reads browser_queue.json, processes by priority (HT first, score≥80 second).
+    Each submission: navigate → fill → submit → screenshot → log result.
+    """
+    queue_f = AGENCY / "data/browser_queue.json"
+    if not queue_f.exists():
+        log("No browser_queue.json — skipping submitter")
+        return 0
+
+    queue = json.loads(queue_f.read_text())
+    if not queue:
+        log("Browser queue empty")
+        return 0
+
+    # Sort by priority
+    queue = sorted(queue, key=lambda x: x.get("priority",9))
+    submitted = 0
+
+    log(f"Submitter agent: {len(queue)} proposals in queue")
+    for item in queue:
+        url      = item.get("url","")
+        platform = item.get("platform","")
+        proposal = item.get("proposal_text","")
+        if not url or not proposal:
+            continue
+
+        ok, out = openclaw_browser_submit(platform, url, proposal, "zulqarnain@digiminds.org")
+        if ok:
+            submitted += 1
+            # Dedup: mark as submitted
+            try:
+                import importlib.util
+                spec = importlib.util.spec_from_file_location("dedup", str(BIN_DIR/"dedup"))
+                dm   = importlib.util.load_module_from_spec(spec)
+                spec.loader.exec_module(dm)
+                dm.mark_job_submitted(url, platform, item.get("title",""), item.get("score",0))
+            except Exception:
+                pass
+        else:
+            log(f"  Manual needed: {platform} | {url[:50]}")
+
+        time.sleep(2)  # brief pause between submissions
+
+    log(f"Submitter: {submitted}/{len(queue)} auto-submitted via OpenClaw")
+    return submitted
+
+
+# ── EMAILER AGENT ─────────────────────────────────────────────────────────────
+
+def agent_emailer_run():
+    """
+    Emailer agent: runs email-pipeline with full dedup enforcement.
+    Delegates to email-pipeline script (which uses dedup module).
+    """
+    log("Emailer agent: running email-pipeline with dedup")
+    result = subprocess.run(
+        [sys.executable, str(BIN_DIR / "email-pipeline")],
+        capture_output=True, text=True, timeout=300
+    )
+    output = result.stdout + result.stderr
+    log(f"Emailer: {'✓' if result.returncode==0 else '✗'} | {output.count('→')} sent")
+    return result.returncode == 0, output
+
+
+# ── REPORTER AGENT ─────────────────────────────────────────────────────────────
+
+def agent_reporter_run():
+    """
+    Reporter agent: aggregates phase results + queues Gmail MCP draft.
+    Runs verify-report + daily-report.
+    """
+    log("Reporter agent: aggregating results → Gmail draft")
+    for script in ["daily-report", "verify-report"]:
+        r = subprocess.run(
+            [sys.executable, str(BIN_DIR / script)],
+            capture_output=True, text=True, timeout=120
+        )
+        log(f"  {script}: {'✓' if r.returncode==0 else '✗'}")
+    return True
+
+
+# ── FULL ORCHESTRATION RUN ────────────────────────────────────────────────────
+
+def run_full_pipeline(parallel=True):
+    """
+    Full pipeline with all 6 agent types.
+    parallel=True: researcher + writer run concurrently where possible.
+    """
+    log("=== MULTI-AGENT PIPELINE START ===")
+    log(f"Agents: researcher, writer, qa, submitter, emailer, reporter")
+    log(f"Routing: Agent37 (cloud) + OpenClaw (local browser) + Groq/GLM (LLM)")
+
+    t0 = time.time()
+    results = {}
+
+    # Phase 1: Research (parallel Apify scrapers)
+    log("▶ Phase 1: Research Agent (parallel Apify RAG)")
+    if parallel:
+        research_thread = threading.Thread(
+            target=lambda: results.update({"research": agent_researcher_parallel()}),
+            daemon=True
+        )
+        research_thread.start()
+    else:
+        results["research"] = agent_researcher_parallel()
+
+    # Wait for research if parallel, then write
+    if parallel and "research" not in results:
+        log("  Waiting for research to complete...")
+        research_thread.join(timeout=120)
+
+    # Phase 2: Writer Agent (local generate-proposals, batched)
+    log("▶ Phase 2: Writer Agent (Groq/GLM/Ollama LLM chain)")
+    jobs_file = AGENCY / f"data/jobs_{TODAY}.json"
+    if jobs_file.exists():
+        jobs = json.loads(jobs_file.read_text()).get("jobs", [])
+        # Apply dedup: filter already-submitted jobs
+        try:
+            spec = importlib.util.spec_from_file_location("dedup", str(BIN_DIR/"dedup"))
+            dm   = importlib.util.load_module_from_spec(spec)
+            spec.loader.exec_module(dm)
+            new_jobs, skipped = dm.get_new_jobs_only(jobs)
+            log(f"  Dedup: {len(new_jobs)} new jobs | {len(skipped)} already submitted (skipped)")
+        except Exception:
+            new_jobs = jobs
+        results["writer"] = agent_writer_batch(new_jobs) if new_jobs else {}
+    else:
+        log("  No jobs file — run discover-jobs first")
+
+    # Phase 3: QA Agent
+    log("▶ Phase 3: QA Agent (Quality Review rubric)")
+    props_file = AGENCY / f"proposals/proposals_{TODAY}.json"
+    if props_file.exists():
+        results["qa"] = agent_qa_review(str(props_file))
+
+    # Phase 4: Submitter Agent (OpenClaw browser)
+    log("▶ Phase 4: Submitter Agent (OpenClaw + Brave)")
+    submitted_count = agent_submitter_run()
+    results["submitter"] = submitted_count
+
+    # Phase 5: Emailer Agent (email pipeline + dedup)
+    log("▶ Phase 5: Emailer Agent (email-pipeline + dedup)")
+    ok, email_out = agent_emailer_run()
+    results["emailer"] = {"ok": ok, "output": email_out[:200]}
+
+    # Phase 6: Reporter Agent
+    log("▶ Phase 6: Reporter Agent (verify-report + Gmail)")
+    agent_reporter_run()
+    results["reporter"] = "done"
+
+    elapsed = time.time() - t0
+    log(f"=== PIPELINE COMPLETE: {elapsed:.0f}s ===")
+
+    # Save results
+    out_file = AGENCY / f"data/agent_run_{TODAY}.json"
+    out_file.parent.mkdir(parents=True, exist_ok=True)
+    out_file.write_text(json.dumps({
+        "date": TODAY,
+        "elapsed_sec": elapsed,
+        "phases": results,
+        "agents_used": ["researcher","writer","qa","submitter","emailer","reporter"],
+        "routing": {
+            "openclaw": "local:18789",
+            "agent37":  os.environ.get("AGENT37_GATEWAY_URL","not configured"),
+            "llm":      "groq:llama-3.1-8b-instant → glm-4.5-air → ollama:llama3",
+        }
+    }, indent=2))
+    log(f"Agent run saved: {out_file}")
+    return results
+
+
+# ── STATUS / CONFIG ───────────────────────────────────────────────────────────
+
+def show_status():
+    """Show current agent configuration and OpenClaw gateway status."""
+    print(f"\n{'='*52}")
+    print("AGENT WORKERS — Status")
+    print('='*52)
+
+    # OpenClaw gateway
+    r = subprocess.run([str(BRIDGE), "status"], capture_output=True, text=True, timeout=10)
+    print("OpenClaw Gateway:")
+    for line in r.stdout.strip().split("\n"):
+        print(f"  {line}")
+
+    # Agent37 config
+    a37_url = os.environ.get("AGENT37_GATEWAY_URL","not configured")
+    a37_tok = os.environ.get("AGENT37_GATEWAY_TOKEN","")
+    print(f"\nAgent37 Remote:")
+    print(f"  URL:   {a37_url}")
+    print(f"  Token: {'✓ set' if a37_tok else '✗ not set'}")
+
+    print(f"\nDefined Agents:")
+    for name, session in AGENTS.items():
+        print(f"  {name:<15} → {session}")
+    print()
+
+
+def setup_agent37(gateway_url, token):
+    """Configure Agent37 remote gateway connection."""
+    r = subprocess.run(
+        [str(BRIDGE), "config-agent37", gateway_url, token],
+        capture_output=True, text=True
+    )
+    print(r.stdout)
+    if r.returncode == 0:
+        print(f"✓ Agent37 configured: {gateway_url}")
+        print("  Restart gateway: openclaw-bridge start-gateway")
+    else:
+        print(f"✗ Failed: {r.stderr}")
+
+
+# ── CLI ───────────────────────────────────────────────────────────────────────
+if __name__ == "__main__":
+    import importlib.util
+    args = sys.argv[1:]
+
+    if not args or "--status" in args:
+        show_status()
+
+    elif "--run" in args:
+        run_full_pipeline(parallel=True)
+
+    elif "--submit" in args:
+        count = agent_submitter_run()
+        print(f"Submitted: {count} via OpenClaw")
+
+    elif "--email" in args:
+        agent_emailer_run()
+
+    elif "--research" in args:
+        results = agent_researcher_parallel()
+        print(json.dumps(results, indent=2))
+
+    elif "--setup-agent37" in args:
+        idx = args.index("--setup-agent37")
+        if len(args) > idx + 2:
+            setup_agent37(args[idx+1], args[idx+2])
+        else:
+            print("Usage: agent-workers --setup-agent37 <gateway_url> <token>")
+
+    elif "--qa" in args:
+        today = datetime.date.today().strftime("%Y%m%d")
+        props = HOME / f".claude/agency/proposals/proposals_{today}.json"
+        agent_qa_review(str(props))

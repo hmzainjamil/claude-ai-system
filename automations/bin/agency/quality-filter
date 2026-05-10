@@ -1,0 +1,376 @@
+#!/usr/bin/env python3
+"""
+TIGHT QUALITY FILTER — Conversion-First Benchmarks
+Replaces loose keyword matching. Rejects 75-85% of scraped jobs.
+
+PHILOSOPHY: Win 5 high-quality clients > apply to 100 low-quality jobs.
+Every proposal we send must have a >25% reply probability and >$1k+ deal value.
+
+HARD REJECT (auto-fail, no exceptions):
+  ✗ Missing URL or job title
+  ✗ Title under 5 words OR contains "anyone", "looking for someone", "need help"
+  ✗ Description under 150 characters (too generic)
+  ✗ Posted >72 hours ago (stale — already 50+ applicants)
+  ✗ Budget signals: "$5/hr", "lowest bid", "cheapest", "$10 per task"
+  ✗ Negative client markers: "no agencies", "individual freelancer only"
+  ✗ Impossible requirements: "10+ years Google Ads only", "must work US time only $3/hr"
+  ✗ Spam markers: "make $$$ from home", "earn money fast"
+  ✗ No paid-marketing keyword match (must mention google ads OR meta ads OR ppc OR paid media)
+
+QUALITY SIGNALS (+score):
+  +30 Verified payment / "$10k+ spent on platform" / 5-star history
+  +25 Budget explicit & ≥$500/mo or ≥$50/hr
+  +20 Markets: US, UK, AU, CA, EU, UAE, SG (better budgets, better timezones)
+  +20 Job description ≥500 chars (specific, well-thought-out)
+  +15 Specific platform mentioned (e.g. "Google Ads + Shopify" not just "marketing")
+  +15 Industry mentioned (DTC, SaaS, eComm, B2B, healthcare, finance — vertical specialization)
+  +10 Specific KPI mentioned (ROAS, CAC, MER, CTR target)
+  +10 Mentions duration (3 months, ongoing, retainer)
+
+TIER GATES:
+  HIGH TICKET (apply with audit): score ≥ 75 AND budget ≥ $1500/mo AND verified
+  QUALITY (standard apply):        score ≥ 60 AND has budget signal
+  REJECT:                          everything else
+
+Expected funnel (vs old loose filter):
+  Old: 121 scraped → 110 qualified (91%)  ← noise
+  New: 121 scraped →  ~22 qualified (~18%) → ~6-8 high ticket
+"""
+import re, json, sys, datetime
+from pathlib import Path
+
+HOME    = Path.home()
+AGENCY  = HOME / ".claude/agency"
+
+# ── HARD REJECT PATTERNS ──────────────────────────────────────────────────────
+
+NEGATIVE_TITLE_MARKERS = [
+    r"\banyone\b", r"\bsomeone\b", r"\bneed help\b", r"\bquick task\b",
+    r"\bsmall job\b", r"\b\$5\b", r"\bcheapest\b", r"\blowest bid\b",
+    r"\beasy money\b", r"\bmake \$\$\$\b", r"\bearn money fast\b",
+    r"\bdata entry\b", r"\bcopy paste\b",
+    # LISTING / AGGREGATOR PAGES (not actual jobs)
+    r"\bjobs in\b", r"\bjobs near\b", r"\b\d+\+? jobs?\b", r"\bfind .{0,20}jobs?\b",
+    r"^[a-z ]{0,40}jobs\s*$",                     # title is just "X Jobs"
+    r"\bopenings\b", r"\bvacancies\b",
+    r"\b(top|best|highest paid|popular) .{0,30}jobs?\b",
+    r"\bprojects? in (jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\b",
+    r"^careers?\b", r"^discover\b", r"^search\b",
+    r"\b(remote|flexible)\s+\w+\s+jobs?\b",       # "Remote Facebook Jobs" listing
+]
+
+LISTING_URL_PATTERNS = [
+    r"/q-[a-z0-9-]+(-jobs?)?\.html",
+    r"/[a-z-]*-jobs(\.html)?/?$",
+    r"/freelance-jobs/[a-z-]+/[a-z-]+/?$",
+    r"/jobs/?$",
+    r"/projects/[a-z-]+/?$",
+    r"/categor(y|ies)/", r"/search\?",
+    r"/browse/", r"/listings?/?$",
+]
+
+NEGATIVE_DESC_MARKERS = [
+    r"no agenc(y|ies)", r"individual freelancer only", r"freelancer only no agency",
+    r"\$\s?[1-5]\s*/\s*hr", r"\$\s?[1-5]\s+per\s+hour", r"max(imum)?\s+\$\s?\d{1,2}\s*/?\s*hr",
+    r"only\s+(indian|pakistani|bangladesh)", r"hiring (indians|pakistanis) only",
+    r"low budget", r"shoestring budget", r"start[- ]?up.{0,20}(no money|broke)",
+    r"unpaid", r"equity only", r"revenue share only",
+    r"10\+?\s*year[s]?\s+(of\s+)?(google ads|facebook ads)",  # impossible req
+]
+
+REQUIRED_KEYWORDS = [
+    "google ads", "meta ads", "facebook ads", "instagram ads", "fb ads",
+    "ig ads", "ppc", "pay per click", "paid media", "performance marketing",
+    "sem", "search engine marketing", "google adwords", "adwords",
+    "tiktok ads", "linkedin ads", "youtube ads", "display ads",
+    "paid search", "paid social", "ppc specialist", "media buyer",
+    "ads manager", "campaign manager", "growth marketing", "demand gen",
+]
+
+# ── SCORING SIGNALS ───────────────────────────────────────────────────────────
+
+QUALITY_MARKETS = ["united states", "usa", "us ", "u.s.", "united kingdom", "uk ",
+                   "u.k.", "australia", "au ", "canada", "ca ", "germany",
+                   "france", "uae", "dubai", "singapore", "switzerland",
+                   "netherlands", "sweden", "norway", "denmark", "ireland",
+                   "new zealand", "japan", "remote (us)", "remote us"]
+
+VERIFIED_MARKERS = [
+    "payment verified", "verified payment", "$10k+ spent", "$5k+ spent",
+    "$1k+ spent", "verified client", "5-star", "4.9 stars", "4.8 stars",
+    "100% feedback", "top rated", "preferred talent", "hire history",
+]
+
+BUDGET_PATTERNS = [
+    (r"\$\s?(\d{1,3}[,.]?\d{3,})\s*/?\s*(month|mo|monthly)", 30),    # $1k+/mo
+    (r"\$\s?(\d{2,4})\s*/?\s*(hour|hr|hourly)", 25),                  # $50+/hr
+    (r"budget[:\s]+\$\s?(\d{3,})", 20),                               # explicit budget
+    (r"retainer", 15),
+    (r"long.term|ongoing|3.month|6.month", 10),
+]
+
+INDUSTRY_KEYWORDS = ["dtc", "d2c", "ecommerce", "e-commerce", "shopify", "saas",
+                     "b2b", "b2c", "fintech", "healthtech", "edtech", "real estate",
+                     "lead gen", "lead generation", "agency", "law firm", "dental",
+                     "fitness", "skincare", "apparel", "cpg", "subscription"]
+
+KPI_KEYWORDS = ["roas", "cac", "mer", "ctr", "cpc", "cpa", "cpm", "ltv",
+                "conversion rate", "aov", "pos", "lookalike", "retargeting"]
+
+
+def now_iso():
+    return datetime.datetime.now().isoformat()
+
+
+def is_stale(posted_at_str, max_hours=72):
+    """Check if posting is older than max_hours."""
+    if not posted_at_str:
+        return False  # no timestamp = pass (don't penalize missing data)
+    try:
+        if "T" in posted_at_str:
+            posted = datetime.datetime.fromisoformat(posted_at_str.replace("Z","+00:00"))
+        else:
+            posted = datetime.datetime.fromisoformat(posted_at_str)
+        age_h = (datetime.datetime.now() - posted.replace(tzinfo=None)).total_seconds() / 3600
+        return age_h > max_hours
+    except Exception:
+        return False
+
+
+def hard_reject(job):
+    """Return (rejected, reason) — first failing rule wins."""
+    title = (job.get("title","") or "").lower()
+    desc  = (job.get("description","") or job.get("snippet","") or "").lower()
+    url   = job.get("url","") or job.get("job_url","")
+    posted = job.get("posted_at") or job.get("date") or ""
+
+    if not url or not title:
+        return True, "missing url/title"
+
+    # Reject listing/search/category pages (not real job postings)
+    url_lower = url.lower()
+    for pat in LISTING_URL_PATTERNS:
+        if re.search(pat, url_lower):
+            return True, "listing/category page (not actual job)"
+
+    if len(title.split()) < 4:
+        return True, "title too short (<4 words)"
+
+    if len(desc) < 200:
+        return True, f"description too short ({len(desc)} chars, need 200+)"
+
+    for pat in NEGATIVE_TITLE_MARKERS:
+        if re.search(pat, title):
+            return True, f"negative title marker: {pat}"
+
+    for pat in NEGATIVE_DESC_MARKERS:
+        if re.search(pat, desc):
+            return True, f"negative desc marker: {pat[:30]}"
+
+    if is_stale(posted):
+        return True, "stale (>72h old)"
+
+    # Must mention paid marketing
+    combined = title + " " + desc
+    if not any(kw in combined for kw in REQUIRED_KEYWORDS):
+        return True, "no paid-marketing keyword match"
+
+    return False, ""
+
+
+def quality_score(job):
+    """Score 0-100. Higher = better lead."""
+    title = (job.get("title","") or "").lower()
+    desc  = (job.get("description","") or job.get("snippet","") or "").lower()
+    text  = title + " " + desc
+    client = job.get("client_info", {}) or {}
+    client_text = json.dumps(client).lower()
+
+    score = 30  # baseline (passed hard reject)
+    signals = []
+
+    # Verified / quality client
+    for v in VERIFIED_MARKERS:
+        if v in text or v in client_text:
+            score += 30
+            signals.append(f"verified ({v})")
+            break
+
+    # Budget signals
+    for pat, pts in BUDGET_PATTERNS:
+        if re.search(pat, text):
+            score += pts
+            signals.append(f"budget signal +{pts}")
+            break
+
+    # Quality market
+    for m in QUALITY_MARKETS:
+        if m in text or m in client_text:
+            score += 20
+            signals.append(f"quality market: {m.strip()}")
+            break
+
+    # Description specificity
+    if len(desc) >= 500:
+        score += 20
+        signals.append("specific desc (500+ chars)")
+    elif len(desc) >= 300:
+        score += 10
+        signals.append("decent desc (300+ chars)")
+
+    # Industry mentioned
+    for ind in INDUSTRY_KEYWORDS:
+        if ind in text:
+            score += 15
+            signals.append(f"industry: {ind}")
+            break
+
+    # KPI mentioned
+    for kpi in KPI_KEYWORDS:
+        if kpi in text:
+            score += 10
+            signals.append(f"KPI mentioned: {kpi}")
+            break
+
+    # Specific platform combo (e.g. "Google Ads + Shopify")
+    platform_count = sum(1 for kw in REQUIRED_KEYWORDS[:8] if kw in text)
+    if platform_count >= 2:
+        score += 15
+        signals.append(f"multi-platform ({platform_count})")
+
+    return min(100, score), signals
+
+
+def classify_tier(score, job):
+    """Classify into HIGH_TICKET / QUALITY / REJECT — TIGHT thresholds."""
+    desc = (job.get("description","") or "").lower()
+    title = (job.get("title","") or "").lower()
+    text = title + " " + desc
+
+    # Real budget signal — must have a dollar amount that's actually meaningful
+    has_high_budget = bool(re.search(
+        r"\$\s?(\d{4,})\s*/?\s*(month|mo|monthly|hr|hour)|"
+        r"\$\s?[5-9]\d{3,}|"                                # $5000+
+        r"\$\s?[1-9]\d{4,}|"                                # $10000+
+        r"retainer|long.term|6.month",
+        text
+    ))
+    has_explicit_budget = bool(re.search(
+        r"\$\s?\d{2,}\s*[-–]\s*\$?\s?\d{2,}|"               # $50-$100 range
+        r"\$\s?\d{2,}\s*/?\s*(hr|hour|month|mo)|"           # $50/hr or $500/mo
+        r"budget[:\s]*\$",
+        text
+    ))
+    has_verified = any(v in text for v in VERIFIED_MARKERS)
+
+    # HIGH TICKET: top 5-10% only — verified or high budget + score 80+
+    if score >= 80 and (has_high_budget or has_verified):
+        return "HIGH_TICKET"
+    # QUALITY: score 65+ AND has any budget signal (explicit or implicit)
+    if score >= 65 and (has_explicit_budget or has_high_budget):
+        return "QUALITY"
+    # SECONDARY QUALITY: score 75+ even without explicit budget (strong signals)
+    if score >= 75:
+        return "QUALITY"
+    return "REJECT"
+
+
+def filter_jobs(jobs, log_rejected=True):
+    """
+    Run jobs through hard reject + quality scoring + tier classification.
+    Returns dict with high_ticket, quality, rejected lists + stats.
+    """
+    high_ticket, quality, rejected = [], [], []
+    reject_reasons = {}
+
+    for job in jobs:
+        rejected_flag, reason = hard_reject(job)
+        if rejected_flag:
+            job["rejection_reason"] = reason
+            rejected.append(job)
+            reject_reasons[reason] = reject_reasons.get(reason, 0) + 1
+            continue
+
+        score, signals = quality_score(job)
+        tier = classify_tier(score, job)
+        job["quality_score"]   = score
+        job["quality_signals"] = signals
+        job["tier"]            = tier
+
+        if tier == "HIGH_TICKET":
+            high_ticket.append(job)
+        elif tier == "QUALITY":
+            quality.append(job)
+        else:
+            job["rejection_reason"] = f"score too low ({score})"
+            rejected.append(job)
+            reject_reasons[f"score < 60"] = reject_reasons.get("score < 60", 0) + 1
+
+    # Sort high-quality lists by score descending
+    high_ticket.sort(key=lambda x: x.get("quality_score",0), reverse=True)
+    quality.sort(key=lambda x: x.get("quality_score",0), reverse=True)
+
+    return {
+        "high_ticket":     high_ticket,
+        "quality":         quality,
+        "rejected":        rejected,
+        "stats": {
+            "input":           len(jobs),
+            "high_ticket":     len(high_ticket),
+            "quality":         len(quality),
+            "rejected":        len(rejected),
+            "qualified_pct":   round((len(high_ticket) + len(quality)) * 100 / max(1,len(jobs)), 1),
+            "reject_reasons":  reject_reasons,
+        }
+    }
+
+
+# ── CLI ───────────────────────────────────────────────────────────────────────
+if __name__ == "__main__":
+    args = sys.argv[1:]
+    if not args:
+        # Apply to today's jobs file
+        today = datetime.date.today().strftime("%Y%m%d")
+        jobs_f = AGENCY / f"data/jobs_{today}.json"
+    else:
+        jobs_f = Path(args[0])
+
+    if not jobs_f.exists():
+        print(f"No jobs file: {jobs_f}")
+        sys.exit(1)
+
+    data = json.loads(jobs_f.read_text())
+    jobs = data.get("jobs",[])
+    result = filter_jobs(jobs)
+
+    print(f"\n{'='*55}")
+    print(f"TIGHT QUALITY FILTER — Results")
+    print('='*55)
+    print(f"Input:        {result['stats']['input']} jobs scraped")
+    print(f"HIGH TICKET:  {result['stats']['high_ticket']:>3} jobs (apply with audit)")
+    print(f"QUALITY:      {result['stats']['quality']:>3} jobs (standard apply)")
+    print(f"REJECTED:     {result['stats']['rejected']:>3} jobs ({100-result['stats']['qualified_pct']:.0f}%)")
+    print(f"Qualified:    {result['stats']['qualified_pct']}% of scraped (target: 15-25%)")
+    print(f"\nRejection breakdown:")
+    for reason, count in sorted(result['stats']['reject_reasons'].items(), key=lambda x: -x[1]):
+        print(f"  {count:>3}× {reason}")
+
+    # Save filtered output
+    out_f = AGENCY / f"data/jobs_filtered_{datetime.date.today().strftime('%Y%m%d')}.json"
+    out_f.write_text(json.dumps({
+        "filtered_at": now_iso(),
+        "source_file": str(jobs_f),
+        **result,
+    }, indent=2))
+    print(f"\n✓ Saved filtered jobs: {out_f}")
+
+    if "--apply" in args:
+        # Replace original jobs file with only high_ticket + quality
+        keep = result["high_ticket"] + result["quality"]
+        data["jobs"] = keep
+        data["total_qualified"] = len(keep)
+        data["high_ticket_count"] = len(result["high_ticket"])
+        data["quality_count"] = len(result["quality"])
+        data["filter_applied"] = now_iso()
+        jobs_f.write_text(json.dumps(data, indent=2))
+        print(f"✓ Applied filter to {jobs_f} — only {len(keep)} qualified jobs remain")

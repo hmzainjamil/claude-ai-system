@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+# Activate one or more skills by moving them from the archive into the active dir.
+# Usage: skill-on <skill-name> [more-skills...]
+set -e
+ARCHIVE="$HOME/.claude/skills-archive"
+ACTIVE="$HOME/.claude/skills"
+if [ $# -eq 0 ]; then
+  echo "Usage: skill-on <skill-name> [more...]" >&2
+  exit 1
+fi
+for name in "$@"; do
+  if [ -e "$ACTIVE/$name" ]; then
+    echo "= $name (already active)"
+  elif [ -e "$ARCHIVE/$name" ]; then
+    mv "$ARCHIVE/$name" "$ACTIVE/$name"
+    echo "+ $name"
+  else
+    # try fuzzy match — first hit wins
+    match=$(ls "$ARCHIVE" | grep -i "^${name}" | head -1)
+    if [ -n "$match" ]; then
+      mv "$ARCHIVE/$match" "$ACTIVE/$match"
+      echo "+ $match (fuzzy)"
+    else
+      echo "? $name (not found in archive)" >&2
+    fi
+  fi
+done

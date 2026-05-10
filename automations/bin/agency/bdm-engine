@@ -1,0 +1,572 @@
+#!/usr/bin/env python3
+"""
+BDM INTELLIGENCE ENGINE v2.0
+━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Acts like a Google Ads algorithm — scores every lead/job with multi-factor
+signals, builds audience segments, learns from conversion data, and applies
+the exact targeting logic that makes paid ads profitable.
+
+Pixel Logic Applied to Freelance BDM:
+  - Signal collection (job data = pixel events)
+  - Audience scoring (client quality = audience quality score)
+  - Lookalike matching (find clients like your past wins)
+  - Bid optimization (connect timing = bid strategy)
+  - Conversion tracking (proposals → replies → contracts)
+  - Auto-optimization (weekly algo update from conversion data)
+"""
+
+import json, os, datetime, re, math
+from pathlib import Path
+from typing import Dict, List, Tuple
+
+HOME = Path.home()
+AGENCY_DIR = HOME / ".claude/agency"
+INTEL_FILE = AGENCY_DIR / "BDM_INTELLIGENCE.json"
+FEEDBACK   = AGENCY_DIR / "learning/feedback.json"
+PIXEL_LOG  = AGENCY_DIR / "learning/pixel_events.jsonl"  # all events tracked
+SEGMENTS   = AGENCY_DIR / "learning/segments.json"        # audience segments
+
+# ── PIXEL EVENT TYPES (mirrors GA4/Meta Pixel) ───────────────────────────────
+EVENT_JOB_VIEWED      = "job_viewed"
+EVENT_PROPOSAL_SENT   = "proposal_sent"
+EVENT_REPLY_RECEIVED  = "reply_received"
+EVENT_INTERVIEW_DONE  = "interview"
+EVENT_CONTRACT_STARTED = "contract"
+EVENT_CONTRACT_CLOSED = "closed_won"
+EVENT_REJECTED        = "closed_lost"
+
+# ── CONVERSION VALUES (mirrors ad campaign ROAS calculation) ─────────────────
+EVENT_VALUES = {
+    EVENT_JOB_VIEWED: 0,
+    EVENT_PROPOSAL_SENT: 1,
+    EVENT_REPLY_RECEIVED: 10,
+    EVENT_INTERVIEW_DONE: 25,
+    EVENT_CONTRACT_STARTED: 100,
+    EVENT_CONTRACT_CLOSED: 500,
+    EVENT_REJECTED: -5
+}
+
+class BDMPixel:
+    """Tracks all events like a Meta Pixel — every touchpoint logged."""
+
+    def __init__(self):
+        self.intel = json.loads(INTEL_FILE.read_text()) if INTEL_FILE.exists() else {}
+        self.feedback = json.loads(FEEDBACK.read_text()) if FEEDBACK.exists() else {}
+
+    def fire_event(self, event_type: str, job_id: str, metadata: dict = None):
+        """Log pixel event — mirrors Meta Pixel event firing."""
+        event = {
+            "event": event_type,
+            "job_id": job_id,
+            "timestamp": datetime.datetime.now().isoformat(),
+            "value": EVENT_VALUES.get(event_type, 0),
+            "metadata": metadata or {}
+        }
+        with open(PIXEL_LOG, "a") as f:
+            f.write(json.dumps(event) + "\n")
+        return event
+
+    def get_conversion_history(self) -> List[dict]:
+        if not PIXEL_LOG.exists():
+            return []
+        events = []
+        for line in PIXEL_LOG.read_text().strip().split("\n"):
+            if line.strip():
+                try:
+                    events.append(json.loads(line))
+                except:
+                    pass
+        return events
+
+class ClientAudienceScorer:
+    """
+    Scores client/job quality like Google Ads Quality Score.
+    0-100 score = how valuable this opportunity is.
+    Combines: intent signals + budget signals + behavior signals + timing signals.
+    """
+
+    def __init__(self, intel: dict, feedback: dict):
+        self.intel = intel
+        self.feedback = feedback
+        self.green_flags = intel.get("buyer_green_flags", [])
+        self.red_flags = intel.get("buyer_red_flags", [])
+
+    def score_job(self, job: dict) -> Tuple[int, dict]:
+        """
+        Multi-factor scoring — mirrors Google Ads auction algorithm.
+        Returns (score_0_to_100, breakdown_dict)
+        """
+        scores = {}
+
+        title = job.get("title", "")
+        desc  = job.get("description", "")
+        client = job.get("client_info", {})
+
+        # SIGNAL 1: Budget Quality Score (0-25 pts) — low budget = 0, auto-fails
+        budget_str = str(job.get("budget", "")).lower()
+        budget_score = self._score_budget(budget_str)
+        scores["budget"] = budget_score
+
+        # HARD GATE: if budget scores 0, reject immediately (not high-ticket)
+        if budget_score == 0 and budget_str and budget_str not in ("", "unknown"):
+            return 0, {"budget": 0, "reason": "Below high-ticket threshold"}
+
+        # SIGNAL 2: Client Trust Score (0-20 pts)
+        trust_score = self._score_client_trust(client)
+        scores["client_trust"] = trust_score
+
+        # SIGNAL 3: Job Relevance Score (0-25 pts)
+        relevance = self._score_relevance(title, desc)
+        scores["relevance"] = relevance
+
+        # SIGNAL 4: Timing Score (0-15 pts)
+        timing = self._score_timing(job.get("posted_at", ""))
+        scores["timing"] = timing
+
+        # SIGNAL 5: Competition Score (0-15 pts)
+        competition = self._score_competition(str(job.get("proposals_count", "")).lower())
+        scores["competition"] = competition
+
+        # SIGNAL 6: Ethics & Alignment Score (0-10 pts BONUS or -20 PENALTY)
+        ethics = self._score_ethics(title, desc, client)
+        scores["ethics"] = ethics
+
+        total = sum(scores.values())
+        total = min(100, max(0, total))
+        return total, scores
+
+    # ── HIGH-TICKET THRESHOLDS (less clients, better clients) ────────────────
+    # Hourly: minimum $25/hr to even consider. $50+/hr = gold.
+    # Fixed:  minimum $1000 to consider. $3000+ = gold.
+    # Retainer: minimum $500/mo. $1500+/mo = gold.
+    HIGH_TICKET_HR_MIN    = 25    # below this = skip
+    HIGH_TICKET_FIXED_MIN = 1000  # below this = skip
+    HIGH_TICKET_RETAINER  = 1500  # retainer gold threshold
+
+    def _score_budget(self, budget_str: str) -> int:
+        """High-ticket filter — low budget = zero score (automatic skip)."""
+        if not budget_str:
+            return 5  # unknown = neutral, scored by other signals
+        nums = re.findall(r'[\d,]+', budget_str)
+        if nums:
+            val = int(nums[0].replace(",", ""))
+            if "/hr" in budget_str or "hourly" in budget_str:
+                # Below minimum = hard penalize (will fail 78 threshold)
+                if val < self.HIGH_TICKET_HR_MIN: return 0
+                if val >= 75: return 25  # premium tier
+                if val >= 50: return 22
+                if val >= 40: return 18
+                if val >= 30: return 14
+                if val >= 25: return 10  # minimum viable
+                return 0
+            elif "month" in budget_str or "/mo" in budget_str:
+                if val >= 3000: return 25
+                if val >= 1500: return 20
+                if val >= 500:  return 12
+                return 0
+            else:  # fixed price
+                if val < self.HIGH_TICKET_FIXED_MIN: return 0
+                if val >= 5000: return 25
+                if val >= 3000: return 22
+                if val >= 2000: return 18
+                if val >= 1000: return 12
+                return 0
+        return 8  # unknown budget — neutral
+
+    def _score_client_trust(self, client: dict) -> int:
+        """Like audience quality score — how trustworthy is this buyer."""
+        score = 0
+        spent = str(client.get("spent", "0")).replace(",", "").replace("$", "")
+        try:
+            spent_val = float(re.findall(r'[\d.]+', spent)[0]) if spent else 0
+            if spent_val > 10000: score += 8
+            elif spent_val > 1000: score += 6
+            elif spent_val > 100: score += 3
+        except:
+            pass
+
+        rating = str(client.get("rating", "0"))
+        try:
+            r = float(re.findall(r'[\d.]+', rating)[0]) if rating else 0
+            if r >= 4.8: score += 6
+            elif r >= 4.5: score += 4
+            elif r >= 4.0: score += 2
+        except:
+            pass
+
+        hires = str(client.get("hires", "0"))
+        try:
+            h = int(re.findall(r'\d+', hires)[0]) if hires else 0
+            if h > 20: score += 4
+            elif h > 5: score += 2
+        except:
+            pass
+
+        location = str(client.get("location", "")).lower()
+        if any(loc in location for loc in ["united states", "us", "united kingdom", "uk", "australia", "canada"]):
+            score += 2
+
+        return min(20, score)
+
+    def _score_relevance(self, title: str, desc: str) -> int:
+        """Like keyword quality score — how relevant to our services."""
+        text = (title + " " + desc).lower()
+        score = 0
+
+        # Tier 1 keywords (direct match) — 5 pts each, max 15
+        tier1 = ["meta ads", "facebook ads", "google ads", "ppc", "paid advertising",
+                 "roas", "cpa optimization", "performance marketing"]
+        for kw in tier1:
+            if kw in text:
+                score += 5
+            if score >= 15:
+                break
+
+        # Tier 2 keywords (related) — 2 pts each, max 8
+        tier2 = ["lead generation", "conversion", "retargeting", "ecommerce",
+                 "shopify ads", "digital marketing", "advertising campaign",
+                 "ad management", "facebook marketing", "instagram ads"]
+        for kw in tier2:
+            if kw in text:
+                score += 2
+            if score - 15 >= 8:
+                break
+
+        # Pain point match bonus — 2 pts per pain point detected
+        pain_points = self._extract_pain_points(text)
+        score += min(2, len(pain_points))
+
+        return min(25, score)
+
+    def _score_ethics(self, title: str, desc: str, client: dict) -> int:
+        """
+        Ethics + alignment filter — reward good clients, penalize bad ones.
+        +10 for ideal client signals. -20 for unethical/misaligned.
+        """
+        text = (title + " " + desc).lower()
+        score = 0
+
+        # POSITIVE: Long-term partnership signals → +5
+        if any(kw in text for kw in ["long-term", "ongoing", "retainer", "partner", "permanent"]):
+            score += 5
+
+        # POSITIVE: Serious business signals → +3
+        if any(kw in text for kw in ["agency", "ecommerce", "saas", "enterprise", "startup",
+                                      "established", "annual revenue", "funded"]):
+            score += 3
+
+        # POSITIVE: Client has clear goals/metrics → +2
+        if any(kw in text for kw in ["roas", "cpa", "roi", "target", "kpi", "conversion rate"]):
+            score += 2
+
+        # NEGATIVE: Unethical/misaligned red flags → heavy penalty
+        unethical_signals = [
+            "get rich quick", "guaranteed results", "100% roi", "spam",
+            "fake reviews", "black hat", "scraping", "mass email", "clickbait",
+            "pyramid", "mlm", "crypto pump", "nft promo", "adult", "gambling",
+            "make money fast", "passive income scheme"
+        ]
+        for sig in unethical_signals:
+            if sig in text:
+                score -= 20
+                break  # one is enough to fail
+
+        # NEGATIVE: Scope creep / low-respect signals → penalty
+        disrespect_signals = [
+            "do everything", "handle all marketing", "full-time for part-time pay",
+            "be available 24/7", "very urgent", "asap always", "free trial first",
+            "prove yourself", "unpaid test"
+        ]
+        for sig in disrespect_signals:
+            if sig in text:
+                score -= 10
+                break
+
+        return score
+
+    def _extract_pain_points(self, text: str) -> List[str]:
+        """Extract client pain points from job description."""
+        pain_map = {
+            "wasting budget": ["wast", "burning", "losing money", "no roi"],
+            "low roas": ["low roas", "poor roas", "roas", "not profitable"],
+            "high cpa": ["high cpa", "expensive leads", "cost per lead"],
+            "no conversions": ["no conversion", "not converting", "poor results"],
+            "scaling issues": ["scale", "scaling", "grow", "increase"],
+            "agency dissatisfied": ["agency", "fired", "replaced", "not happy with"]
+        }
+        found = []
+        for pain, keywords in pain_map.items():
+            if any(kw in text for kw in keywords):
+                found.append(pain)
+        return found
+
+    def _score_timing(self, posted_at: str) -> int:
+        """Fresh jobs = higher bid. Like Google Ads recency signals."""
+        if not posted_at:
+            return 7  # unknown = neutral
+        try:
+            if "hour" in str(posted_at).lower():
+                hours_ago = int(re.findall(r'\d+', str(posted_at))[0])
+                if hours_ago <= 2: return 15
+                if hours_ago <= 6: return 12
+                if hours_ago <= 24: return 8
+                return 4
+            # Try parsing datetime
+            dt = datetime.datetime.fromisoformat(str(posted_at)[:19])
+            hours_ago = (datetime.datetime.now() - dt).total_seconds() / 3600
+            if hours_ago <= 2: return 15
+            if hours_ago <= 6: return 12
+            if hours_ago <= 24: return 8
+            if hours_ago <= 72: return 5
+            return 2
+        except:
+            return 7
+
+    def _score_competition(self, proposals_tier: str) -> int:
+        """Fewer competitors = better opportunity. Like auction density."""
+        tier_map = {
+            "less than 5": 15, "1-5": 15, "5-10": 12,
+            "10-15": 9, "15-20": 7, "20-50": 4, "50+": 1,
+            "best match": 10  # Upwork's tier label
+        }
+        tier_lower = proposals_tier.lower()
+        for key, score in tier_map.items():
+            if key in tier_lower:
+                return score
+        return 8  # unknown = neutral
+
+
+class LookalikeEngine:
+    """
+    Finds jobs similar to your past winning clients.
+    Mirrors Meta's Lookalike Audience — expand from your best converters.
+    """
+
+    def __init__(self, feedback: dict):
+        self.feedback = feedback
+
+    def get_winning_patterns(self) -> dict:
+        """Extract patterns from won contracts."""
+        best_platforms = self.feedback.get("best_platforms", {})
+        best_pain_points = self.feedback.get("best_pain_points", [])
+        what_works = self.feedback.get("what_works", [])
+
+        # Calculate conversion rate per platform
+        platform_cvr = {}
+        for plat, stats in best_platforms.items():
+            sub = stats.get("submitted", 0)
+            resp = stats.get("responses", 0)
+            contracts = stats.get("contracts", 0)
+            if sub > 0:
+                platform_cvr[plat] = {
+                    "response_rate": round(resp / sub * 100, 1),
+                    "contract_rate": round(contracts / sub * 100, 1) if sub > 0 else 0
+                }
+
+        return {
+            "best_platforms": sorted(
+                platform_cvr.items(),
+                key=lambda x: x[1].get("response_rate", 0),
+                reverse=True
+            )[:3],
+            "winning_pain_points": best_pain_points[:5],
+            "proven_tactics": what_works[:5]
+        }
+
+    def should_prioritize(self, job: dict, winning_patterns: dict) -> bool:
+        """Is this job a lookalike of past winners?"""
+        platform = job.get("platform", "")
+        pain_points = job.get("pain_points", [])
+        best_platforms = [p[0] for p in winning_patterns.get("best_platforms", [])]
+
+        if platform in best_platforms:
+            return True
+        if any(pp in winning_patterns.get("winning_pain_points", []) for pp in pain_points):
+            return True
+        return False
+
+
+class BDMProposalOptimizer:
+    """
+    Converts job data + client signals into optimized proposals.
+    Works like a conversion-optimized ad creative — every word earns its place.
+    """
+
+    def __init__(self, intel: dict):
+        self.intel = intel
+        self.formula = intel.get("winning_proposal_formula", {})
+        self.pain_map = intel.get("client_pain_points", {})
+
+    def build_proposal_context(self, job: dict, score: int, score_breakdown: dict) -> dict:
+        """Build rich context for proposal generation."""
+        title = job.get("title", "")
+        desc = job.get("description", "")
+        budget = job.get("budget", "")
+        platform = job.get("platform", "upwork")
+        pain_points = job.get("pain_points", [])
+
+        # Map to solution language from intel
+        niche_intel = self.intel.get("niche_intelligence", {})
+        if "meta" in (title + desc).lower() or "facebook" in (title + desc).lower():
+            niche = niche_intel.get("meta_ads", {})
+        else:
+            niche = niche_intel.get("google_ads", {})
+
+        # Select proof point based on pain point
+        proof_points = {
+            "wasting budget": "cut wasted spend by 35% in 30 days for a similar e-commerce client",
+            "low roas": "took a Shopify store from 1.8x to 4.2x ROAS in 60 days",
+            "high cpa": "reduced cost per lead by $40 for a B2B SaaS client",
+            "no conversions": "rebuilt campaign structure that doubled conversion rate without increasing budget",
+            "scaling issues": "helped scale from $3k to $12k/month ad spend while maintaining ROAS",
+            "agency dissatisfied": "audited 3 previous agency campaigns and found $2k/month in wasted spend"
+        }
+
+        selected_proof = None
+        for pp in pain_points:
+            if pp in proof_points:
+                selected_proof = proof_points[pp]
+                break
+        if not selected_proof:
+            selected_proof = "helped DigiMinds client achieve 3.8x ROAS from a cold start campaign"
+
+        # Build smart closing question based on job context
+        closing_questions = [
+            f"Quick question — are you currently running retargeting alongside your prospecting campaigns, or is this starting from scratch?",
+            f"Is your main goal here lead volume, or improving quality of leads? That changes the strategy significantly.",
+            f"Are you using GA4 + Meta Pixel together, or running blind on attribution right now?",
+            f"What's your current CPA / ROAS target? I want to make sure I'm proposing the right bid strategy from day one."
+        ]
+
+        import random
+        question = random.choice(closing_questions)
+        if "lead" in desc.lower():
+            question = "Is your main bottleneck the volume of leads, or the quality? (Both have very different solutions)"
+        elif "roas" in desc.lower() or "ecommerce" in desc.lower():
+            question = "Are you running Performance Max alongside your standard Shopping campaigns, or one or the other?"
+        elif "scale" in desc.lower():
+            question = "What's your current monthly ad spend, and where are you trying to get to? I want to propose a scaling strategy that doesn't tank your ROAS."
+
+        return {
+            "platform": platform,
+            "job_title": title,
+            "job_description": desc[:600],
+            "budget": budget,
+            "pain_points": pain_points,
+            "client_info": job.get("client_info", {}),
+            "relevance_score": score,
+            "score_breakdown": score_breakdown,
+            "selected_proof": selected_proof,
+            "niche_deliverables": niche.get("deliverable_language", []),
+            "closing_question": question,
+            "word_limit": self.formula.get("word_count", {}).get(platform, "150 words"),
+            "profile_url": "hafiz-muhammad-z-3n01vli.gamma.site",
+            "company": "DigiMinds (digiminds.org) — 90-day ROI guarantee"
+        }
+
+
+def run_bdm_scoring(jobs: list) -> list:
+    """
+    Main BDM engine run — score all jobs, rank, filter red flags.
+    Returns jobs enriched with BDM scores + proposal context.
+    """
+    intel = json.loads(INTEL_FILE.read_text()) if INTEL_FILE.exists() else {}
+    feedback = json.loads(FEEDBACK.read_text()) if FEEDBACK.exists() else {}
+
+    scorer = ClientAudienceScorer(intel, feedback)
+    lookalike = LookalikeEngine(feedback)
+    optimizer = BDMProposalOptimizer(intel)
+    pixel = BDMPixel()
+
+    winning_patterns = lookalike.get_winning_patterns()
+    red_flags = intel.get("buyer_red_flags", [])
+
+    enriched = []
+    for job in jobs:
+        # Skip red flag jobs (check description + client info only, not full job dict)
+        job_text = (job.get("title","") + " " + job.get("description","") + " " + str(job.get("client_info",""))).lower()
+        flag_count = sum(1 for rf in red_flags if any(word in job_text for word in rf.lower().split()[:2]))
+        if flag_count >= 4:
+            job["bdm_skip"] = True
+            job["skip_reason"] = f"Too many red flags ({flag_count})"
+            continue
+
+        # Score
+        score, breakdown = scorer.score_job(job)
+        is_lookalike = lookalike.should_prioritize(job, winning_patterns)
+
+        # Lookalike boost (mirrors Meta Lookalike Audience boost)
+        if is_lookalike:
+            score = min(100, score + 10)
+
+        # Build proposal context
+        prop_context = optimizer.build_proposal_context(job, score, breakdown)
+
+        job["bdm_score"] = score
+        job["bdm_breakdown"] = breakdown
+        job["is_lookalike"] = is_lookalike
+        job["proposal_context"] = prop_context
+        job["red_flag_count"] = flag_count
+
+        # Fire pixel event
+        pixel.fire_event(EVENT_JOB_VIEWED, job.get("url", f"job_{len(enriched)}"), {
+            "platform": job.get("platform"),
+            "score": score,
+            "pain_points": job.get("pain_points", [])
+        })
+
+        enriched.append(job)
+
+    # Sort by BDM score (highest value first)
+    enriched.sort(key=lambda x: x["bdm_score"], reverse=True)
+
+    # Tier classification (mirrors ad audience tiers)
+    for job in enriched:
+        s = job["bdm_score"]
+        if s >= 80:
+            job["tier"] = "A"  # Hot — apply immediately with full proposal
+        elif s >= 65:
+            job["tier"] = "B"  # Warm — apply within 2 hours
+        elif s >= 50:
+            job["tier"] = "C"  # Lukewarm — apply same day if time allows
+        else:
+            job["tier"] = "D"  # Cold — skip or minimal effort
+
+    # SNIPER MODE: return only top 5 Tier A jobs (score 80+)
+    # We scan hundreds, shortlist mercilessly
+    tier_a = [j for j in enriched if j.get("tier") == "A"][:5]
+    tier_b = [j for j in enriched if j.get("tier") == "B"][:3]
+
+    # Fill to max 5 total: A first, then B if needed
+    priority = tier_a
+    if len(priority) < 5:
+        priority += tier_b[:5 - len(priority)]
+
+    skipped = len(jobs) - len(priority)
+    print(f"BDM Sniper: scanned {len(jobs)} → scored {len(enriched)} → shortlisted {len(priority)} elite (skipped {skipped} low-quality)")
+    for j in priority:
+        print(f"  ★ [{j['tier']}] {j['bdm_score']}/100 | {j.get('platform','?')} | {j.get('title','')[:55]}")
+    return priority
+
+
+if __name__ == "__main__":
+    import sys
+    # Test mode
+    test_job = {
+        "platform": "upwork",
+        "title": "Meta Ads Expert needed for E-commerce ROAS improvement",
+        "description": "We're spending $5k/month on Facebook ads but our ROAS dropped from 3.5x to 1.8x after iOS update. Need expert to fix targeting and creatives. Looking for long-term partner.",
+        "budget": "$25-40/hr",
+        "client_info": {"rating": "4.9", "spent": "$15,000", "hires": "12", "location": "United States"},
+        "posted_at": "1 hours ago",
+        "proposals_count": "5-10",
+        "pain_points": ["low roas"]
+    }
+
+    result = run_bdm_scoring([test_job])
+    if result:
+        j = result[0]
+        print(f"\nBDM Score: {j['bdm_score']}/100 (Tier {j['tier']})")
+        print(f"Breakdown: {j['bdm_breakdown']}")
+        print(f"Lookalike: {j['is_lookalike']}")
+        print(f"Proposal context: {json.dumps(j['proposal_context'], indent=2)[:500]}")

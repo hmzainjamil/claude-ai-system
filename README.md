@@ -1,352 +1,174 @@
-# Claude AI System — The Most Advanced Claude Code Automation Stack
+<div align="center">
 
-> **Built by a power user. Runs 24/7. Handles everything from lead gen to $10K website builds — autonomously.**
+# 🤖 Claude AI System — Complete Automation Portfolio
 
----
+**Built by Hamza Jamilur Rahman (hmzainjamil)**  
+*Senior PPC & Paid Media Specialist | AI Automation Engineer*
 
-![Skills](https://img.shields.io/badge/Skills-45-blue?style=for-the-badge)
-![Agents](https://img.shields.io/badge/Agents-210-purple?style=for-the-badge)
-![Pipelines](https://img.shields.io/badge/Scheduled_Pipelines-4-green?style=for-the-badge)
-![Models](https://img.shields.io/badge/AI_Models-15-orange?style=for-the-badge)
-![Token_Savings](https://img.shields.io/badge/Token_Savings-75--95%25-red?style=for-the-badge)
-![n8n](https://img.shields.io/badge/n8n_Workflows-8159-yellow?style=for-the-badge)
+[![Skills](https://img.shields.io/badge/Skills-45_Active_%7C_9528_Archived-blue?style=flat-square)](./skills-active/)
+[![Agents](https://img.shields.io/badge/Agents-210_Specialists-green?style=flat-square)](./agents/)
+[![Workflows](https://img.shields.io/badge/n8n_Workflows-8159-orange?style=flat-square)](./n8n-workflows/)
+[![Repos](https://img.shields.io/badge/Installed_Repos-145-purple?style=flat-square)](./installed-repos/)
+[![Auto-sync](https://img.shields.io/badge/Auto--sync-Daily_6:30AM-brightgreen?style=flat-square)](./automations/)
 
----
-
-## What Is This?
-
-This is a fully operational AI automation operating system built on top of Claude Code. It is not a demo, a template, or a proof-of-concept. It runs live, every day, handling lead generation, business development, website building, content creation, legal review, and more — with minimal human intervention.
-
-The system combines 45 skill modules, 210 specialist AI agents, 4 autonomous scheduled pipelines, and a 15-model LLM routing layer that keeps Claude token costs 75-95% lower than a naive implementation. Every component is wired together: skills auto-activate from keywords, agents load on demand, pipelines run on cron, and a GitHub Action keeps this documentation in sync automatically.
+</div>
 
 ---
 
-## Architecture Overview
+## 👤 About
+
+**Hamza Jamilur Rahman** — Digital marketing and AI automation specialist with 5+ years running Google Ads, Meta Ads, and performance campaigns for e-commerce, lead generation, and B2B clients worldwide.
+
+This repository is my **live AI automation system** — everything I've built with Claude Code to automate client acquisition, campaign management, content production, and agency operations.
+
+📧 hmzainjamil@gmail.com  
+🔗 [GitHub](https://github.com/hmzainjamil)
+
+---
+
+## 🏗️ System Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────────────┐
-│                         USER PROMPT                                  │
-└─────────────────────────────┬───────────────────────────────────────┘
-                               │
-                    ┌──────────▼──────────┐
-                    │  skill-auto-activate │  ← keyword detection
-                    │  (UserPromptSubmit   │    fires on EVERY prompt
-                    │   hook)              │
-                    └──────────┬──────────┘
-                               │
-          ┌────────────────────┼────────────────────┐
-          │                    │                    │
-   ┌──────▼──────┐    ┌───────▼───────┐   ┌───────▼───────┐
-   │   Skills    │    │    Agents     │   │  MCP Servers  │
-   │  (45 loaded)│    │ (210 avail.)  │   │  (15+ tools)  │
-   └──────┬──────┘    └───────┬───────┘   └───────┬───────┘
-          │                    │                    │
-          └────────────────────┼────────────────────┘
-                               │
-                    ┌──────────▼──────────┐
-                    │     llm-burst        │
-                    │  (15-model router)   │
-                    │                      │
-                    │  Tier 0 (free first):│
-                    │  • Ollama (local)    │
-                    │  • Groq              │
-                    │  • DeepSeek V3       │
-                    │  • Gemini Flash      │
-                    │  • Kimi K2.6         │
-                    │  • OpenRouter        │
-                    │  • Mistral           │
-                    │                      │
-                    │  Tier 1 (last resort)│
-                    │  • Claude Haiku      │
-                    └──────────┬──────────┘
-                               │
-                    ┌──────────▼──────────┐
-                    │      OUTPUT          │
-                    │  • Emails drafted    │
-                    │  • Files written     │
-                    │  • Leads exported    │
-                    │  • Sites built       │
-                    └─────────────────────┘
-
-SCHEDULED PIPELINES (run autonomously):
-┌────────────────────────────────────────────────────────┐
-│  7:00 AM PKT  → hmz-daily-leads       (10 elite leads) │
-│  9:00 AM PKT  → hmz-bdm-morning-sweep (job intel)      │
-│  9:00 PM PKT  → hmz-bdm-evening-sweep (job intel)      │
-│  On-demand    → hmz-indeed-mcp-sweep  (Indeed only)    │
-└────────────────────────────────────────────────────────┘
+Claude AI System — 6 Core Pillars
+│
+├── 🧠 Skills (45 active + 9,528 archived)
+│   ├── Lead Generation (HMZ daily sweeps — 7AM/9AM/9PM PKT)
+│   ├── Website Builder (Next.js + Tailwind + Framer Motion)
+│   ├── Ads Strategy (Google, Meta, PPC audits)
+│   ├── SEO/GEO (AI search optimization)
+│   └── Agency Pipeline (full client lifecycle)
+│
+├── 🤖 Agents (210 specialists across 15 divisions)
+│   ├── Engineering (29) · Marketing (30) · Paid Media (7)
+│   ├── Sales (8) · Design (8) · Finance (5) · Product (5)
+│   └── Game Dev (10) · Security (8) · Strategy (6) + more
+│
+├── ⚙️ Automations (4 HMZ daily sweeps running 24/7)
+│   ├── hmz-daily-leads     → 7AM PKT  → B2B elite leads (score ≥80)
+│   ├── hmz-bdm-morning     → 9AM PKT  → 10-platform job sweep (score ≥65)
+│   ├── hmz-bdm-evening     → 9PM PKT  → job sweep + Reddit signals
+│   └── hmz-indeed-mcp      → on-demand → Indeed structured search
+│
+├── 🔧 n8n Workflows (8,159 automation templates)
+│   ├── 874 email/Gmail automations
+│   ├── 328 Slack notification flows
+│   ├── 309 Telegram bot workflows
+│   ├── 197 social media automations
+│   ├── 121 lead generation flows
+│   └── + thousands more across 30+ categories
+│
+├── 📦 Installed Repos (145 specialized libraries)
+│   ├── AI frameworks (AGENT-ZERO, Fabric, Semantic Kernel)
+│   ├── Skills libraries (anthropic-skills, awesome-claude-skills)
+│   ├── Ad creative tools (uni1-image-ad, arcads, meta-ads-spy)
+│   └── SEO tools (geo-seo-claude, AEO generators)
+│
+└── 🚀 LaunchAgents (6 scheduled macOS services)
+    ├── B2B lead sweeps (3x daily)
+    ├── GitHub portfolio sync (6:30AM daily)
+    └── Indeed MCP sweeps (morning + evening)
 ```
 
 ---
 
-## Key Capabilities
+## 💼 Revenue Streams Automated
 
-### 1. Multi-LLM Burst — 15 Models Fire in Parallel
-**Script:** `bin/llm-burst`
-
-Sends every sub-task to 15 AI models simultaneously. A judge model picks the best response. This gives GPT-4o quality at Groq prices, with zero Claude token burn for internal tasks.
-
-```bash
-llm-burst "Write 5 cold email subject lines for a PPC agency"
-# → Fires Groq, DeepSeek, Gemini, Kimi, Mistral simultaneously
-# → Judge picks winner
-# → Returns best output in <3 seconds
-```
-
-### 2. Skill Auto-Activation — Zero-Config Keyword Routing
-**Script:** `automations/skill-auto-activate`
-
-A `UserPromptSubmit` hook intercepts every prompt before Claude sees it. It keyword-matches against 45 skill triggers and loads only the relevant skills. No manual `/skill-on` needed.
-
-```
-"find dental clinic leads in Austin"
-  → loads: lead-gen-ai, vibe-prospecting, airtable-sdk
-  → activates: Apollo MCP, Vibe Prospecting MCP
-  → returns: Excel with phone + email + enrichment
-```
-
-### 3. Daily Lead Gen Sweeps — 4 Autonomous Pipelines
-**Folder:** `workflows/`
-
-Four scheduled pipelines run on cron via Claude's remote trigger system:
-
-| Pipeline | Time | What It Does |
+| Stream | Automation | Price |
 |---|---|---|
-| `hmz-daily-leads` | 7:00 AM PKT | Hunts 10 deeply-qualified client leads — Apollo + Vibe + enrichment → Excel → email |
-| `hmz-bdm-morning-sweep` | 9:00 AM PKT | 10-platform job intelligence sweep → scored report → email |
-| `hmz-bdm-evening-sweep` | 9:00 PM PKT | Same as morning but catches US business day postings |
-| `hmz-indeed-mcp-sweep` | On-demand | Dedicated Indeed MCP pipeline with strict scoring filters |
-
-### 4. Website Builder — $10K Sites From One Prompt
-**Skill:** `skills/website-builder/`
-
-A 4-actor pipeline that goes from a one-line prompt to a production-grade website:
-
-```
-Actor 1: Google Stitch MCP      → pixel-perfect mockup
-Actor 2: ui-ux-promax skill     → 161 palettes, 57 font pairings
-Actor 3: Framer Motion builder  → scroll-reveal, page transitions
-Actor 4: Premium Web Design     → final production code
-```
-
-### 5. Lead Gen AI — Any Niche, Any City
-**Skill:** `skills/lead-gen-ai/`
-
-```
-"Find 50 roofing contractors in Denver with email and phone"
-→ Vibe Prospecting MCP: entity search
-→ Apollo MCP: email enrichment
-→ Excel export: formatted spreadsheet
-→ Outreach sequences: personalized cold email drafts
-```
-
-### 6. Token Optimizer — 75-95% Claude Savings
-**Skills:** `skills/token-turbo/`, `skills/caveman/`, `skills/compress/`
-
-Three-layer token reduction:
-- **Tier 0 routing**: Sub-tasks go to Groq/DeepSeek/Gemini — never Claude
-- **caveman compression**: All outputs compressed before returning
-- **context-window-management**: Prunes context before it hits limits
-
-### 7. 210 Specialist Agents — Full Agency Coverage
-**Folder:** `agents/`
-
-210 agents organized into divisions:
-
-| Division | Count | Examples |
-|---|---|---|
-| Engineering | 25+ | backend-architect, devops-automator, security-engineer |
-| Marketing | 20+ | douyin-strategist, video-optimization, email-intelligence |
-| Sales | 10+ | outbound-strategist, deal-strategist, pipeline-analyst |
-| Design | 8 | ui-designer, ux-architect, visual-storyteller |
-| Finance | 5 | financial-analyst, tax-strategist, bookkeeper-controller |
-| GEO/SEO | 5 | ai-visibility, geo-content, geo-schema |
-| Specialized | 10+ | salesforce-architect, mcp-builder, workflow-architect |
-
-### 8. Kimi K2.6 as Opus Replacement
-**Configured in:** `bin/llm-burst`
-
-Kimi K2.6 (Moonshot AI) delivers Claude Opus-level reasoning at 5% of the cost. 262K context window. Used for all long-document analysis and complex reasoning tasks that would otherwise burn Opus tokens.
+| B2B Lead Lists | 4 daily sweeps → Apollo+Vibe+Apify | $500/list |
+| Starter Websites | 5-actor pipeline → Next.js → Vercel | $1,500/site |
+| Growth Websites | Full agency stack | $3,500/site |
+| Monthly Retainer | Ongoing management | $500/mo |
+| **Monthly Target** | **20 hours of work** | **$10K+** |
 
 ---
 
-## All 45 Skills
+## 🧠 Active Skills (45)
 
-| Skill | Description | Triggers |
-|---|---|---|
-| `lead-gen-ai` | Automated lead extraction — Vibe + Apollo + Excel + outreach | find leads, lead gen, extract leads |
-| `website-builder` | $10K site from one prompt — 4-actor pipeline | build website, create website |
-| `premium-web-design` | AI design workflow — Stitch mockup → production code | premium website, web design workflow |
-| `vibe-prospecting` | Vibe Prospecting MCP — fetch-entities, enrich, export | vibe prospecting, business search |
-| `all-agents` | Orchestrates all 210 specialist agents simultaneously | comprehensive, 360, full analysis |
-| `llm-burst` | 15 models fire in parallel, judge picks winner | burst, multi-model, race models |
-| `token-turbo` | Token reduction enforcement — max compression, Tier 0 routing | (always-on) |
-| `caveman` | Maximum output compression — removes all filler | (always-on) |
-| `compress` | Context compression — prunes redundant content | (always-on) |
-| `context-compression` | Context window management — prevents limit errors | (always-on) |
-| `context-window-management` | Smart context pruning strategy | (always-on) |
-| `skill-router` | Routes prompts to correct skill automatically | (always-on) |
-| `find-skills` | Search and discover skills by keyword | find skill, which skill |
-| `compact-guard` | Guards against context explosion | (always-on) |
-| `summarize` | Compress long outputs into dense summaries | summarize, tldr |
-| `optimize-commands` | Optimize Claude Code command execution | optimize command |
-| `optimize-dgm-command` | DGM command optimizer | dgm, optimize dgm |
-| `launch-optimized` | Launch sequence optimizer for new sessions | (session-start) |
-| `prompt-shortcuts` | Shorthand command expansion system | /ps, shortcuts |
-| `ui-ux-promax` | 50+ design styles, 161 palettes, 57 font pairings | ui, ux, design system |
-| `ui-ux-pro-max` | Extended UI/UX design system | ui/ux, design |
-| `framer-motion-builder` | Framer Motion animations — fade, scroll-reveal, transitions | framer motion, animations |
-| `geo-brand-mentions` | AI citation tracking — ChatGPT, Perplexity, Gemini, Claude | brand mentions, geo mentions, ai citations |
-| `local-seo-30k` | 22-prompt Local SEO workflow — GBP, reviews, citations | seo audit, local seo |
-| `apify-actor-development` | Build and deploy Apify scraping actors | apify actor, build actor |
-| `apify-actorization` | Convert any scraper to an Apify actor | actorize, apify convert |
-| `apify-ultimate-scraper` | Universal web scraper via Apify | scrape, extract, web scraping |
-| `apify-generate-output-schema` | Generate Apify actor output schemas | apify schema, output schema |
-| `reportlab-pdf-master` | Branded 11-page audit PDFs via ReportLab | pdf report, audit pdf, create pdf |
-| `report-creator` | Multi-format report generator — PDF, DOCX, Excel | create report, generate report |
-| `legal-review` | Contract and agreement checker | legal review, contract review, nda |
-| `market-proposal` | Client proposal generator — 7-section structure | market proposal, client proposal |
-| `market-social` | Social media marketing — LinkedIn, Instagram, Twitter | social media, instagram, linkedin post |
-| `client-hunting` | Multi-platform lead gen — Arc.dev, Indeed, LinkedIn | find clients, client hunting |
-| `outcome-pricing` | Performance-based fee structures — % of spend, revenue share | outcome pricing, performance pricing |
-| `service-productizer` | Package services into tiered products | productize, service package, pricing tiers |
-| `sub-brand-generator` | Niche brand creation — identity, naming, positioning | sub brand, niche brand, create brand |
-| `airtable-sdk` | Full Airtable integration — read/write/sync | airtable, airtable base |
-| `g0dm0d3` | 55-model ultra racing via OpenRouter | g0dm0d3, godmode, race all models |
-| `luma-image` | Luma AI image and video generation | luma, dream machine, luma video |
-| `opusclip` | AI video clipping — long video → 10-30 viral clips | opusclip, clip video, repurpose video |
-| `ugc-agency` | Arcads AI actor pipeline for UGC ads | ugc ads, ugc agency, arcads, ai actors |
-| `modernization-audit` | Legacy system analysis and modernization roadmap | modernization audit, legacy system |
-| `auto-learn` | Automatic memory writing — learnings → memory files | (always-on) |
-| `customer-matrix` | Customer segmentation and matrix analysis | customer matrix, segmentation |
-
----
-
-## Scheduled Workflows
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│  DAILY AUTONOMOUS PIPELINE TIMELINE                             │
-│                                                                  │
-│  7:00 AM ──► hmz-daily-leads                                    │
-│              • Apollo MCP: search paying clients                │
-│              • Vibe Prospecting: entity enrichment              │
-│              • Apify: additional data extraction                │
-│              • 80+ score threshold (quality gate)               │
-│              • Excel export + email delivery                    │
-│                                                                  │
-│  9:00 AM ──► hmz-bdm-morning-sweep                              │
-│              • 10 platforms searched in parallel                │
-│              • Strict PK-remote filter                          │
-│              • Scoring algorithm applied                        │
-│              • Ranked report → email                            │
-│                                                                  │
-│  9:00 PM ──► hmz-bdm-evening-sweep                              │
-│              • Same as morning                                  │
-│              • Catches US business day postings                 │
-│              • Reddit draft creation included                   │
-│                                                                  │
-│  On-demand ► hmz-indeed-mcp-sweep                               │
-│              • Indeed MCP connector only                        │
-│              • Structured job search                            │
-│              • Top scored jobs → email                          │
-└─────────────────────────────────────────────────────────────────┘
-```
-
----
-
-## Automations
-
-### LaunchAgents + Hooks
-- `UserPromptSubmit` hook → `skill-auto-activate` fires on every prompt
-- `Stop` hook → `session-learn` writes session learnings to memory
-- `skill-guardian` → watches for zombie skills and deactivates them
-- `skill-watcher` → monitors skill file changes
-
-### Key Automation Scripts
-| Script | Role |
+| Skill | Purpose |
 |---|---|
-| `automations/skill-auto-activate` | Keyword → skill mapping on every prompt |
-| `automations/website-builder-setup` | Sets up website builder environment |
-| `automations/hmz-bdm-state-update` | Updates BDM pipeline state |
-| `automations/hmz-bdm-catchup` | Catches up missed sweep cycles |
-| `bin/llm-burst` | 15-model parallel LLM router |
-| `bin/skill-on` | Activate a skill |
-| `bin/skill-off` | Deactivate a skill |
-| `bin/skill-search` | Find skills by keyword |
+| `lead-gen-ai` | Automated lead extraction — Vibe + Apollo + Excel |
+| `website-lead-agency` | Full agency pipeline — find → build → close |
+| `website-builder` | Next.js + Tailwind + Framer Motion sites |
+| `hmz-daily-leads` | Elite B2B leads (score ≥80, 7AM daily) |
+| `hmz-bdm-morning-sweep` | Job board sweep — 10 platforms, 9AM |
+| `hmz-bdm-evening-sweep` | Evening sweep + Reddit drafts, 9PM |
+| `ads-strategy` | Google Ads + Meta Ads campaign architecture |
+| `geo` | Generative Engine Optimization (AI search) |
+| `lead-gen-ai` | Full-funnel lead generation system |
+| `vibe-prospecting` | Vibe MCP business entity extraction |
+| `report-creator` | Professional PDF/DOCX/XLSX reports |
+| `all-agents` | 210 specialist agent orchestration |
+| `ugc-agency` | AI UGC video ads via Arcads |
+| `framer-motion-builder` | Animation system for all sites |
+| `ui-ux-promax` | Premium design system |
+| *(+ 30 more in skills-active/)* | |
 
 ---
 
-## Quick Start
+## 🤖 Agent Divisions (210 Total)
 
-### Example 1: Generate Leads
-```bash
-# Just type in Claude Code:
-"Find 50 dental clinics in Austin TX with owner email and phone"
-# → skill-auto-activate loads lead-gen-ai + vibe-prospecting
-# → Returns Excel file to ~/Downloads/
-```
-
-### Example 2: Build a Website
-```bash
-"Build a premium website for a SaaS startup — dark theme, animations"
-# → loads website-builder, ui-ux-promax, framer-motion-builder
-# → 4-actor pipeline fires
-# → Production React code with Framer Motion animations
-```
-
-### Example 3: Run Multi-Model Burst
-```bash
-llm-burst "What's the best cold email subject line for a PPC agency targeting ecom brands?"
-# → 15 models respond in parallel
-# → Judge model picks best
-# → Result in <3 seconds, zero Claude tokens burned
-```
+| Division | Count | Specialists |
+|---|---|---|
+| Marketing | 30 | SEO, PPC, Content, Social, Email |
+| Engineering | 29 | Backend, Frontend, DevOps, Security |
+| Specialized | 41 | Industry-specific experts |
+| Game Dev | 10 | Unity, Unreal, Godot, Roblox |
+| Paid Media | 7 | Google Ads, Meta, LinkedIn, TikTok |
+| Testing | 8 | QA, Performance, API testing |
+| Design | 8 | UI/UX, Brand, Visual |
+| Sales | 8 | SDR, Account, Deal Strategy |
+| Project Mgmt | 6 | PM, Sprint, Roadmap |
+| Strategy | 6 | GTM, Market, Product |
+| Spatial | 6 | AR/VR/XR |
+| Support | 6 | Customer Service |
+| Finance | 5 | FP&A, Bookkeeping |
+| Product | 5 | PM, Research, Discovery |
+| Academic | 5 | Research, Analysis |
 
 ---
 
-## Tech Stack
-
-![Claude Code](https://img.shields.io/badge/Claude_Code-Anthropic-orange?style=flat-square)
-![Ollama](https://img.shields.io/badge/Ollama-Local_LLM-black?style=flat-square)
-![Groq](https://img.shields.io/badge/Groq-Lightning_Fast-red?style=flat-square)
-![DeepSeek](https://img.shields.io/badge/DeepSeek-V3-blue?style=flat-square)
-![Gemini](https://img.shields.io/badge/Gemini-2.0_Flash-4285F4?style=flat-square)
-![Kimi](https://img.shields.io/badge/Kimi-K2.6_262K-purple?style=flat-square)
-![OpenRouter](https://img.shields.io/badge/OpenRouter-100+_Models-green?style=flat-square)
-![Apify](https://img.shields.io/badge/Apify-Web_Scraping-yellow?style=flat-square)
-![Apollo](https://img.shields.io/badge/Apollo-Lead_Enrichment-blue?style=flat-square)
-![Airtable](https://img.shields.io/badge/Airtable-Data_Storage-teal?style=flat-square)
-![n8n](https://img.shields.io/badge/n8n-8159_Workflows-orange?style=flat-square)
-![Python](https://img.shields.io/badge/Python-3.11+-blue?style=flat-square)
-![Bash](https://img.shields.io/badge/Bash-Automation-green?style=flat-square)
-
----
-
-## Repository Structure
+## 📁 Repository Structure
 
 ```
 claude-ai-system/
-├── README.md                    ← This file
-├── SYSTEM_MAP.md                ← Visual connection map
-├── skills/                      ← 45 SKILL.md modules
-├── agents/                      ← 210 specialist agents
-├── workflows/                   ← 4 scheduled pipelines
-├── automations/                 ← Hook scripts + LaunchAgents
-├── bin/                         ← Core automation scripts
-├── docs/
-│   ├── architecture.md          ← System architecture deep-dive
-│   ├── getting-started.md       ← Setup guide
-│   ├── skills-reference.md      ← All 45 skills indexed
-│   ├── agents-reference.md      ← All 210 agents indexed
-│   └── terminology.md           ← Definitions
-├── scripts/
-│   └── rebuild-index.py         ← Auto-rebuilds docs from source
-└── .github/
-    └── workflows/
-        └── auto-sync.yml        ← Daily doc auto-sync Action
+├── skills-active/          # 45 active skills (production-ready)
+├── skills-archive/         # 76 archived skill docs (9,528 total locally)
+├── agents/                 # 210 specialist agent definitions
+├── n8n-workflows/          # Index of 8,159 automation workflows
+├── installed-repos/        # Docs from 145 installed libraries
+├── scheduled-tasks/        # 4 HMZ sweep SKILL.md definitions
+├── automations/
+│   ├── bin/               # 45 automation scripts
+│   └── launchagents/      # 6 macOS LaunchAgent plists
+└── docs/                  # Architecture, terminology, references
 ```
 
 ---
 
-*Built with Claude Code. Runs on macOS. Zero maintenance required.*
+## 🔄 Auto-Update System
+
+This repo updates automatically every morning at **6:30 AM PKT**:
+
+1. Syncs latest skills from `~/.claude/skills/`
+2. Syncs latest agents from `~/.claude/agents/`  
+3. Syncs latest workflows from `~/.claude/scheduled-tasks/`
+4. Rebuilds index documentation
+5. Commits + pushes to GitHub
+
+**Trigger**: macOS LaunchAgent `ai.hmz.github-portfolio-sync`
+
+---
+
+## 🔗 Separate Repos
+
+| Repo | Contents |
+|---|---|
+| [claude-ai-skills](https://github.com/hmzainjamil/claude-ai-skills) | All 45 active skills |
+| [claude-ai-agents](https://github.com/hmzainjamil/claude-ai-agents) | All 210 agents |
+| [claude-ai-workflows](https://github.com/hmzainjamil/claude-ai-workflows) | HMZ sweep pipelines |
+| [claude-ai-automations](https://github.com/hmzainjamil/claude-ai-automations) | Bin scripts + LaunchAgents |
+
+---
+
+*Auto-generated and maintained by Claude AI System · Updated daily*

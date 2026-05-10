@@ -1,0 +1,8 @@
+#!/bin/bash
+# Agency Email Pickup — runs on SessionStart
+# If MCP pending emails exist, prints notice so Claude Code can send them via Gmail MCP
+MCP_PENDING="$HOME/.claude/agency/data/mcp_email_pending.jsonl"
+if [ -f "$MCP_PENDING" ] && [ -s "$MCP_PENDING" ]; then
+    COUNT=$(wc -l < "$MCP_PENDING" | tr -d ' ')
+    echo "📧 AGENCY: $COUNT email(s) pending Gmail MCP send — run: agency-run --send-emails"
+fi

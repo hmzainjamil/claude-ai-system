@@ -1,0 +1,60 @@
+#!/usr/bin/env bash
+# workflow-dag — Simple DAG pipeline executor
+# Define workflows as JSON, execute steps in dependency order
+# Usage: workflow-dag <workflow.json> or workflow-dag --list
+
+source ~/.claude/tier0.env 2>/dev/null
+WORKFLOWS_DIR="$HOME/.claude/workflows"
+mkdir -p "$WORKFLOWS_DIR"
+
+if [ "$1" = "--list" ]; then
+    echo "=== REGISTERED WORKFLOWS ==="
+    ls "$WORKFLOWS_DIR"/*.json 2>/dev/null | while read f; do
+        NAME=$(basename "$f" .json)
+        DESC=$(python3 -c "import json,sys; d=json.load(open('$f')); print(d.get('description','no description'))" 2>/dev/null)
+        echo "  $NAME — $DESC"
+    done
+    exit 0
+fi
+
+WORKFLOW_FILE="$1"
+[ ! -f "$WORKFLOW_FILE" ] && WORKFLOW_FILE="$WORKFLOWS_DIR/$1.json"
+[ ! -f "$WORKFLOW_FILE" ] && { echo "Workflow not found: $1"; exit 1; }
+
+python3 << PYEOF
+import json, subprocess, sys, os
+from datetime import datetime
+
+with open('$WORKFLOW_FILE') as f:
+    wf = json.load(f)
+
+name = wf.get('name', 'unnamed')
+steps = wf.get('steps', [])
+results = {}
+
+print(f"[DAG] Running workflow: {name}")
+
+for step in steps:
+    step_id = step['id']
+    deps = step.get('depends_on', [])
+    
+    # Check deps
+    for dep in deps:
+        if dep not in results or results[dep] != 'success':
+            print(f"[DAG] Skip {step_id} — dep {dep} not met")
+            continue
+    
+    cmd = step.get('command', '')
+    skill = step.get('skill', '')
+    
+    if cmd:
+        result = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=60)
+        results[step_id] = 'success' if result.returncode == 0 else 'failed'
+        print(f"[DAG] {step_id}: {results[step_id]}")
+        if result.stdout: print(result.stdout[:200])
+    elif skill:
+        print(f"[DAG] {step_id}: invoke skill {skill}")
+        results[step_id] = 'success'
+
+print(f"[DAG] Done: {results}")
+PYEOF

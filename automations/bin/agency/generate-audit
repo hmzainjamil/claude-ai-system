@@ -1,0 +1,245 @@
+#!/usr/bin/env python3
+"""
+AGENCY ORCHESTRATOR — Audit Generator
+For each high-score proposal, researches the client's website/business
+and generates a free 1-5 page performance marketing audit.
+
+WHY THIS WORKS:
+  Sending a proposal with a real audit of their actual account/site = 10x response rate.
+  Client thinks: "This person already did work for free — imagine what they'll do paid."
+
+AUDIT COVERS:
+  1. Quick wins (immediate fixes they can do today)
+  2. Ad account structure issues (inferred from job description)
+  3. Landing page / CRO issues (from scraping their URL)
+  4. Tracking & attribution gaps
+  5. Recommended next steps (your service as solution)
+
+OUTPUT: Markdown file per proposal → attached as PDF path in proposal JSON
+LLM: G0DM0D3 / Groq (zero Claude tokens)
+Web: Apify RAG browser (scrapes client site)
+"""
+
+import os, sys, json, datetime, requests, re, time
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent))
+from llm import call_llm
+from pdf_audit_builder import build_audit_pdf, parse_llm_audit_to_data
+
+HOME       = Path.home()
+AGENCY_DIR = HOME / ".claude/agency"
+AUDIT_DIR  = AGENCY_DIR / "audits"
+LOG_FILE   = AGENCY_DIR / "logs/audits.log"
+TODAY      = datetime.date.today().strftime("%Y%m%d")
+
+APIFY_TOKEN  = os.environ.get("APIFY_API_TOKEN", "")
+GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
+GROQ_URL     = "https://api.groq.com/openai/v1/chat/completions"
+GROQ_MODEL   = "llama-3.1-8b-instant"
+G0DM0DE_BASE = os.environ.get("G0DM0D3_API", "http://localhost:7860")
+G0DM0DE_URL  = f"{G0DM0DE_BASE}/v1/ultraplinian/completions"
+G0DM0DE_KEY  = os.environ.get("G0DM0D3_KEY", "")
+
+# Minimum BDM score to justify audit generation (saves time on low-quality leads)
+MIN_SCORE_FOR_AUDIT = 75
+
+def log(msg):
+    ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    line = f"[{ts}] {msg}"
+    print(line)
+    LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
+    with open(LOG_FILE, "a") as f:
+        f.write(line + "\n")
+
+
+def scrape_client_site(url, max_chars=3000):
+    """Scrape client website via Apify RAG browser."""
+    if not APIFY_TOKEN or not url:
+        return ""
+    try:
+        import urllib.parse
+        q = urllib.parse.quote(url)
+        r = requests.get(
+            f"https://rag-web-browser.apify.actor/search?token={APIFY_TOKEN}&query={q}&maxResults=1&scrapingTool=raw-http",
+            timeout=45
+        )
+        if r.status_code == 200:
+            items = r.json() if isinstance(r.json(), list) else []
+            if items:
+                return (items[0].get("markdown", "") or items[0].get("text", ""))[:max_chars]
+    except Exception:
+        pass
+    return ""
+
+def extract_client_url(proposal):
+    """Try to find client website from job description or client_info."""
+    desc = proposal.get("description", "") + " " + proposal.get("job_title", "")
+    client_info = proposal.get("client_info", {})
+
+    # Look for URLs in description
+    urls = re.findall(r'https?://[^\s\)\]"\']+', desc)
+    # Filter out job platform URLs
+    for url in urls:
+        if not any(x in url for x in ["upwork.com", "linkedin.com", "indeed.com", "reddit.com"]):
+            return url.rstrip(".,;)")
+
+    # Try company name → Google search for their site
+    company = client_info.get("company", "")
+    if company and APIFY_TOKEN:
+        try:
+            import urllib.parse
+            q = urllib.parse.quote(f"{company} official website")
+            r = requests.get(
+                f"https://rag-web-browser.apify.actor/search?token={APIFY_TOKEN}&query={q}&maxResults=3&scrapingTool=raw-http",
+                timeout=30
+            )
+            if r.status_code == 200:
+                items = r.json() if isinstance(r.json(), list) else []
+                for item in items:
+                    url = item.get("searchResult", {}).get("url", "")
+                    if url and not any(x in url for x in ["linkedin", "facebook", "twitter", "wikipedia"]):
+                        return url
+        except Exception:
+            pass
+    return ""
+
+def generate_audit(proposal, site_content, client_url):
+    """Generate a 1-5 page performance marketing audit via LLM."""
+    job_title = proposal.get("job_title", "")
+    description = proposal.get("description", "")[:800]
+    pain_points = proposal.get("pain_points", [])
+    platform = proposal.get("platform", "upwork")
+    budget = proposal.get("budget", "")
+    client_info = proposal.get("client_info", {})
+    company = client_info.get("company", "the client")
+
+    site_section = ""
+    if site_content:
+        site_section = f"\n\nCLIENT WEBSITE CONTENT (scraped from {client_url}):\n{site_content[:2000]}"
+
+    prompt = f"""You are Hafiz Muhammad Zulqarnain, Meta & Google Ads expert at DigiMinds.
+You're preparing a FREE audit to attach to your proposal. This audit should impress the client
+and demonstrate you've already done real work for them — before they even hire you.
+
+CLIENT/JOB:
+Platform: {platform}
+Job Title: {job_title}
+Budget: {budget}
+Company: {company}
+Job Description: {description}
+Pain Points Identified: {', '.join(pain_points) if pain_points else 'General performance marketing issues'}
+{site_section}
+
+Write a PROFESSIONAL 1-3 page performance marketing audit in Markdown format. Structure:
+
+# Free Performance Marketing Audit
+## Prepared by Hafiz | DigiMinds Agency | digiminds.org
+
+---
+
+## 1. Executive Summary (2-3 sentences — what's the core problem)
+
+## 2. Critical Issues Found
+(List 3-5 specific, real issues based on their job description and site. Be specific — e.g.
+"Your landing page has no clear CTA above the fold" not "your landing page needs improvement")
+
+## 3. Quick Wins (Do These Today)
+(2-3 actionable items they can fix immediately — shows you know what you're talking about)
+
+## 4. Deeper Issues Requiring Expert Attention
+(2-3 structural problems that need ongoing management — naturally leads to hiring you)
+
+## 5. Projected Impact
+(What improvement looks like with numbers — e.g. "Fixing tracking alone typically recovers
+15-25% of attributed conversions. At your budget level, that's $X/month in recovered ROI")
+
+## 6. Recommended Next Steps
+(1 clear CTA — "Let's schedule a 20-min call to review this together")
+
+---
+*This audit was prepared specifically for {company} by Hafiz Muhammad Zulqarnain*
+*DigiMinds Agency | 90-Day ROI Guarantee | digiminds.org*
+
+IMPORTANT: Be SPECIFIC to their situation. Reference details from their job post.
+Use real metrics and examples. Sound authoritative, not generic. 3 pages MAX."""
+
+    return call_llm(prompt, max_tokens=2000)
+
+def save_audit(proposal, audit_content):
+    """Generate professional PDF audit. Returns PDF path."""
+    AUDIT_DIR.mkdir(parents=True, exist_ok=True)
+    safe_title = re.sub(r'[^\w\-]', '_', proposal.get("job_title", "audit")[:40])
+    pdf_path = AUDIT_DIR / f"audit_{TODAY}_{safe_title}.pdf"
+
+    # Parse LLM text into structured data
+    audit_data = parse_llm_audit_to_data(audit_content, proposal)
+
+    # Build professional PDF
+    build_audit_pdf(pdf_path, audit_data)
+    log(f"    PDF built: {pdf_path.name} ({pdf_path.stat().st_size // 1024}KB)")
+    return str(pdf_path)
+
+def generate_audits_for_proposals(proposals_file):
+    """
+    Main entry point — reads proposals JSON, generates audits for high-score ones.
+    Updates proposals JSON with audit_path field.
+    """
+    AUDIT_DIR.mkdir(parents=True, exist_ok=True)
+    data = json.loads(Path(proposals_file).read_text())
+    proposals = data.get("proposals", [])
+
+    log(f"=== AUDIT GENERATION: checking {len(proposals)} proposals ===")
+    audit_count = 0
+
+    for i, proposal in enumerate(proposals):
+        score = proposal.get("relevance_score", 0)
+        if score < MIN_SCORE_FOR_AUDIT:
+            continue
+        if proposal.get("audit_path"):
+            log(f"  SKIP (audit exists): {proposal['job_title'][:50]}")
+            continue
+
+        log(f"  [{i+1}] Generating audit for: {proposal['job_title'][:60]} (score={score})")
+
+        # Try to find and scrape client website
+        client_url = extract_client_url(proposal)
+        site_content = ""
+        if client_url:
+            log(f"    Scraping client site: {client_url}")
+            site_content = scrape_client_site(client_url)
+            log(f"    Site content: {len(site_content)} chars scraped")
+        else:
+            log(f"    No client URL found — audit from job description only")
+
+        # Generate audit
+        audit_content = generate_audit(proposal, site_content, client_url)
+        if not audit_content:
+            log(f"    FAILED to generate audit — skipping")
+            continue
+
+        # Save audit
+        audit_path = save_audit(proposal, audit_content)
+        proposals[i]["audit_path"] = audit_path
+        proposals[i]["client_url"] = client_url
+        audit_count += 1
+        log(f"    ✓ Audit saved: {audit_path}")
+        time.sleep(2)  # brief pause between LLM calls
+
+    # Save updated proposals
+    data["proposals"] = proposals
+    data["audits_generated"] = audit_count
+    Path(proposals_file).write_text(json.dumps(data, indent=2))
+    log(f"=== Audits done: {audit_count} generated ===")
+    return audit_count
+
+def main():
+    """Run audit generation for today's proposals."""
+    from pathlib import Path as P
+    proposals_file = AGENCY_DIR / "proposals" / f"proposals_{TODAY}.json"
+    if not proposals_file.exists():
+        log(f"ERROR: No proposals file for today: {proposals_file}")
+        sys.exit(1)
+    generate_audits_for_proposals(str(proposals_file))
+
+if __name__ == "__main__":
+    main()

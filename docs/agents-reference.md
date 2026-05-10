@@ -1,356 +1,318 @@
-# Agents Reference — All 210 Specialist Agents
+# Agents Reference — All Agents
 
-Auto-generated from `agents/` directory. 210 agents across 15+ divisions.
+Auto-generated from `agents/` directory. Last updated: 2026-05-10 21:00 UTC
 
 ---
 
 ## Academic Division (5 agents)
 
-| Agent | Role |
+| Agent | Name |
 |---|---|
-| `academic-anthropologist` | Cultural and social anthropology analysis |
-| `academic-geographer` | Geographic and spatial analysis |
-| `academic-historian` | Historical research and context |
-| `academic-narratologist` | Narrative structure and storytelling analysis |
-| `academic-psychologist` | Behavioral psychology and user research |
+| `academic-anthropologist` | Academic Anthropologist |
+| `academic-geographer` | Academic Geographer |
+| `academic-historian` | Academic Historian |
+| `academic-narratologist` | Academic Narratologist |
+| `academic-psychologist` | Academic Psychologist |
 
----
+## Ads / Paid Media Division (12 agents)
 
-## Ads / Paid Media Division (11 agents)
-
-| Agent | Role |
+| Agent | Name |
 |---|---|
-| `ads-audience` | Audience targeting strategy and segmentation |
-| `ads-budget` | Budget allocation and spend optimization |
-| `ads-competitive` | Competitive analysis for paid media |
-| `ads-creative` | Ad creative strategy and copywriting |
-| `ads-funnel` | Full-funnel paid media architecture |
-| `paid-media-auditor` | Comprehensive paid media audit |
-| `paid-media-creative-strategist` | Creative strategy for paid campaigns |
-| `paid-media-paid-social-strategist` | Paid social media strategy |
-| `paid-media-ppc-strategist` | PPC campaign strategy and optimization |
-| `paid-media-programmatic-buyer` | Programmatic advertising buyer |
-| `paid-media-search-query-analyst` | Search query analysis and negative keywords |
-| `paid-media-tracking-specialist` | Conversion tracking and attribution |
-
----
+| `ads-audience` | Ads Audience |
+| `ads-budget` | Ads Budget |
+| `ads-competitive` | Ads Competitive |
+| `ads-creative` | Ads Creative |
+| `ads-funnel` | Ads Funnel |
+| `paid-media-auditor` | Paid Media Auditor |
+| `paid-media-creative-strategist` | Paid Media Creative Strategist |
+| `paid-media-paid-social-strategist` | Paid Media Paid Social Strategist |
+| `paid-media-ppc-strategist` | Paid Media Ppc Strategist |
+| `paid-media-programmatic-buyer` | Paid Media Programmatic Buyer |
+| `paid-media-search-query-analyst` | Paid Media Search Query Analyst |
+| `paid-media-tracking-specialist` | Paid Media Tracking Specialist |
 
 ## Agency Division (6 agents)
 
-| Agent | Role |
+| Agent | Name |
 |---|---|
-| `agency-agent` | Core agency operations orchestrator |
-| `agency-geo` | GEO/SEO for agency clients |
-| `agency-legal` | Agency legal review and contracts |
-| `agency-marketing` | Agency marketing and positioning |
-| `agency-reputation` | Agency reputation management |
-| `agency-sales` | Agency sales and proposal strategy |
-
----
+| `agency-agent` | Agency Agent |
+| `agency-geo` | Agency Geo |
+| `agency-legal` | Agency Legal |
+| `agency-marketing` | Agency Marketing |
+| `agency-reputation` | Agency Reputation |
+| `agency-sales` | Agency Sales |
 
 ## Design Division (8 agents)
 
-| Agent | Role |
+| Agent | Name |
 |---|---|
-| `design-brand-guardian` | Brand consistency enforcement |
-| `design-image-prompt-engineer` | AI image prompt engineering |
-| `design-inclusive-visuals-specialist` | Accessibility and inclusive design |
-| `design-ui-designer` | UI design and component systems |
-| `design-ux-architect` | UX architecture and user flows |
-| `design-ux-researcher` | User research and testing |
-| `design-visual-storyteller` | Visual narrative and storytelling |
-| `design-whimsy-injector` | Creative personality and brand delight |
+| `design-brand-guardian` | Design Brand Guardian |
+| `design-image-prompt-engineer` | Design Image Prompt Engineer |
+| `design-inclusive-visuals-specialist` | Design Inclusive Visuals Specialist |
+| `design-ui-designer` | Design Ui Designer |
+| `design-ux-architect` | Design Ux Architect |
+| `design-ux-researcher` | Design Ux Researcher |
+| `design-visual-storyteller` | Design Visual Storyteller |
+| `design-whimsy-injector` | Design Whimsy Injector |
 
----
+## Engineering Division (29 agents)
 
-## Engineering Division (27 agents)
-
-| Agent | Role |
+| Agent | Name |
 |---|---|
-| `engineering-ai-data-remediation-engineer` | AI data quality and remediation |
-| `engineering-ai-engineer` | AI/ML engineering and integration |
-| `engineering-autonomous-optimization-architect` | Self-optimizing system architecture |
-| `engineering-backend-architect` | Backend system design and architecture |
-| `engineering-cms-developer` | CMS integration and development |
-| `engineering-code-reviewer` | Code review and quality assurance |
-| `engineering-codebase-onboarding-engineer` | New codebase exploration and documentation |
-| `engineering-data-engineer` | Data pipelines and ETL |
-| `engineering-database-optimizer` | Database performance and query optimization |
-| `engineering-devops-automator` | DevOps, CI/CD, and automation |
-| `engineering-email-intelligence-engineer` | Email system engineering |
-| `engineering-embedded-firmware-engineer` | Embedded systems and firmware |
-| `engineering-feishu-integration-developer` | Feishu/Lark platform integration |
-| `engineering-filament-optimization-specialist` | Laravel Filament optimization |
-| `engineering-frontend-developer` | Frontend development and React/Vue |
-| `engineering-git-workflow-master` | Git workflow and branching strategy |
-| `engineering-incident-response-commander` | Incident management and response |
-| `engineering-minimal-change-engineer` | Surgical minimal-diff code changes |
-| `engineering-mobile-app-builder` | Mobile app development |
-| `engineering-rapid-prototyper` | Fast MVP and prototype building |
-| `engineering-security-engineer` | Application security engineering |
-| `engineering-senior-developer` | Senior-level code review and mentoring |
-| `engineering-software-architect` | Software architecture and patterns |
-| `engineering-solidity-smart-contract-engineer` | Blockchain smart contracts |
-| `engineering-sre` | Site reliability engineering |
-| `engineering-technical-writer` | Technical documentation |
-| `engineering-threat-detection-engineer` | Security threat detection |
-| `engineering-voice-ai-integration-engineer` | Voice AI and speech systems |
-| `engineering-wechat-mini-program-developer` | WeChat Mini Program development |
-
----
+| `engineering-ai-data-remediation-engineer` | Engineering Ai Data Remediation Engineer |
+| `engineering-ai-engineer` | Engineering Ai Engineer |
+| `engineering-autonomous-optimization-architect` | Engineering Autonomous Optimization Architect |
+| `engineering-backend-architect` | Engineering Backend Architect |
+| `engineering-cms-developer` | Engineering Cms Developer |
+| `engineering-code-reviewer` | Engineering Code Reviewer |
+| `engineering-codebase-onboarding-engineer` | Engineering Codebase Onboarding Engineer |
+| `engineering-data-engineer` | Engineering Data Engineer |
+| `engineering-database-optimizer` | Engineering Database Optimizer |
+| `engineering-devops-automator` | Engineering Devops Automator |
+| `engineering-email-intelligence-engineer` | Engineering Email Intelligence Engineer |
+| `engineering-embedded-firmware-engineer` | Engineering Embedded Firmware Engineer |
+| `engineering-feishu-integration-developer` | Engineering Feishu Integration Developer |
+| `engineering-filament-optimization-specialist` | Engineering Filament Optimization Specialist |
+| `engineering-frontend-developer` | Engineering Frontend Developer |
+| `engineering-git-workflow-master` | Engineering Git Workflow Master |
+| `engineering-incident-response-commander` | Engineering Incident Response Commander |
+| `engineering-minimal-change-engineer` | Engineering Minimal Change Engineer |
+| `engineering-mobile-app-builder` | Engineering Mobile App Builder |
+| `engineering-rapid-prototyper` | Engineering Rapid Prototyper |
+| `engineering-security-engineer` | Engineering Security Engineer |
+| `engineering-senior-developer` | Engineering Senior Developer |
+| `engineering-software-architect` | Engineering Software Architect |
+| `engineering-solidity-smart-contract-engineer` | Engineering Solidity Smart Contract Engineer |
+| `engineering-sre` | Engineering Sre |
+| `engineering-technical-writer` | Engineering Technical Writer |
+| `engineering-threat-detection-engineer` | Engineering Threat Detection Engineer |
+| `engineering-voice-ai-integration-engineer` | Engineering Voice Ai Integration Engineer |
+| `engineering-wechat-mini-program-developer` | Engineering Wechat Mini Program Developer |
 
 ## Finance Division (5 agents)
 
-| Agent | Role |
+| Agent | Name |
 |---|---|
-| `finance-bookkeeper-controller` | Bookkeeping and financial control |
-| `finance-financial-analyst` | Financial modeling and analysis |
-| `finance-fpa-analyst` | Financial planning and analysis |
-| `finance-investment-researcher` | Investment research and due diligence |
-| `finance-tax-strategist` | Tax strategy and optimization |
-
----
-
-## Game Development Division (12 agents)
-
-| Agent | Role |
-|---|---|
-| `game-audio-engineer` | Game audio and sound design |
-| `game-designer` | Game design and mechanics |
-| `godot-gameplay-scripter` | Godot Engine gameplay scripting |
-| `godot-multiplayer-engineer` | Godot multiplayer networking |
-| `godot-shader-developer` | Godot shader and visual effects |
-| `level-designer` | Level design and world building |
-| `roblox-avatar-creator` | Roblox avatar creation |
-| `roblox-experience-designer` | Roblox experience design |
-| `roblox-systems-scripter` | Roblox Lua scripting |
-| `unity-architect` | Unity architecture and systems |
-| `unity-editor-tool-developer` | Unity editor tool development |
-| `unity-multiplayer-engineer` | Unity multiplayer networking |
-| `unity-shader-graph-artist` | Unity shader graph and VFX |
-| `unreal-multiplayer-architect` | Unreal Engine multiplayer |
-| `unreal-systems-engineer` | Unreal systems engineering |
-| `unreal-technical-artist` | Unreal technical art and VFX |
-| `unreal-world-builder` | Unreal world building |
-
----
+| `finance-bookkeeper-controller` | Finance Bookkeeper Controller |
+| `finance-financial-analyst` | Finance Financial Analyst |
+| `finance-fpa-analyst` | Finance Fpa Analyst |
+| `finance-investment-researcher` | Finance Investment Researcher |
+| `finance-tax-strategist` | Finance Tax Strategist |
 
 ## GEO / SEO Division (5 agents)
 
-| Agent | Role |
+| Agent | Name |
 |---|---|
-| `geo-ai-visibility` | AI search visibility and GEO optimization |
-| `geo-content` | GEO-optimized content creation |
-| `geo-platform-analysis` | Platform-specific GEO analysis |
-| `geo-schema` | Schema markup and structured data |
-| `geo-technical` | Technical GEO/SEO implementation |
+| `geo-ai-visibility` | Geo Ai Visibility |
+| `geo-content` | Geo Content |
+| `geo-platform-analysis` | Geo Platform Analysis |
+| `geo-schema` | Geo Schema |
+| `geo-technical` | Geo Technical |
 
----
+## Game Development Division (18 agents)
 
-## Healthcare Division (2 agents)
-
-| Agent | Role |
+| Agent | Name |
 |---|---|
-| `healthcare-customer-service` | Healthcare customer service and HIPAA |
-| `healthcare-marketing-compliance` | Healthcare marketing and compliance |
-
----
+| `game-audio-engineer` | Game Audio Engineer |
+| `game-designer` | Game Designer |
+| `godot-gameplay-scripter` | Godot Gameplay Scripter |
+| `godot-multiplayer-engineer` | Godot Multiplayer Engineer |
+| `godot-shader-developer` | Godot Shader Developer |
+| `level-designer` | Level Designer |
+| `narrative-designer` | Narrative Designer |
+| `roblox-avatar-creator` | Roblox Avatar Creator |
+| `roblox-experience-designer` | Roblox Experience Designer |
+| `roblox-systems-scripter` | Roblox Systems Scripter |
+| `unity-architect` | Unity Architect |
+| `unity-editor-tool-developer` | Unity Editor Tool Developer |
+| `unity-multiplayer-engineer` | Unity Multiplayer Engineer |
+| `unity-shader-graph-artist` | Unity Shader Graph Artist |
+| `unreal-multiplayer-architect` | Unreal Multiplayer Architect |
+| `unreal-systems-engineer` | Unreal Systems Engineer |
+| `unreal-technical-artist` | Unreal Technical Artist |
+| `unreal-world-builder` | Unreal World Builder |
 
 ## HR / Recruitment Division (2 agents)
 
-| Agent | Role |
+| Agent | Name |
 |---|---|
-| `hr-onboarding` | Employee onboarding workflows |
-| `recruitment-specialist` | Talent acquisition and screening |
+| `hr-onboarding` | Hr Onboarding |
+| `recruitment-specialist` | Recruitment Specialist |
 
----
+## Healthcare Division (2 agents)
+
+| Agent | Name |
+|---|---|
+| `healthcare-customer-service` | Healthcare Customer Service |
+| `healthcare-marketing-compliance` | Healthcare Marketing Compliance |
 
 ## Legal Division (8 agents)
 
-| Agent | Role |
+| Agent | Name |
 |---|---|
-| `legal-billing-time-tracking` | Legal billing and time tracking |
-| `legal-clauses` | Contract clause analysis |
-| `legal-client-intake` | Legal client intake process |
-| `legal-compliance` | Compliance framework and requirements |
-| `legal-document-review` | Legal document review |
-| `legal-recommendations` | Legal recommendations and guidance |
-| `legal-risks` | Legal risk identification and mitigation |
-| `legal-terms` | Terms of service and privacy policy |
+| `legal-billing-time-tracking` | Legal Billing Time Tracking |
+| `legal-clauses` | Legal Clauses |
+| `legal-client-intake` | Legal Client Intake |
+| `legal-compliance` | Legal Compliance |
+| `legal-document-review` | Legal Document Review |
+| `legal-recommendations` | Legal Recommendations |
+| `legal-risks` | Legal Risks |
+| `legal-terms` | Legal Terms |
 
----
+## Marketing Division (35 agents)
 
-## Marketing Division (25 agents)
-
-| Agent | Role |
+| Agent | Name |
 |---|---|
-| `market-competitive` | Competitive marketing analysis |
-| `market-content` | Content marketing strategy |
-| `market-conversion` | Conversion rate optimization |
-| `market-strategy` | Marketing strategy and positioning |
-| `market-technical` | Technical marketing implementation |
-| `marketing-agentic-search-optimizer` | AI search optimization |
-| `marketing-ai-citation-strategist` | AI citation and mention strategy |
-| `marketing-app-store-optimizer` | App store optimization (ASO) |
-| `marketing-baidu-seo-specialist` | Baidu SEO for China market |
-| `marketing-bilibili-content-strategist` | Bilibili video content strategy |
-| `marketing-book-co-author` | Book and long-form content co-authoring |
-| `marketing-carousel-growth-engine` | Social media carousel content |
-| `marketing-china-ecommerce-operator` | China e-commerce operations |
-| `marketing-china-market-localization-strategist` | China market localization |
-| `marketing-content-creator` | Multi-channel content creation |
-| `marketing-cross-border-ecommerce` | Cross-border e-commerce marketing |
-| `marketing-douyin-strategist` | Douyin (TikTok China) strategy |
-| `marketing-growth-hacker` | Growth hacking and viral loops |
-| `marketing-instagram-curator` | Instagram content and curation |
-| `marketing-kuaishou-strategist` | Kuaishou short video strategy |
-| `marketing-linkedin-content-creator` | LinkedIn content and thought leadership |
-| `marketing-livestream-commerce-coach` | Live commerce coaching |
-| `marketing-podcast-strategist` | Podcast strategy and production |
-| `marketing-private-domain-operator` | Private domain / CRM marketing |
-| `marketing-reddit-community-builder` | Reddit community building |
-| `marketing-seo-specialist` | SEO strategy and implementation |
-| `marketing-short-video-editing-coach` | Short video editing coaching |
-| `marketing-social-media-strategist` | Social media strategy |
-| `marketing-tiktok-strategist` | TikTok content strategy |
-| `marketing-twitter-engager` | Twitter/X engagement strategy |
-| `marketing-video-optimization-specialist` | Video SEO and optimization |
-| `marketing-wechat-official-account` | WeChat Official Account operations |
-| `marketing-weibo-strategist` | Weibo content strategy |
-| `marketing-xiaohongshu-specialist` | Xiaohongshu (RedNote) strategy |
-| `marketing-zhihu-strategist` | Zhihu Q&A marketing |
+| `market-competitive` | Market Competitive |
+| `market-content` | Market Content |
+| `market-conversion` | Market Conversion |
+| `market-strategy` | Market Strategy |
+| `market-technical` | Market Technical |
+| `marketing-agentic-search-optimizer` | Marketing Agentic Search Optimizer |
+| `marketing-ai-citation-strategist` | Marketing Ai Citation Strategist |
+| `marketing-app-store-optimizer` | Marketing App Store Optimizer |
+| `marketing-baidu-seo-specialist` | Marketing Baidu Seo Specialist |
+| `marketing-bilibili-content-strategist` | Marketing Bilibili Content Strategist |
+| `marketing-book-co-author` | Marketing Book Co Author |
+| `marketing-carousel-growth-engine` | Marketing Carousel Growth Engine |
+| `marketing-china-ecommerce-operator` | Marketing China Ecommerce Operator |
+| `marketing-china-market-localization-strategist` | Marketing China Market Localization Strategist |
+| `marketing-content-creator` | Marketing Content Creator |
+| `marketing-cross-border-ecommerce` | Marketing Cross Border Ecommerce |
+| `marketing-douyin-strategist` | Marketing Douyin Strategist |
+| `marketing-growth-hacker` | Marketing Growth Hacker |
+| `marketing-instagram-curator` | Marketing Instagram Curator |
+| `marketing-kuaishou-strategist` | Marketing Kuaishou Strategist |
+| `marketing-linkedin-content-creator` | Marketing Linkedin Content Creator |
+| `marketing-livestream-commerce-coach` | Marketing Livestream Commerce Coach |
+| `marketing-podcast-strategist` | Marketing Podcast Strategist |
+| `marketing-private-domain-operator` | Marketing Private Domain Operator |
+| `marketing-reddit-community-builder` | Marketing Reddit Community Builder |
+| `marketing-seo-specialist` | Marketing Seo Specialist |
+| `marketing-short-video-editing-coach` | Marketing Short Video Editing Coach |
+| `marketing-social-media-strategist` | Marketing Social Media Strategist |
+| `marketing-tiktok-strategist` | Marketing Tiktok Strategist |
+| `marketing-twitter-engager` | Marketing Twitter Engager |
+| `marketing-video-optimization-specialist` | Marketing Video Optimization Specialist |
+| `marketing-wechat-official-account` | Marketing Wechat Official Account |
+| `marketing-weibo-strategist` | Marketing Weibo Strategist |
+| `marketing-xiaohongshu-specialist` | Marketing Xiaohongshu Specialist |
+| `marketing-zhihu-strategist` | Marketing Zhihu Strategist |
 
----
+## Miscellaneous Division (25 agents)
+
+| Agent | Name |
+|---|---|
+| `accounts-payable-agent` | Accounts Payable Agent |
+| `agentic-identity-trust` | Agentic Identity Trust |
+| `agents-orchestrator` | Agents Orchestrator |
+| `automation-governance-architect` | Automation Governance Architect |
+| `blender-addon-engineer` | Blender Addon Engineer |
+| `blockchain-security-auditor` | Blockchain Security Auditor |
+| `compliance-auditor` | Compliance Auditor |
+| `corporate-training-designer` | Corporate Training Designer |
+| `customer-service` | Customer Service |
+| `data-consolidation-agent` | Data Consolidation Agent |
+| `government-digital-presales-consultant` | Government Digital Presales Consultant |
+| `hospitality-guest-services` | Hospitality Guest Services |
+| `identity-graph-operator` | Identity Graph Operator |
+| `language-translator` | Language Translator |
+| `loan-officer-assistant` | Loan Officer Assistant |
+| `lsp-index-engineer` | Lsp Index Engineer |
+| `macos-spatial-metal-engineer` | Macos Spatial Metal Engineer |
+| `real-estate-buyer-seller` | Real Estate Buyer Seller |
+| `report-distribution-agent` | Report Distribution Agent |
+| `retail-customer-returns` | Retail Customer Returns |
+| `study-abroad-advisor` | Study Abroad Advisor |
+| `supply-chain-strategist` | Supply Chain Strategist |
+| `technical-artist` | Technical Artist |
+| `terminal-integration-specialist` | Terminal Integration Specialist |
+| `zk-steward` | Zk Steward |
 
 ## Product Division (5 agents)
 
-| Agent | Role |
+| Agent | Name |
 |---|---|
-| `product-behavioral-nudge-engine` | Behavioral economics and nudge design |
-| `product-feedback-synthesizer` | User feedback synthesis and insights |
-| `product-manager` | Product management and roadmapping |
-| `product-sprint-prioritizer` | Sprint planning and prioritization |
-| `product-trend-researcher` | Product trend research |
-
----
+| `product-behavioral-nudge-engine` | Product Behavioral Nudge Engine |
+| `product-feedback-synthesizer` | Product Feedback Synthesizer |
+| `product-manager` | Product Manager |
+| `product-sprint-prioritizer` | Product Sprint Prioritizer |
+| `product-trend-researcher` | Product Trend Researcher |
 
 ## Project Management Division (6 agents)
 
-| Agent | Role |
+| Agent | Name |
 |---|---|
-| `project-management-experiment-tracker` | A/B testing and experiment tracking |
-| `project-management-jira-workflow-steward` | Jira workflow management |
-| `project-management-project-shepherd` | Project health and risk tracking |
-| `project-management-studio-operations` | Creative studio operations |
-| `project-management-studio-producer` | Studio production management |
-| `project-manager-senior` | Senior project management |
-
----
+| `project-management-experiment-tracker` | Project Management Experiment Tracker |
+| `project-management-jira-workflow-steward` | Project Management Jira Workflow Steward |
+| `project-management-project-shepherd` | Project Management Project Shepherd |
+| `project-management-studio-operations` | Project Management Studio Operations |
+| `project-management-studio-producer` | Project Management Studio Producer |
+| `project-manager-senior` | Project Manager Senior |
 
 ## Sales Division (10 agents)
 
-| Agent | Role |
+| Agent | Name |
 |---|---|
-| `sales-account-strategist` | Key account strategy |
-| `sales-coach` | Sales coaching and training |
-| `sales-data-extraction-agent` | Sales data mining and extraction |
-| `sales-deal-strategist` | Deal strategy and negotiation |
-| `sales-discovery-coach` | Discovery call coaching |
-| `sales-engineer` | Sales engineering and technical demos |
-| `sales-outbound-strategist` | Outbound sales strategy |
-| `sales-outreach` | Outreach copy and sequencing |
-| `sales-pipeline-analyst` | Pipeline analysis and forecasting |
-| `sales-proposal-strategist` | Proposal strategy and writing |
+| `sales-account-strategist` | Sales Account Strategist |
+| `sales-coach` | Sales Coach |
+| `sales-data-extraction-agent` | Sales Data Extraction Agent |
+| `sales-deal-strategist` | Sales Deal Strategist |
+| `sales-discovery-coach` | Sales Discovery Coach |
+| `sales-engineer` | Sales Engineer |
+| `sales-outbound-strategist` | Sales Outbound Strategist |
+| `sales-outreach` | Sales Outreach |
+| `sales-pipeline-analyst` | Sales Pipeline Analyst |
+| `sales-proposal-strategist` | Sales Proposal Strategist |
 
----
+## Specialized Division (11 agents)
 
-## Specialized / Cross-Domain Division (10 agents)
-
-| Agent | Role |
+| Agent | Name |
 |---|---|
-| `specialized-chief-of-staff` | Executive operations and coordination |
-| `specialized-civil-engineer` | Civil engineering analysis |
-| `specialized-cultural-intelligence-strategist` | Cross-cultural business strategy |
-| `specialized-developer-advocate` | Developer relations and advocacy |
-| `specialized-document-generator` | Document generation and templating |
-| `specialized-french-consulting-market` | French market consulting |
-| `specialized-korean-business-navigator` | Korean market navigation |
-| `specialized-mcp-builder` | MCP server development |
-| `specialized-model-qa` | AI model quality assurance |
-| `specialized-salesforce-architect` | Salesforce architecture |
-| `specialized-workflow-architect` | Workflow design and automation |
-
----
+| `specialized-chief-of-staff` | Specialized Chief Of Staff |
+| `specialized-civil-engineer` | Specialized Civil Engineer |
+| `specialized-cultural-intelligence-strategist` | Specialized Cultural Intelligence Strategist |
+| `specialized-developer-advocate` | Specialized Developer Advocate |
+| `specialized-document-generator` | Specialized Document Generator |
+| `specialized-french-consulting-market` | Specialized French Consulting Market |
+| `specialized-korean-business-navigator` | Specialized Korean Business Navigator |
+| `specialized-mcp-builder` | Specialized Mcp Builder |
+| `specialized-model-qa` | Specialized Model Qa |
+| `specialized-salesforce-architect` | Specialized Salesforce Architect |
+| `specialized-workflow-architect` | Specialized Workflow Architect |
 
 ## Support / Operations Division (6 agents)
 
-| Agent | Role |
+| Agent | Name |
 |---|---|
-| `support-analytics-reporter` | Analytics reporting and insights |
-| `support-executive-summary-generator` | Executive summary generation |
-| `support-finance-tracker` | Finance tracking and monitoring |
-| `support-infrastructure-maintainer` | Infrastructure maintenance |
-| `support-legal-compliance-checker` | Legal compliance checking |
-| `support-support-responder` | Customer support response |
-
----
+| `support-analytics-reporter` | Support Analytics Reporter |
+| `support-executive-summary-generator` | Support Executive Summary Generator |
+| `support-finance-tracker` | Support Finance Tracker |
+| `support-infrastructure-maintainer` | Support Infrastructure Maintainer |
+| `support-legal-compliance-checker` | Support Legal Compliance Checker |
+| `support-support-responder` | Support Support Responder |
 
 ## Testing / QA Division (8 agents)
 
-| Agent | Role |
+| Agent | Name |
 |---|---|
-| `testing-accessibility-auditor` | Accessibility testing and WCAG compliance |
-| `testing-api-tester` | API testing and validation |
-| `testing-evidence-collector` | Test evidence collection |
-| `testing-performance-benchmarker` | Performance benchmarking |
-| `testing-reality-checker` | Fact-checking and validation |
-| `testing-test-results-analyzer` | Test results analysis |
-| `testing-tool-evaluator` | Tool evaluation and selection |
-| `testing-workflow-optimizer` | Test workflow optimization |
+| `testing-accessibility-auditor` | Testing Accessibility Auditor |
+| `testing-api-tester` | Testing Api Tester |
+| `testing-evidence-collector` | Testing Evidence Collector |
+| `testing-performance-benchmarker` | Testing Performance Benchmarker |
+| `testing-reality-checker` | Testing Reality Checker |
+| `testing-test-results-analyzer` | Testing Test Results Analyzer |
+| `testing-tool-evaluator` | Testing Tool Evaluator |
+| `testing-workflow-optimizer` | Testing Workflow Optimizer |
 
----
+## XR / Spatial Division (4 agents)
 
-## XR / VisionOS / Spatial Computing Division (4 agents)
-
-| Agent | Role |
+| Agent | Name |
 |---|---|
-| `visionos-spatial-engineer` | Apple visionOS spatial computing |
-| `xr-cockpit-interaction-specialist` | XR cockpit and vehicle interfaces |
-| `xr-immersive-developer` | Immersive XR experience development |
-| `xr-interface-architect` | XR interface and UX architecture |
-
----
-
-## Miscellaneous / Cross-Cutting Agents (10 agents)
-
-| Agent | Role |
-|---|---|
-| `agentic-identity-trust` | AI agent identity and trust frameworks |
-| `agents-orchestrator` | Multi-agent orchestration |
-| `automation-governance-architect` | Automation governance and policy |
-| `blender-addon-engineer` | Blender addon development |
-| `blockchain-security-auditor` | Blockchain security audit |
-| `compliance-auditor` | Regulatory compliance auditing |
-| `corporate-training-designer` | Corporate training and L&D |
-| `customer-service` | General customer service |
-| `data-consolidation-agent` | Data consolidation and normalization |
-| `government-digital-presales-consultant` | Government digital sales |
-| `hospitality-guest-services` | Hospitality and hotel services |
-| `identity-graph-operator` | Identity graph management |
-| `language-translator` | Multi-language translation |
-| `lsp-index-engineer` | Language server protocol engineering |
-| `macos-spatial-metal-engineer` | macOS Metal and spatial computing |
-| `loan-officer-assistant` | Loan processing assistance |
-| `narrative-designer` | Narrative design and interactive story |
-| `real-estate-buyer-seller` | Real estate transaction support |
-| `retail-customer-returns` | Retail returns processing |
-| `study-abroad-advisor` | Study abroad advising |
-| `supply-chain-strategist` | Supply chain strategy |
-| `technical-artist` | Technical art pipeline |
-| `terminal-integration-specialist` | Terminal and CLI integration |
-| `zk-steward` | Zero-knowledge proof stewardship |
-| `accounts-payable-agent` | Accounts payable processing |
-| `report-distribution-agent` | Report distribution automation |
+| `visionos-spatial-engineer` | Visionos Spatial Engineer |
+| `xr-cockpit-interaction-specialist` | Xr Cockpit Interaction Specialist |
+| `xr-immersive-developer` | Xr Immersive Developer |
+| `xr-interface-architect` | Xr Interface Architect |
 
 ---
 

@@ -1,0 +1,63 @@
+#!/usr/bin/env bash
+# Install top 30 OpenClaw skills from VoltAgent awesome list
+# Run this script when ClawHub rate limit resets (usually 1 hour)
+
+export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
+
+SKILLS=(
+  # Marketing & Sales (DigiMinds core)
+  "cold-email-writer"
+  "abm-cold-email"
+  "cold-email-sequence"
+  "cold-email-engine"
+  "cold-outreach-email-writer"
+  "go-to-market"
+  "lead-magnets"
+  "marketing-strategy-pmm"
+  "b2c-marketing"
+  "meta-ads-report"
+  "meta-tags-optimizer"
+  "performance-reporter"
+  "content-creator"
+  "brand-voice-profile"
+  "affiliate-master"
+  "affiliate-master"
+  "listing-swarm"
+  # AI/Agents
+  "arya-model-router"
+  "agent-memory"
+  "agent-orchestrator"
+  "adaptive-reasoning"
+  "aisa-llm-router-skill"
+  "agent-task-manager"
+  "agent-autopilot"
+  "autonomous-execution"
+  # Research/SEO  
+  "citedy-seo-agent"
+  "performance-reporter"
+  "botsee"
+  # Productivity
+  "ai-daily-briefing"
+  "briefing"
+  "airpoint"
+)
+
+echo "Installing ${#SKILLS[@]} skills..."
+INSTALLED=0
+FAILED=0
+
+for skill in "${SKILLS[@]}"; do
+  echo -n "  $skill ... "
+  result=$(openclaw skills install "$skill" 2>&1)
+  if echo "$result" | grep -qi "installed\|already"; then
+    echo "✓"
+    ((INSTALLED++))
+  else
+    echo "✗ $(echo $result | grep -i 'error\|failed' | head -1)"
+    ((FAILED++))
+  fi
+  sleep 5  # 5s between installs to avoid rate limit
+done
+
+echo ""
+echo "Done: $INSTALLED installed, $FAILED failed"

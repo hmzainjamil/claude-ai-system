@@ -1,0 +1,74 @@
+#!/bin/bash
+# GPT4All Download Daemon v4 — curl-based (HF XET bridge compatible)
+# curl -L -C - follows fresh redirects on every retry → no signed URL expiry
+
+DEST="$HOME/Library/Application Support/nomic.ai/GPT4All"
+LOG="/tmp/gpt4all-daemon.log"
+
+ts() { date "+[%a %b %d %H:%M:%S %Z %Y]"; }
+
+# All expected models (filenames as they appear on disk)
+MODELS="DeepSeek-R1-Distill-Qwen-1.5B-Q4_0.gguf Llama-3.2-3B-Instruct-Q4_0.gguf Phi-3-mini-4k-instruct.Q4_0.gguf mistral-7b-instruct-v0.1.Q4_0.gguf Hermes-2-Pro-Mistral-7B.Q4_K_M.gguf DeepSeek-R1-Distill-Qwen-7B-Q4_0.gguf Meta-Llama-3.1-8B-Instruct-Q4_K_M.gguf qwen2.5-coder-7b-instruct-q4_0.gguf nomic-embed-text-v1.5.f16.gguf"
+
+all_done() {
+    for m in $MODELS; do
+        [ ! -f "$DEST/$m" ] && return 1
+    done
+    return 0
+}
+
+# Remove stale .aria2 ghost files (artifacts from previous aria2c sessions)
+for m in $MODELS; do
+    a="$DEST/${m}.aria2"
+    [ -f "$a" ] && rm -f "$a" && echo "$(ts) Removed stale .aria2 ghost: $m" >> "$LOG"
+done
+
+if all_done; then
+    echo "$(ts) All models complete — daemon exiting cleanly" >> "$LOG"
+    exit 0
+fi
+
+echo "$(ts) Starting downloads..." >> "$LOG"
+
+# curl_get FILENAME URL
+# -L: follow redirects (fresh signed URL each time)
+# -C -: resume from current local file size (no .aria2 needed)
+# --retry: re-requests original HF URL on failure → fresh XET signed URL
+curl_get() {
+    local filename="$1"
+    local url="$2"
+    local target="$DEST/$filename"
+    [ -f "$target" ] && local existing=$(wc -c < "$target") || local existing=0
+    echo "$(ts) curl: $filename (existing: ${existing} bytes)" >> "$LOG"
+    /usr/bin/curl \
+        -L -C - \
+        --retry 30 --retry-delay 15 --retry-max-time 0 \
+        --max-time 0 --connect-timeout 30 \
+        --speed-limit 512 --speed-time 120 \
+        -A "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)" \
+        -o "$target" \
+        "$url" >> /tmp/curl-gpt4all.log 2>&1
+    local code=$?
+    echo "$(ts) curl done: $filename exit=$code" >> "$LOG"
+    return $code
+}
+
+# 1. DeepSeek R1 7B — 95% done, needs ~250MB
+curl_get "DeepSeek-R1-Distill-Qwen-7B-Q4_0.gguf" \
+    "https://huggingface.co/bartowski/DeepSeek-R1-Distill-Qwen-7B-GGUF/resolve/main/DeepSeek-R1-Distill-Qwen-7B-Q4_0.gguf"
+
+# 2. Nous Hermes 2 Pro (public, no auth required)
+curl_get "Hermes-2-Pro-Mistral-7B.Q4_K_M.gguf" \
+    "https://huggingface.co/NousResearch/Hermes-2-Pro-Mistral-7B-GGUF/resolve/main/Hermes-2-Pro-Mistral-7B.Q4_K_M.gguf"
+
+# 3. Meta Llama 3.1 8B Instruct (bartowski, public)
+curl_get "Meta-Llama-3.1-8B-Instruct-Q4_K_M.gguf" \
+    "https://huggingface.co/bartowski/Meta-Llama-3.1-8B-Instruct-GGUF/resolve/main/Meta-Llama-3.1-8B-Instruct-Q4_K_M.gguf"
+
+if all_done; then
+    echo "$(ts) All models now complete!" >> "$LOG"
+    exit 0
+else
+    echo "$(ts) Still pending — LaunchAgent will retry in 30s" >> "$LOG"
+    exit 1
+fi

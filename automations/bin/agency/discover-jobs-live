@@ -1,0 +1,642 @@
+#!/usr/bin/env python3
+"""
+LIVE JOB DISCOVERY — Scrapes FRESH jobs posted TODAY/THIS WEEK directly from platforms.
+Uses logged-in browser sessions (Profile 1) — no API keys, no cached Google results.
+
+Platforms scraped LIVE:
+  Upwork     → search with recency sort, posted <24h filter
+  Freelancer → /jobs sorted by newest, posted today
+  Guru       → jobs board sorted newest
+  LinkedIn   → freelance/contract jobs posted this week
+  PPH        → posted jobs sorted newest
+  Reddit     → r/forhire, r/PPC [HIRING] posts <48h
+
+Usage:
+  discover-jobs-live               # Scrape all platforms, save today's jobs
+  discover-jobs-live --upwork      # Upwork only
+  discover-jobs-live --freelancer  # Freelancer only
+  discover-jobs-live --reddit      # Reddit only (no browser needed)
+  discover-jobs-live --test        # Quick test, 5 jobs max per platform
+"""
+import os, sys, json, datetime, time, requests
+from pathlib import Path
+
+HOME    = Path.home()
+AGENCY  = HOME / ".claude/agency"
+DATA    = AGENCY / "data"
+LOG     = AGENCY / "logs/discovery.log"
+TODAY   = datetime.date.today().strftime("%Y%m%d")
+OUTPUT  = DATA / f"jobs_{TODAY}.json"
+PROFILE = HOME / ".claude/agency/browser-profile"
+
+DATA.mkdir(parents=True, exist_ok=True)
+LOG.parent.mkdir(parents=True, exist_ok=True)
+
+KEYWORDS = ["meta ads", "facebook ads", "google ads", "ppc", "paid ads",
+            "performance marketing", "media buyer", "roas", "paid social"]
+# Job titles that indicate this is a hiring post for an employee vs freelance
+SKIP_PATTERNS = ["[resume]", "[for hire]", "portfolio", "offering services",
+                 "self-promotion", "looking for work"]
+
+def log(msg):
+    ts = datetime.datetime.now().strftime("%H:%M:%S")
+    line = f"[{ts}] {msg}"
+    print(line, flush=True)
+    with open(LOG, "a") as f:
+        f.write(f"[{datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] {msg}\n")
+
+def is_relevant(title, desc=""):
+    text = (title + " " + desc).lower()
+    return any(kw in text for kw in KEYWORDS)
+
+def get_browser():
+    from playwright.sync_api import sync_playwright
+    p = sync_playwright().start()
+    ctx = p.chromium.launch_persistent_context(
+        user_data_dir=str(PROFILE),
+        headless=False,
+        viewport={"width": 1280, "height": 900},
+        args=["--disable-blink-features=AutomationControlled", "--profile-directory=Profile 1"],
+    )
+    return p, ctx
+
+
+def enrich_descriptions(page, jobs, min_len=200, max_enrich=15):
+    """Visit job URLs to fetch full descriptions for jobs that have short/empty ones."""
+    short_desc = [j for j in jobs if len(j.get("description","")) < min_len and j.get("url")]
+    if not short_desc:
+        return jobs
+
+    log(f"  Enriching {min(len(short_desc), max_enrich)} jobs with full descriptions...")
+    enriched = 0
+    for j in short_desc[:max_enrich]:
+        try:
+            page.goto(j["url"], timeout=20000, wait_until="domcontentloaded")
+            time.sleep(2)
+
+            # Generic description selectors — works across most platforms
+            desc = ""
+            for sel in [
+                "[data-test='Description'] section",  # Upwork
+                ".job-description",
+                "[class*='description']",
+                "[class*='Description']",
+                ".projectDescription",
+                ".jobDescription",
+                "article p",
+                ".details p",
+                "section p",
+            ]:
+                try:
+                    el = page.locator(sel).first
+                    text = el.inner_text(timeout=3000).strip()
+                    if len(text) > 150:
+                        desc = text[:1200]
+                        break
+                except Exception:
+                    pass
+
+            if desc:
+                j["description"] = desc
+                enriched += 1
+        except Exception as e:
+            log(f"  enrich error for {j['url'][:50]}: {e}")
+
+    log(f"  Enriched {enriched} job descriptions")
+    return jobs
+
+
+# ─── UPWORK ──────────────────────────────────────────────────────────────────
+
+def scrape_upwork(page, max_jobs=30):
+    """Scrape Upwork jobs sorted by newest."""
+    log("Scraping Upwork (newest first)...")
+    jobs = []
+
+    # Upwork search: results are React-rendered. Try multiple URL formats.
+    search_urls = [
+        "https://www.upwork.com/nx/search/jobs?q=facebook+ads&sort=recency",
+        "https://www.upwork.com/nx/search/jobs?q=google+ads+ppc&sort=recency",
+        "https://www.upwork.com/nx/search/jobs?q=meta+ads+media+buyer&sort=recency",
+    ]
+
+    for url in search_urls:
+        try:
+            page.goto(url, timeout=30000, wait_until="networkidle")
+            time.sleep(8)  # Upwork React needs time to render job cards
+
+            if "login" in page.url or "account-security" in page.url:
+                log("  ✗ Upwork: not logged in")
+                break
+
+            # Debug: count visible elements to verify page loaded
+            n_links = page.evaluate("document.querySelectorAll('a[href*=\"/jobs/~\"]').length")
+            log(f"    Upwork job-links count: {n_links}")
+
+            # JS-based extraction — Upwork job links always have /jobs/~ pattern
+            result = page.evaluate("""() => {
+                const jobs = [];
+                // Upwork job links always contain /jobs/~ pattern
+                const jobLinks = Array.from(document.querySelectorAll('a[href*="/jobs/~"]'));
+                const seen = new Set();
+                for (const a of jobLinks) {
+                    const href = a.getAttribute('href') || '';
+                    if (seen.has(href)) continue;
+                    seen.add(href);
+                    const title = a.innerText.trim();
+                    if (!title || title.length < 5) continue;
+                    // Walk up to find the card container
+                    const card = a.closest('article, section, [class*="Card"], [class*="Tile"], li') || a.parentElement;
+                    const descEl = card ? card.querySelector('[class*="description"], [class*="Description"], p') : null;
+                    const desc = descEl ? descEl.innerText.trim().substring(0, 800) : '';
+                    const budgetEl = card ? card.querySelector('[class*="budget"], [class*="Budget"], [class*="price"]') : null;
+                    const budget = budgetEl ? budgetEl.innerText.trim() : '';
+                    jobs.push({ title, href, desc, budget });
+                }
+                return jobs.slice(0, 15);
+            }""")
+
+            log(f"  Upwork: {len(result)} job tiles at {url[:60]}")
+
+            for item in result:
+                title = item.get("title","").strip()
+                href  = item.get("href","")
+                desc  = item.get("desc","")
+                budget = item.get("budget","")
+                if not href or not title:
+                    continue
+                job_url = f"https://www.upwork.com{href}" if href.startswith("/") else href
+                if is_relevant(title, desc):
+                    jobs.append({
+                        "platform": "upwork",
+                        "title": title,
+                        "description": desc,
+                        "url": job_url,
+                        "budget": budget,
+                        "posted_at": datetime.datetime.now().isoformat(),
+                        "client_info": {},
+                    })
+
+            if len(jobs) >= max_jobs:
+                break
+        except Exception as e:
+            log(f"  Upwork error: {e}")
+
+    # Fallback: Upwork search results require React. Try direct find-work page.
+    if not jobs:
+        try:
+            content_len = page.evaluate("document.body.innerText.length")
+            log(f"  Upwork browser 0 — body_len={content_len}; trying find-work page...")
+            # The "Find Work" best-matches page shows real job tiles for logged-in users
+            page.goto("https://www.upwork.com/nx/find-work/best-matches", timeout=30000, wait_until="networkidle")
+            time.sleep(8)
+            n2 = page.evaluate("document.querySelectorAll('a[href*=\"/jobs/~\"]').length")
+            log(f"  find-work job-links: {n2}")
+            if n2 > 0:
+                result2 = page.evaluate("""() => {
+                    const jobs = [];
+                    const links = Array.from(document.querySelectorAll('a[href*="/jobs/~"]'));
+                    const seen = new Set();
+                    for (const a of links) {
+                        const href = a.getAttribute('href') || '';
+                        if (seen.has(href)) continue;
+                        seen.add(href);
+                        const t = a.innerText.trim();
+                        if (!t || t.length < 5) continue;
+                        const card = a.closest('article, section, li, [class*="Card"]') || a.parentElement;
+                        const desc = card ? card.innerText.trim().substring(0, 600) : '';
+                        const budgetEl = card ? card.querySelector('[class*="budget"], [class*="Budget"]') : null;
+                        jobs.push({title: t, href, desc, budget: budgetEl ? budgetEl.innerText.trim() : ''});
+                    }
+                    return jobs.slice(0, 15);
+                }""")
+                for item in result2:
+                    if item.get("title") and item.get("href") and is_relevant(item["title"], item.get("desc","")):
+                        jobs.append({
+                            "platform": "upwork",
+                            "title": item["title"],
+                            "description": item.get("desc",""),
+                            "url": "https://www.upwork.com" + item["href"] if item["href"].startswith("/") else item["href"],
+                            "budget": item.get("budget",""),
+                            "posted_at": datetime.datetime.now().isoformat(),
+                            "client_info": {},
+                        })
+            log(f"  Upwork find-work: {len(jobs)} relevant jobs")
+        except Exception as e:
+            log(f"  Upwork fallback error: {e}")
+
+    log(f"  Upwork: {len(jobs)} fresh relevant jobs found")
+    return jobs[:max_jobs]
+
+
+# ─── FREELANCER ──────────────────────────────────────────────────────────────
+
+def scrape_freelancer(page, max_jobs=25):
+    """Scrape Freelancer projects posted today/recently."""
+    log("Scraping Freelancer (newest first)...")
+    jobs = []
+
+    search_urls = [
+        "https://www.freelancer.com/jobs/facebook-ads/?sort_by=time_updated",
+        "https://www.freelancer.com/jobs/internet-marketing/?sort_by=time_updated",
+        "https://www.freelancer.com/jobs/google-adwords/?sort_by=time_updated",
+    ]
+
+    for url in search_urls:
+        try:
+            page.goto(url, timeout=30000, wait_until="domcontentloaded")
+            time.sleep(5)
+
+            if "login" in page.url or "signup" in page.url or "register" in page.url:
+                log("  ✗ Freelancer: not logged in")
+                break
+
+            # JS extraction — grabs all project links + titles
+            result = page.evaluate("""() => {
+                const jobs = [];
+                // Freelancer project cards contain links to /projects/xxx
+                const links = Array.from(document.querySelectorAll('a[href*="/projects/"]'));
+                const seen = new Set();
+                for (const a of links) {
+                    const href = a.getAttribute('href') || '';
+                    if (seen.has(href)) continue;
+                    seen.add(href);
+                    // Skip pagination/nav links
+                    if (href.endsWith('/projects/') || href.includes('/projects/?')) continue;
+                    // Get title — either the link text or closest heading
+                    const card = a.closest('[class*="Card"], [class*="card"], [class*="item"], li');
+                    let title = a.innerText.trim();
+                    if (!title && card) {
+                        const h = card.querySelector('h3, h2, [class*="title"]');
+                        title = h ? h.innerText.trim() : card.innerText.trim().substring(0, 100);
+                    }
+                    let desc = '';
+                    if (card) {
+                        const descEl = card.querySelector('[class*="desc"], [class*="detail"], p');
+                        desc = descEl ? descEl.innerText.trim().substring(0, 500) : '';
+                    }
+                    let budget = '';
+                    if (card) {
+                        const budgetEl = card.querySelector('[class*="budget"], [class*="price"], [class*="amount"]');
+                        budget = budgetEl ? budgetEl.innerText.trim() : '';
+                    }
+                    if (title.length > 8)
+                        jobs.push({ title, href, desc, budget });
+                }
+                return jobs.slice(0, 20);
+            }""")
+
+            log(f"  Freelancer: {len(result)} items at {url[:60]}")
+
+            for item in result:
+                title = item.get("title","").strip()
+                href  = item.get("href","")
+                desc  = item.get("desc","")
+                budget = item.get("budget","")
+                if not title or not href:
+                    continue
+                job_url = f"https://www.freelancer.com{href}" if href.startswith("/") else href
+                if is_relevant(title, desc):
+                    jobs.append({
+                        "platform": "freelancer",
+                        "title": title,
+                        "description": desc,
+                        "url": job_url,
+                        "budget": budget,
+                        "posted_at": datetime.datetime.now().isoformat(),
+                        "client_info": {},
+                    })
+
+            if len(jobs) >= max_jobs:
+                break
+        except Exception as e:
+            log(f"  Freelancer error: {e}")
+
+    log(f"  Freelancer: {len(jobs)} fresh relevant jobs found")
+    return jobs[:max_jobs]
+
+
+# ─── GURU ────────────────────────────────────────────────────────────────────
+
+def scrape_guru(page, max_jobs=15):
+    """Scrape Guru jobs sorted newest."""
+    log("Scraping Guru (newest first)...")
+    jobs = []
+
+    urls = [
+        # Guru search — as logged-in freelancer, /d/jobs/ redirects to /work/?q=...
+        # Use /work/ directly with search query parameter
+        "https://www.guru.com/work/?search=facebook+ads+ppc",
+        "https://www.guru.com/work/?search=google+ads+paid+search",
+    ]
+
+    for url in urls:
+        try:
+            page.goto(url, timeout=20000, wait_until="domcontentloaded")
+            time.sleep(3)
+
+            if "login" in page.url or "signup" in page.url:
+                log("  ✗ Guru: not logged in")
+                break
+
+            # JS extraction — Guru work page shows job tiles in React feed
+            result = page.evaluate("""() => {
+                const jobs = [];
+                // Look for job items in the work feed
+                const allLinks = Array.from(document.querySelectorAll('a[href]'));
+                const seen = new Set();
+                for (const a of allLinks) {
+                    const href = a.getAttribute('href') || '';
+                    // Guru job links contain /d/jobs/ with a slug (more than 4 path parts)
+                    if (!href.includes('/d/jobs/') || href.split('/').length < 5) continue;
+                    if (seen.has(href)) continue;
+                    seen.add(href);
+                    const title = a.innerText.trim();
+                    const card = a.closest('li, article, [class*="job"], [class*="Job"], [class*="bid"]') || a.parentElement;
+                    const desc = card ? card.innerText.trim().substring(0, 400) : '';
+                    if (title || desc) jobs.push({title: title || desc.substring(0, 80), href, desc});
+                }
+                return jobs.slice(0, 15);
+            }""")
+
+            log(f"  Guru: {len(result)} items at {url[:60]}")
+
+            for item in result:
+                title = item.get("title","").strip()
+                href  = item.get("href","")
+                desc  = item.get("desc","")
+                if not title or not href:
+                    continue
+                job_url = f"https://www.guru.com{href}" if href.startswith("/") else href
+                if is_relevant(title, desc):
+                    jobs.append({
+                        "platform": "guru",
+                        "title": title,
+                        "description": desc[:400],
+                        "url": job_url,
+                        "budget": "",
+                        "posted_at": datetime.datetime.now().isoformat(),
+                        "client_info": {},
+                    })
+
+            if len(jobs) >= max_jobs:
+                break
+
+        except Exception as e:
+            log(f"  Guru error: {e}")
+
+    log(f"  Guru: {len(jobs)} fresh relevant jobs found")
+    return jobs[:max_jobs]
+
+
+# ─── PEOPLEPERHOUR ───────────────────────────────────────────────────────────
+
+def scrape_pph(page, max_jobs=15):
+    """Scrape PeoplePerHour jobs."""
+    log("Scraping PeoplePerHour (newest first)...")
+    jobs = []
+
+    urls = [
+        # Category pages — these reliably show job listings, sorted by date
+        "https://www.peopleperhour.com/freelance-jobs/digital-marketing/sem-google-ads-ppc",
+        "https://www.peopleperhour.com/freelance-jobs/digital-marketing/social-media-marketing",
+        "https://www.peopleperhour.com/freelance-jobs/digital-marketing",
+    ]
+
+    for url in urls:
+        try:
+            page.goto(url, timeout=20000, wait_until="domcontentloaded")
+            time.sleep(3)
+
+            if "login" in page.url or "signup" in page.url or "register" in page.url:
+                log("  ✗ PPH: not logged in")
+                break
+
+            # JS extraction — PPH job links follow /freelance-jobs/CATEGORY/SLUG pattern with numeric ID
+            result = page.evaluate("""() => {
+                const jobs = [];
+                // PPH job links: /freelance-jobs/category/subcategory/job-title-NNNNN
+                const links = Array.from(document.querySelectorAll('a[href*="/freelance-jobs/"]'));
+                const seen = new Set();
+                for (const a of links) {
+                    const href = a.getAttribute('href') || '';
+                    // Only individual job pages (have numeric ID at end)
+                    if (!href.match(/\d{5,}$/)) continue;
+                    if (seen.has(href)) continue;
+                    seen.add(href);
+                    const title = a.innerText.trim();
+                    const card = a.closest('li, article, [class*="card"], [class*="Card"]') || a.parentElement;
+                    const desc = card ? card.innerText.trim().substring(0, 300) : '';
+                    jobs.push({title: title || desc.substring(0, 80), href, desc});
+                }
+                return jobs.slice(0, 15);
+            }""")
+
+            log(f"  PPH: {len(result)} items at {url[:60]}")
+
+            for item in result:
+                title = item.get("title","").strip()
+                href  = item.get("href","")
+                desc  = item.get("desc","")
+                if not title or not href:
+                    continue
+                job_url = href if href.startswith("http") else f"https://www.peopleperhour.com{href}"
+                if is_relevant(title, desc):
+                    jobs.append({
+                        "platform": "peopleperhour",
+                        "title": title,
+                        "description": desc[:400],
+                        "url": job_url,
+                        "budget": "",
+                        "posted_at": datetime.datetime.now().isoformat(),
+                        "client_info": {},
+                    })
+
+            if len(jobs) >= max_jobs:
+                break
+        except Exception as e:
+            log(f"  PPH error: {e}")
+
+    log(f"  PPH: {len(jobs)} fresh relevant jobs found")
+    return jobs[:max_jobs]
+
+
+# ─── REDDIT ──────────────────────────────────────────────────────────────────
+
+def scrape_reddit_api(max_jobs=20):
+    """Scrape Reddit via API (no browser needed) for hiring posts."""
+    log("Scraping Reddit (API, no browser)...")
+    jobs = []
+    now = datetime.datetime.now().timestamp()
+    cutoff = now - 72 * 3600  # 72h
+
+    subreddits = [
+        ("forhire", "[HIRING]"),
+        ("forhire", "meta ads"),
+        ("forhire", "google ads"),
+        ("PPC", ""),
+        ("hiring", "ads"),
+        ("digitalmarketing", "hire"),
+        ("freelance", "ads manager"),
+    ]
+
+    headers = {"User-Agent": "DigiMindsBot/1.0 (by /u/digiminds)"}
+
+    for sub, q in subreddits:
+        try:
+            params = {"sort": "new", "limit": 20, "t": "week"}
+            if q:
+                params["q"] = q
+                url = f"https://www.reddit.com/r/{sub}/search.json"
+            else:
+                url = f"https://www.reddit.com/r/{sub}/new.json"
+
+            r = requests.get(url, params=params, headers=headers, timeout=15)
+            posts = r.json().get("data", {}).get("children", [])
+
+            for post in posts:
+                d = post["data"]
+                ts = d.get("created_utc", 0)
+                if ts < cutoff:
+                    continue
+
+                title = d.get("title", "")
+                text = d.get("selftext", "")
+                post_url = "https://reddit.com" + d.get("permalink", "")
+                age_h = (now - ts) / 3600
+
+                # Skip non-hiring posts
+                if any(sp in title.lower() for sp in SKIP_PATTERNS):
+                    continue
+
+                if not is_relevant(title, text):
+                    continue
+
+                jobs.append({
+                    "platform": "reddit",
+                    "title": f"[r/{sub}] {title}",
+                    "description": text[:500],
+                    "url": post_url,
+                    "budget": "",
+                    "posted_at": datetime.datetime.fromtimestamp(ts).isoformat(),
+                    "client_info": {"age_hours": age_h},
+                })
+        except Exception as e:
+            log(f"  Reddit r/{sub} error: {e}")
+
+    # Deduplicate by URL
+    seen = set()
+    unique = []
+    for j in jobs:
+        if j["url"] not in seen:
+            seen.add(j["url"])
+            unique.append(j)
+
+    log(f"  Reddit: {len(unique)} fresh relevant posts found")
+    return unique[:max_jobs]
+
+
+# ─── MAIN ────────────────────────────────────────────────────────────────────
+
+def load_existing():
+    if OUTPUT.exists():
+        return json.loads(OUTPUT.read_text())
+    return []
+
+def save_jobs(all_jobs):
+    # Deduplicate by URL
+    seen_urls = set()
+    unique = []
+    for j in all_jobs:
+        url = j.get("url","")
+        if url and url not in seen_urls:
+            seen_urls.add(url)
+            unique.append(j)
+
+    # Wrap in {"jobs": [...]} so quality-filter can parse it
+    output_data = {
+        "total_discovered": len(unique),
+        "date": TODAY,
+        "jobs": unique,
+        "platform_breakdown": {},
+    }
+    from collections import Counter
+    output_data["platform_breakdown"] = dict(Counter(j["platform"] for j in unique))
+
+    OUTPUT.write_text(json.dumps(output_data, indent=2))
+    log(f"Saved {len(unique)} jobs → {OUTPUT}")
+    return unique
+
+def main():
+    args = sys.argv[1:]
+    test_mode = "--test" in args
+    max_jobs = 5 if test_mode else 30
+
+    only_reddit = "--reddit" in args
+    only_upwork = "--upwork" in args
+    only_freelancer = "--freelancer" in args
+
+    log(f"LIVE JOB DISCOVERY — {datetime.date.today()}")
+    log(f"Keywords: {', '.join(KEYWORDS[:4])}")
+
+    all_jobs = []
+
+    # Reddit first (no browser needed, fastest)
+    if not only_upwork and not only_freelancer:
+        reddit_jobs = scrape_reddit_api(max_jobs)
+        all_jobs.extend(reddit_jobs)
+        log(f"Reddit: {len(reddit_jobs)} jobs")
+
+    if only_reddit:
+        save_jobs(all_jobs)
+        return 0
+
+    # Browser-based scraping
+    p_browser, ctx = get_browser()
+    page = ctx.new_page()
+
+    try:
+        if not only_freelancer:
+            upwork_jobs = scrape_upwork(page, max_jobs)
+            all_jobs.extend(upwork_jobs)
+
+        if not only_upwork:
+            fl_jobs = scrape_freelancer(page, max_jobs)
+            all_jobs.extend(fl_jobs)
+
+            if not only_freelancer:
+                guru_jobs = scrape_guru(page, max_jobs // 2)
+                all_jobs.extend(guru_jobs)
+
+                pph_jobs = scrape_pph(page, max_jobs // 2)
+                all_jobs.extend(pph_jobs)
+
+        # Enrich short descriptions — visit each job page to get full description
+        # Required: quality-filter hard-rejects jobs with desc < 200 chars
+        if not test_mode:
+            all_jobs = enrich_descriptions(page, all_jobs, min_len=200, max_enrich=20)
+        else:
+            all_jobs = enrich_descriptions(page, all_jobs, min_len=200, max_enrich=5)
+
+    except Exception as e:
+        log(f"Browser scraping error: {e}")
+    finally:
+        ctx.close()
+        p_browser.stop()
+
+    total = save_jobs(all_jobs)
+
+    log(f"\n{'='*50}")
+    log(f"DISCOVERY COMPLETE: {len(total)} fresh jobs saved")
+
+    from collections import Counter
+    by_plat = Counter(j["platform"] for j in total)
+    for plat, count in sorted(by_plat.items(), key=lambda x: -x[1]):
+        log(f"  {plat}: {count}")
+
+    log(f"\nRun next: quality-filter jobs_{TODAY}.json --apply")
+    log(f"{'='*50}")
+    return 0
+
+if __name__ == "__main__":
+    sys.exit(main())

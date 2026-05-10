@@ -1,0 +1,151 @@
+#!/usr/bin/env bash
+# github-sync — Syncs COMPLETE system to GitHub portfolio repo
+# Auto-triggered by skill-auto-activate + daily LaunchAgent at 6:30AM
+
+set -e
+
+REPO="/Users/mc/claude-ai-system"
+CLAUDE_DIR="/Users/mc/.claude"
+N8N_SRC="$HOME/installed-repos/n8nworkflows.xyz/workflows"
+
+echo "[github-sync] Starting sync at $(date '+%Y-%m-%d %H:%M:%S')"
+
+if [ ! -d "$REPO/.git" ]; then
+  echo "[github-sync] ERROR: $REPO is not a git repo."
+  exit 1
+fi
+
+mkdir -p "$REPO"/{skills-active,skills-archive,agents,scheduled-tasks,n8n-workflows,installed-repos,automations/bin,automations/launchagents}
+
+# 1. Active skills (full content)
+echo "[github-sync] Syncing active skills..."
+rsync -a --delete "$CLAUDE_DIR/skills/" "$REPO/skills-active/" 2>/dev/null || true
+
+# 2. Skills archive — extract SKILL.md from each (deduplicated)
+echo "[github-sync] Syncing skills archive..."
+find "$CLAUDE_DIR/skills-archive" -maxdepth 2 -name "SKILL.md" 2>/dev/null | while read f; do
+  DIR=$(dirname "$f")
+  BASENAME=$(basename "$DIR" | sed 's/-[A-F0-9]\{8\}$//')
+  DEST="$REPO/skills-archive/$BASENAME"
+  mkdir -p "$DEST"
+  cp "$f" "$DEST/SKILL.md" 2>/dev/null || true
+done
+
+# 3. Agents (md files only)
+echo "[github-sync] Syncing agents..."
+rsync -a --delete --include="*.md" --include="*.yaml" --exclude="*" \
+  "$CLAUDE_DIR/agents/" "$REPO/agents/" 2>/dev/null || true
+
+# 4. Scheduled tasks (full)
+echo "[github-sync] Syncing scheduled tasks..."
+rsync -a --delete "$CLAUDE_DIR/scheduled-tasks/" "$REPO/scheduled-tasks/" 2>/dev/null || true
+
+# 5. Automation scripts
+echo "[github-sync] Syncing automation scripts..."
+rsync -a --delete "$CLAUDE_DIR/bin/" "$REPO/automations/bin/" 2>/dev/null || true
+
+# 6. LaunchAgents
+echo "[github-sync] Syncing LaunchAgents..."
+ls ~/Library/LaunchAgents/ai.hmz.*.plist 2>/dev/null | while read f; do
+  cp "$f" "$REPO/automations/launchagents/" 2>/dev/null || true
+done
+
+# 7. Installed repos — README/SKILL.md only
+echo "[github-sync] Syncing installed repo docs..."
+ls ~/installed-repos/ 2>/dev/null | while read REPONAME; do
+  SRC="$HOME/installed-repos/$REPONAME"
+  [ -d "$SRC" ] || continue
+  DEST="$REPO/installed-repos/$REPONAME"
+  mkdir -p "$DEST"
+  find "$SRC" -maxdepth 3 \( -name "README.md" -o -name "SKILL.md" -o -name "AGENTS.md" \) \
+    -exec cp {} "$DEST/" \; 2>/dev/null || true
+  [ -z "$(ls -A $DEST 2>/dev/null)" ] && echo "# $REPONAME" > "$DEST/README.md"
+done
+
+# 8. n8n workflow manifest (index only — 8159 workflows)
+echo "[github-sync] Rebuilding n8n workflow manifest..."
+python3 << 'PYEOF'
+import os
+
+src = os.path.expanduser("~/installed-repos/n8nworkflows.xyz/workflows")
+out = "/Users/mc/claude-ai-system/n8n-workflows"
+os.makedirs(out, exist_ok=True)
+
+if not os.path.isdir(src):
+    exit(0)
+
+dirs = [d for d in os.listdir(src) if os.path.isdir(os.path.join(src,d))]
+
+cats = {
+    "Gmail/Email": [], "Slack": [], "LinkedIn": [], "Telegram": [],
+    "AI/GPT/LLM": [], "Google Sheets": [], "Airtable": [], "CRM/Sales": [],
+    "Ecommerce": [], "SEO/Content": [], "Social Media": [],
+    "Data/Reporting": [], "Security/Compliance": [], "Other": []
+}
+
+for d in sorted(dirs):
+    name = d.rsplit('-',1)[0]
+    dl = name.lower()
+    if any(k in dl for k in ['gmail','email','mailchimp','sendgrid']): cats["Gmail/Email"].append(name)
+    elif 'slack' in dl: cats["Slack"].append(name)
+    elif 'linkedin' in dl: cats["LinkedIn"].append(name)
+    elif 'telegram' in dl: cats["Telegram"].append(name)
+    elif any(k in dl for k in ['gpt','openai','claude','gemini',' ai ','llm']): cats["AI/GPT/LLM"].append(name)
+    elif 'sheet' in dl: cats["Google Sheets"].append(name)
+    elif 'airtable' in dl: cats["Airtable"].append(name)
+    elif any(k in dl for k in ['crm','hubspot','salesforce','apollo','sales']): cats["CRM/Sales"].append(name)
+    elif any(k in dl for k in ['shopify','woocommerce','ecommerce','stripe']): cats["Ecommerce"].append(name)
+    elif any(k in dl for k in ['seo','content','blog','wordpress']): cats["SEO/Content"].append(name)
+    elif any(k in dl for k in ['instagram','twitter','facebook','social','tiktok']): cats["Social Media"].append(name)
+    elif any(k in dl for k in ['report','dashboard','analytics','data']): cats["Data/Reporting"].append(name)
+    elif any(k in dl for k in ['security','compliance','audit','soc']): cats["Security/Compliance"].append(name)
+    else: cats["Other"].append(name)
+
+with open(f"{out}/WORKFLOW-MANIFEST.md", "w") as f:
+    f.write(f"# n8n Automation Workflow Library — {len(dirs):,} Workflows\n\n")
+    f.write("Part of [claude-ai-system](https://github.com/hmzainjamil/claude-ai-system)\n\n")
+    for cat, items in cats.items():
+        if items:
+            f.write(f"### {cat} ({len(items):,} workflows)\n\n")
+            for item in items[:50]:
+                f.write(f"- {item}\n")
+            if len(items) > 50:
+                f.write(f"- *...and {len(items)-50} more*\n")
+            f.write("\n")
+PYEOF
+
+# 9. Strip credentials
+echo "[github-sync] Stripping credentials..."
+find "$REPO" -type f \( -name "*.md" -o -name "*.sh" -o -name "*.py" -o -name "*.yaml" \) | \
+  xargs sed -i '' \
+    -e 's/\(API_KEY\s*=\s*["'"'"']\?\)[A-Za-z0-9_\-]\{20,\}/\1[REDACTED]/g' \
+    -e 's/\(SECRET\s*=\s*["'"'"']\?\)[A-Za-z0-9_\-]\{20,\}/\1[REDACTED]/g' \
+    -e 's/\(TOKEN\s*=\s*["'"'"']\?\)[A-Za-z0-9_\-]\{20,\}/\1[REDACTED]/g' \
+    -e 's/sk-[A-Za-z0-9]\{20,\}/[REDACTED]/g' \
+    -e 's/ghp_[A-Za-z0-9]\{20,\}/[REDACTED]/g' \
+    -e 's/github_pat_[A-Za-z0-9_]\{20,\}/[REDACTED]/g' \
+    2>/dev/null || true
+
+# 10. Git commit and push
+cd "$REPO"
+
+if [ -n "$GITHUB_TOKEN" ]; then
+  UNAME="${GITHUB_USERNAME:-hmzainjamil}"
+  git remote set-url origin "https://${GITHUB_TOKEN}@github.com/${UNAME}/claude-ai-system.git" 2>/dev/null || true
+fi
+
+git add -A
+
+if git diff --staged --quiet; then
+  echo "[github-sync] No changes to commit."
+else
+  ACTIVE=$(ls "$REPO/skills-active/" | wc -l | tr -d ' ')
+  ARCHIVED=$(ls "$REPO/skills-archive/" | wc -l | tr -d ' ')
+  AGENTS=$(ls "$REPO/agents/" | wc -l | tr -d ' ')
+  DATE=$(date '+%Y-%m-%d %H:%M')
+  git commit -m "sync: $DATE — ${ACTIVE} skills, ${ARCHIVED} archived, ${AGENTS} agents"
+  git push origin main
+  echo "[github-sync] ✅ Pushed to GitHub."
+fi
+
+echo "[github-sync] Done at $(date '+%Y-%m-%d %H:%M:%S')"

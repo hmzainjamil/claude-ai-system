@@ -1,0 +1,60 @@
+#!/usr/bin/env python3
+"""
+HMZ BDM Catch-up — runs on SessionStart.
+Checks if any BDM tasks were missed while laptop was off.
+If missed, outputs instructions for Claude to trigger them immediately.
+State tracked in ~/.claude/bdm-task-state.json
+"""
+import json
+import os
+import sys
+from datetime import datetime, timezone
+
+STATE_FILE = os.path.expanduser("~/.claude/bdm-task-state.json")
+
+# Task definitions: id → expected interval in hours
+TASKS = {
+    "hmz-bdm-morning-sweep":  {"interval_h": 24, "label": "Morning Sweep (9 AM)"},
+    "hmz-bdm-evening-sweep":  {"interval_h": 24, "label": "Evening Sweep (9 PM)"},
+    "hmz-indeed-mcp-sweep":   {"interval_h": 24, "label": "Indeed MCP Sweep (1 PM)"},
+    "hmz-daily-leads":        {"interval_h": 24, "label": "Daily Leads (7 AM)"},
+}
+
+# Load state
+state = {}
+if os.path.exists(STATE_FILE):
+    try:
+        with open(STATE_FILE) as f:
+            state = json.load(f)
+    except Exception:
+        state = {}
+
+now = datetime.now(timezone.utc)
+missed = []
+
+for task_id, cfg in TASKS.items():
+    last_run_str = state.get(task_id, {}).get("lastRunAt")
+    if not last_run_str:
+        # Never tracked — assume missed to be safe
+        missed.append((task_id, cfg["label"], "never recorded"))
+        continue
+    try:
+        last_run = datetime.fromisoformat(last_run_str)
+        hours_since = (now - last_run).total_seconds() / 3600
+        # Missed if more than interval + 2h buffer
+        if hours_since > (cfg["interval_h"] + 2):
+            missed.append((task_id, cfg["label"], f"{hours_since:.1f}h ago"))
+    except Exception:
+        missed.append((task_id, cfg["label"], "state parse error"))
+
+if missed:
+    print("⚠️  HMZ BDM MISSED TASKS DETECTED — laptop was off or tasks skipped:")
+    for task_id, label, reason in missed:
+        print(f"  • {task_id} ({label}) — last run: {reason}")
+    print()
+    print("ACTION REQUIRED: Use mcp__scheduled-tasks__update_scheduled_task to set")
+    print("fireAt = now + 2 minutes for each missed task listed above, then run them.")
+    print("Task IDs to trigger:", ", ".join(t[0] for t in missed))
+else:
+    # Silent — no missed tasks
+    pass

@@ -1,55 +1,56 @@
-# Skills Reference — All 45 Skills
+# Skills Reference — All Skills
 
-Auto-generated from `skills/` directory.
+Auto-generated from `skills/` directory. Last updated: 2026-05-10 21:00 UTC
 
 ---
 
-| Skill | Description | Trigger Keywords | Key Tools | Output |
-|---|---|---|---|---|
-| `lead-gen-ai` | Automated lead extraction — Vibe Prospecting + Apollo + Excel export + outreach sequences | find leads, lead gen, extract leads, vibe prospecting, apollo leads | Vibe Prospecting MCP, Apollo MCP, Airtable SDK | Excel spreadsheet + cold email sequences |
-| `website-builder` | $10K site from one prompt — 4-actor pipeline (Stitch → UI/UX → Framer → Production) | build website, create website, website builder, 10k website, ai website | Google Stitch MCP, Framer Motion, Claude Preview | Production React/Next.js site |
-| `premium-web-design` | AI design workflow — Stitch mockup → production code with 4-tool stack | premium website, web design workflow, stitch mockup | Google Stitch MCP, 21st.dev, Framer | Pixel-perfect production website |
-| `vibe-prospecting` | Vibe Prospecting MCP wrapper — fetch-entities, enrich-prospects, export-to-csv | vibe prospecting, business search, find businesses | Vibe Prospecting MCP | Business entity list with contact data |
-| `all-agents` | Orchestrates all 210 specialist agents simultaneously for comprehensive tasks | comprehensive, 360, full analysis, all agents | All 210 agent .md files | Multi-division analysis report |
-| `token-turbo` | Token reduction enforcement — Tier 0 routing, max compression, caveman mode | (always-on) | llm-burst, Groq, DeepSeek | Compressed output, zero Claude burn |
-| `caveman` | Maximum output compression — removes all filler, bullet-point density | (always-on) | compress, summarize | Dense compressed output |
-| `compress` | Context compression — prunes redundant content from active context | (always-on) | context-window-management | Pruned context |
-| `context-compression` | Active context compression to prevent window overflow | (always-on) | compact-guard | Compressed context |
-| `context-window-management` | Smart context pruning strategy — knows when and what to prune | (always-on) | compress | Managed context window |
-| `skill-router` | Routes prompts to correct skill based on keyword matching | (always-on) | skill-auto-activate | Correct skill loaded |
-| `find-skills` | Search and discover available skills by keyword | find skill, which skill, what skill | skill-search bin script | Matching skill list |
-| `compact-guard` | Guards against context explosion and skill bloat | (always-on) | context-window-management | Protected context |
-| `summarize` | Compress long outputs into dense structured summaries | summarize, tldr, condense | compress, caveman | Dense summary |
-| `optimize-commands` | Optimize Claude Code command execution for speed and cost | optimize command, dgm | (internal) | Optimized command plan |
-| `optimize-dgm-command` | DGM (Do it Go Mode) command optimizer | dgm, optimize dgm | (internal) | Optimized DGM output |
-| `launch-optimized` | Launch sequence optimizer — sets up context at session start | (session-start) | skill-auto-activate | Optimized session state |
-| `prompt-shortcuts` | Shorthand command expansion — /ps and other shortcuts | /ps, shortcuts, shorthand | (internal) | Expanded prompt |
-| `ui-ux-promax` | UI/UX Pro Max — 50+ styles, 161 color palettes, 57 font pairings | ui, ux, design system, color palette | (internal reference) | Design system applied |
-| `ui-ux-pro-max` | Extended UI/UX design system (alias) | ui/ux, design | (internal reference) | Design system applied |
-| `framer-motion-builder` | Framer Motion animations — fade, scale, stagger, scroll-reveal, page transitions | framer motion, animations, scroll reveal | Framer Motion library | Animated React components |
-| `geo-brand-mentions` | AI citation tracking — monitors brand in ChatGPT, Perplexity, Gemini, Claude | brand mentions, geo mentions, ai citations | WebSearch, WebFetch | Citation audit report |
-| `local-seo-30k` | 22-prompt Local SEO workflow — GBP, reviews, citations, schema | seo audit, local seo, seo workflow | WebFetch, Apify | Full SEO audit + action plan |
-| `apify-actor-development` | Build, test, and deploy Apify scraping actors | apify actor, build actor, apify dev | Apify MCP, Bash | Deployed Apify actor |
-| `apify-actorization` | Convert any scraper to a deployable Apify actor | actorize, apify convert, package scraper | Apify MCP | Packaged actor |
-| `apify-ultimate-scraper` | Universal web scraper via Apify — any site, any data | scrape, extract, web scraping | Apify MCP | Extracted data in structured format |
-| `apify-generate-output-schema` | Generate Apify actor output schemas automatically | apify schema, output schema | Apify MCP | Valid output schema JSON |
-| `reportlab-pdf-master` | Branded 11-page audit PDFs via ReportLab — client brand palette from URL | pdf report, audit pdf, create pdf, reportlab | ReportLab, Bash (Python) | Branded 11-page PDF |
-| `report-creator` | Multi-format report generator — PDF, DOCX, Excel | create report, generate report, client report | reportlab-pdf-master, Word MCP | Report in requested format |
-| `legal-review` | Contract and agreement checker — parties, terms, risks, recommendations | legal review, contract review, nda review | Read, Write | Annotated contract review |
-| `market-proposal` | Client proposal generator — 7-section structure with pricing | market proposal, client proposal, write proposal | Write | Professional proposal doc |
-| `market-social` | Social media marketing — LinkedIn, Instagram, Twitter, Facebook | social media, instagram, linkedin post, content calendar | Write, Canva MCP | Social content calendar |
-| `client-hunting` | Multi-platform lead gen — Arc.dev, Indeed, LinkedIn, Facebook | find clients, client hunting, prospect | WebSearch, Indeed MCP | Ranked opportunity list |
-| `outcome-pricing` | Performance-based fee structures — % of spend, revenue share, retainer | outcome pricing, performance pricing, results-based | Write | Pricing model + contract template |
-| `service-productizer` | Package services into tiered products with clear deliverables | productize, service package, pricing tiers | Write | 3-tier service packages |
-| `sub-brand-generator` | Niche brand creation — identity, naming, positioning, visual direction | sub brand, niche brand, create brand, brand generator | Write, Luma Image | Brand identity package |
-| `airtable-sdk` | Full Airtable integration — read/write/sync records and bases | airtable, airtable base, airtable records | Airtable MCP | Airtable base populated |
-| `g0dm0d3` | 55-model ultra racing via OpenRouter — best possible output from all models | g0dm0d3, godmode, race all models, ultraplinian | OpenRouter API, llm-burst | Best model output from 55 models |
-| `luma-image` | Luma AI image and video generation | luma, dream machine, luma video, luma image | Luma API | Generated images/videos |
-| `opusclip` | AI video clipping — long video to 10-30 viral short clips | opusclip, clip video, repurpose video, viral clips | OpusClip API | Short video clips |
-| `ugc-agency` | Arcads AI actor pipeline for UGC ad generation | ugc ads, ugc agency, arcads, ai actors, generate ugc | Arcads API, Bash | UGC video ads |
-| `modernization-audit` | Legacy system analysis and modernization roadmap | modernization audit, legacy system, tech audit | Read, Grep, Glob | Modernization roadmap |
-| `auto-learn` | Automatic memory writing — captures learnings and writes to MEMORY.md | (always-on, Stop hook) | Bash, Write | Memory files updated |
-| `customer-matrix` | Customer segmentation and ICP matrix analysis | customer matrix, segmentation, icp, ideal customer | Write | Customer matrix document |
+| Skill | Description | Trigger Keywords |
+|---|---|---|
+| `airtable-sdk` | — | airtable, airtable base, airtable records, write to airtable, sync airtable, airtable integration, meta ads to airtable |
+| `all-agents` | Orchestrates all 210 specialist agents simultaneously. Auto-discovers skills, MCP servers, repos. Used for comprehensive/360/full-analysis tasks. | — |
+| `apify-actor-development` | Apify Actor Development | — |
+| `apify-actorization` | Actorization converts existing software into reusable serverless applications compatible with the Apify platform. Actors are programs packaged as Dock | — |
+| `apify-generate-output-schema` | Generate output schemas (dataset_schema.json, output_schema.json, key_value_store_schema.json) for an Apify Actor by analyzing its source code. Use wh | — |
+| `apify-ultimate-scraper` | Universal Web Scraper | — |
+| `auto-learn` | Auto-captures corrections and confirmations from every conversation → writes to ~/.claude/session-queue.jsonl → processed by Stop hook into memory files. | — |
+| `caveman` | Full docs: ~/.claude/skills-docs/caveman-FULL.md | — |
+| `client-hunting` | — | find clients, client hunting, lead generation, prospect, find leads, outreach |
+| `compact-guard` | Smart context compaction with state preservation. Saves critical files, task progress, and working state before compaction, restores after. Use before | — |
+| `compress` | Full docs: ~/.claude/skills-docs/compress-FULL.md | — |
+| `context-compression` | Compress conversation history when context fills up. Use anchored iterative summarization to preserve file changes, decisions, and session intent without losing critical details. | — |
+| `context-window-management` | Context Window Management | — |
+| `customer-matrix` | — | customer matrix, ICP, ideal customer, audience segment, target customer, buyer persona |
+| `find-skills` | This skill helps you discover and install skills from the open agent skills ecosystem. | — |
+| `framer-motion-builder` | Framer Motion animation library — fade, scale, stagger, scroll-reveal, page transitions. Used in website-builder Actor 4 for production-quality React animations. | — |
+| `g0dm0d3` | — | g0dm0d3, godmode, ultraplinian, race all models, best model possible |
+| `geo-brand-mentions` | — | brand mentions, geo mentions, ai citations, brand cited, perplexity mentions, chatgpt mentions |
+| `launch-optimized` | DIGIMINDS MASTER COMMAND — 360-DEGREE COMPREHENSIVE ANALYSIS integrating ALL 9,518 skills, | "premium website" / "premium site" / "build a site" / "web design workflow"           "stitch mockup" / "google stitch" ... |
+| `lead-gen-ai` | Automated lead extraction system — Vibe Prospecting MCP + Apollo MCP + Excel export + outreach sequences. Also orchestrates hmz-daily-leads, hmz-bdm-morning-sweep, hmz-bdm-evening-sweep, hmz-indeed-mcp-sweep scheduled pipelines. | lead generation, find leads, extract leads, lead gen, vibe prospecting, find contacts, scrape leads, dental clinic leads... |
+| `legal-review` | — | legal review, contract review, nda review, terms review, agreement check, legal check |
+| `local-seo-30k` | — | seo audit, do seo, run seo, seo workflow, seo system, seo reporting, seo architecture, seo of the business |
+| `luma-image` | — | luma, dream machine, luma ai, luma video, luma image, uni-1 |
+| `market-proposal` | — | market proposal, client proposal, write proposal, proposal template, send proposal, pitch deck |
+| `market-social` | — | social media, instagram, linkedin post, twitter, social strategy, content calendar, social content |
+| `modernization-audit` | — | modernization audit, legacy system, old system, tech audit, stack audit, modernize |
+| `optimize-commands` | Ultra-fast token-efficient execution. token-turbo + caveman + parallel blast + multi-model routing. Active by default — no command needed. | ** "airtable" / "airtable base" / "write to airtable" / "sync airtable" / "airtable sdk" / "airtable integration" / "met... |
+| `optimize-dgm-command` | 360° digital marketing intelligence. 18 services parallel: ads, SEO/AEO/GEO, CRM, agency, social, email, video, automation. Caveman mode, 75-95% token reduction. | — |
+| `opusclip` | — | opusclip, clip video, repurpose video, short clips, viral clips, tiktok clips, reels from video |
+| `outcome-pricing` | — | outcome pricing, performance pricing, results-based pricing, % of spend, revenue share, pay on results |
+| `premium-web-design` | — | premium website, build a site, web design workflow, stitch mockup, google stitch, nano banana, 21st.dev, ux skill pack, ... |
+| `prompt-shortcuts` | — | /ELI5, /TLDR, /EXEC SUMMARY, /CHECKLIST, /TABLE, /BULLET, /HOOK, /CTA, etc. |
+| `report-creator` | — | create report, generate report, build report, audit report, weekly report, monthly report, client report |
+| `reportlab-pdf-master` | — | pdf report, audit pdf, reportlab, generate pdf, create pdf, 11-page, branded pdf |
+| `service-productizer` | — | productize, service package, package service, pricing tiers, service offer, retainer package |
+| `skill-router` | Use when the user is unsure which skill to use or where to start. Interviews the user with targeted questions and recommends the best skill(s) from th | — |
+| `sub-brand-generator` | — | sub brand, niche brand, create brand, brand identity, new brand, brand name, brand generator |
+| `summarize` | Summarize or extract text/transcripts from URLs, podcasts, and local files (great fallback for “transcribe this YouTube/video”). | — |
+| `token-turbo` | Token reduction enforcement — max compression, minimal output, caveman mode. Always-on alongside caveman skill. | — |
+| `ugc-agency` | — | ugc ads, ugc agency, arcads, ai actors, ai ugc, generate ugc, ugc video, ugc brief, generate 20 ads, lipsync ads |
+| `ui-ux-pro-max` | UI/UX design intelligence. 67 styles, 96 palettes, 57 font pairings, 25 charts, 13 stacks (React, Next.js, Vue, Svelte, SwiftUI, React Native, Flutter, Tailwind, shadcn/ui). Actions: plan, build, create, design, implement, review, fix, improve, optimize, enhance, refactor, check UI/UX code. Projects: website, landing page, dashboard, admin panel, e-commerce, SaaS, portfolio, blog, mobile app, .html, .tsx, .vue, .svelte. Elements: button, modal, navbar, sidebar, card, table, form, chart. Styles: glassmorphism, claymorphism, minimalism, brutalism, neumorphism, bento grid, dark mode, responsive, skeuomorphism, flat design. Topics: color palette, accessibility, animation, layout, typography, font pairing, spacing, hover, shadow, gradient. Integrations: shadcn/ui MCP for component search and examples. | — |
+| `ui-ux-promax` | UI/UX Pro Max design system — 50+ styles, 161 color palettes, 57 font pairings. Auto-applies to any website build. Feeds into website-builder Actor 2. | — |
+| `vibe-prospecting` | Vibe Prospecting MCP wrapper — fetch-entities, enrich-prospects, export-to-csv. Actor 2 in lead-gen-ai pipeline AND SOURCE 2 in hmz-daily-leads sweep. Find any business type in any city worldwide. | — |
+| `website-builder` | — | build website, build a site, create website, website builder, website from prompt, one line website, 10k website, ai web... |
+| `website-lead-agency` | Master revenue engine: website-builder + lead-gen-ai + HMZ daily sweeps. Find clients via 4 automated daily sweeps → build demo sites → close. 10-actor pipeline + 4 scheduled sweeps running autonomously. | — |
 
 ---
 

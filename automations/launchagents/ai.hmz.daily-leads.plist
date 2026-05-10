@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>ai.hmz.daily-leads</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>/Users/mc/.claude/bin/agency/run-scheduled-task</string>
+        <string>hmz-daily-leads</string>
+    </array>
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Hour</key>
+        <integer>2</integer>
+        <key>Minute</key>
+        <integer>0</integer>
+    </dict>
+    <key>StandardOutPath</key>
+    <string>/Users/mc/.claude/agency/logs/hmz-daily-leads.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/mc/.claude/agency/logs/hmz-daily-leads-err.log</string>
+    <key>RunAtLoad</key>
+    <false/>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>HOME</key>
+        <string>/Users/mc</string>
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/Users/mc/.nvm/versions/node/v24.14.1/bin:/Users/mc/.local/bin:/Users/mc/.claude/bin</string>
+    </dict>
+</dict>
+</plist>

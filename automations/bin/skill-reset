@@ -1,0 +1,49 @@
+#!/usr/bin/env bash
+# Reset active skills to the minimal token-reducing core.
+# Anything else currently active is moved back to the archive.
+# Run automatically at SessionStart via settings.json hook.
+set -e
+ARCHIVE="$HOME/.claude/skills-archive"
+ACTIVE="$HOME/.claude/skills"
+mkdir -p "$ARCHIVE" "$ACTIVE"
+
+# Always-on token-reducing baseline — active with ZERO commands needed
+CORE=(
+  caveman
+  token-turbo
+  auto-learn
+  launch-optimized
+  optimize-commands
+  optimize-dgm-command
+  compact-guard
+  compress
+  context-compression
+  context-window-management
+  summarize
+  find-skills
+  skill-router
+)
+
+is_core() {
+  local n="$1"
+  for c in "${CORE[@]}"; do
+    [ "$n" = "$c" ] && return 0
+  done
+  return 1
+}
+
+# Move non-core out
+for item in "$ACTIVE"/*; do
+  [ -e "$item" ] || continue
+  name=$(basename "$item")
+  if ! is_core "$name"; then
+    mv "$item" "$ARCHIVE/$name" 2>/dev/null
+  fi
+done
+
+# Pull in any missing core
+for c in "${CORE[@]}"; do
+  if [ ! -e "$ACTIVE/$c" ] && [ -e "$ARCHIVE/$c" ]; then
+    mv "$ARCHIVE/$c" "$ACTIVE/$c"
+  fi
+done

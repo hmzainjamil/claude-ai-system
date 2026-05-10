@@ -1,0 +1,210 @@
+#!/usr/bin/env python3
+"""
+AGENCY ORCHESTRATOR — Phase 3: Auto-Submit v2.0
+AUTO:  Reddit (OAuth API — scores ≥60 only, 10/day limit)
+READY: All platforms → deep-linked files + browser_queue.json for Brave/OpenClaw
+Email: zulqarnain@digiminds.org (used for all platform submissions)
+"""
+import os, sys, json, datetime, requests, time, re
+from pathlib import Path
+
+HOME       = Path.home()
+AGENCY_DIR = HOME / ".claude/agency"
+PROP_DIR   = AGENCY_DIR / "proposals"
+SUB_DIR    = AGENCY_DIR / "submissions"
+LOG_FILE   = AGENCY_DIR / "logs/submission.log"
+TODAY      = datetime.date.today().strftime("%Y%m%d")
+TODAY_NICE = datetime.date.today().strftime("%B %d, %Y")
+PROP_FILE  = PROP_DIR / f"proposals_{TODAY}.json"
+
+REDDIT_CLIENT_ID     = os.environ.get("REDDIT_CLIENT_ID","")
+REDDIT_CLIENT_SECRET = os.environ.get("REDDIT_CLIENT_SECRET","")
+REDDIT_USERNAME      = os.environ.get("REDDIT_USERNAME","")
+REDDIT_PASSWORD      = os.environ.get("REDDIT_PASSWORD","")
+EMAIL                = "zulqarnain@digiminds.org"
+
+def log(msg):
+    ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    line = f"[{ts}] {msg}"
+    print(line)
+    with open(LOG_FILE,"a") as f: f.write(line+"\n")
+
+def get_reddit_token():
+    if not all([REDDIT_CLIENT_ID, REDDIT_CLIENT_SECRET, REDDIT_USERNAME, REDDIT_PASSWORD]):
+        return None
+    try:
+        r = requests.post("https://www.reddit.com/api/v1/access_token",
+            auth=(REDDIT_CLIENT_ID, REDDIT_CLIENT_SECRET),
+            data={"grant_type":"password","username":REDDIT_USERNAME,"password":REDDIT_PASSWORD},
+            headers={"User-Agent":"DigiMinds Agency Bot/2.0"}, timeout=15)
+        if r.status_code == 200: return r.json().get("access_token")
+    except Exception as e: log(f"Reddit token error: {e}")
+    return None
+
+def reddit_reply(token, thing_id, text):
+    try:
+        r = requests.post("https://oauth.reddit.com/api/comment",
+            headers={"Authorization":f"bearer {token}","User-Agent":"DigiMinds Bot/2.0"},
+            data={"thing_id": thing_id, "text": text}, timeout=20)
+        return r.status_code == 200
+    except Exception as e:
+        log(f"Reddit reply error: {e}"); return False
+
+def extract_reddit_id(url):
+    m = re.search(r'/comments/([a-z0-9]+)/', str(url))
+    return f"t3_{m.group(1)}" if m else None
+
+def write_platform_files(proposals):
+    SUB_DIR.mkdir(parents=True, exist_ok=True)
+    by_platform = {}
+    for p in proposals:
+        plat = p["platform"]
+        if plat not in by_platform: by_platform[plat] = []
+        by_platform[plat].append(p)
+
+    output_files = []
+    browser_queue = []
+
+    for plat, props in by_platform.items():
+        if plat == "reddit": continue
+        props.sort(key=lambda x: (-int(x.get("is_high_ticket",False)), -x.get("relevance_score",0)))
+
+        fname = SUB_DIR / f"{TODAY}_{plat}_ready.txt"
+        lines = [
+            "="*70,
+            f"  DIGIMINDS PROPOSALS — {plat.upper()} — {TODAY_NICE}",
+            f"  Account: {EMAIL} | Agency: digiminds.org",
+            f"  {len(props)} proposals | Open in Brave (already logged in)",
+            "="*70, ""
+        ]
+
+        for i, p in enumerate(props, 1):
+            ht   = "  🔥 HIGH TICKET" if p.get("is_high_ticket") else ""
+            qs   = p.get("quality_score","—")
+            rs   = p.get("relevance_score",0)
+            wc   = p.get("word_count", len(p["proposal_text"].split()))
+            url  = p.get("job_url","")
+            pain = ", ".join(p.get("pain_points",[])[:3]) or "—"
+            client = p.get("client_info",{})
+            cname = (client.get("name") or client.get("company","")) if client else ""
+
+            lines += [
+                f"┌─ [{i}/{len(props)}]{ht}",
+                f"│  Title   : {p['job_title']}",
+                f"│  URL     : {url}",
+                f"│  Budget  : {p.get('budget','N/A')}",
+                f"│  Scores  : Relevance {rs}/100 | Quality {qs}/100 | Words {wc}",
+                f"│  Pain    : {pain}",
+            ]
+            if cname: lines.append(f"│  Client  : {cname}")
+
+            # Submission steps per platform
+            lines.append(f"│")
+            if plat == "upwork":
+                lines += [
+                    f"│  SUBMIT: {url}",
+                    f"│  → Click 'Apply Now' → Cover Letter = proposal below",
+                    f"│  → Account: {EMAIL} (logged in Brave)",
+                ]
+            elif plat == "linkedin":
+                lines += [
+                    f"│  SUBMIT: {url}",
+                    f"│  → Click 'Easy Apply' → paste proposal in cover letter",
+                ]
+            elif plat in ("indeed","naukri"):
+                lines += [
+                    f"│  SUBMIT: {url}",
+                    f"│  → Click 'Apply' → cover letter = proposal below",
+                    f"│  → Email: {EMAIL}",
+                ]
+            elif plat in ("freelancer","guru","peopleperhour"):
+                lines += [
+                    f"│  SUBMIT: {url}",
+                    f"│  → Click 'Place Bid' / 'Submit Proposal' → paste below",
+                ]
+            else:
+                lines += [f"│  SUBMIT: {url}"]
+
+            lines += [f"│", f"│  ── PROPOSAL (copy-paste this) ──", f"│"]
+            for ln in p["proposal_text"].split("\n"):
+                lines.append(f"│  {ln}")
+            lines += [f"└" + "─"*68, ""]
+
+            browser_queue.append({
+                "platform": plat, "url": url, "title": p["job_title"],
+                "proposal": p["proposal_text"], "email": EMAIL,
+                "relevance_score": rs, "quality_score": qs,
+                "is_high_ticket": p.get("is_high_ticket",False),
+                "priority": 1 if p.get("is_high_ticket") else (2 if rs>=80 else 3)
+            })
+
+        fname.write_text("\n".join(lines))
+        output_files.append(str(fname))
+        log(f"  {plat}: {len(props)} proposals → {fname.name}")
+
+    browser_queue.sort(key=lambda x: x["priority"])
+    bq_file = SUB_DIR / f"{TODAY}_browser_queue.json"
+    bq_file.write_text(json.dumps({"date":TODAY,"email":EMAIL,"queue":browser_queue},indent=2))
+    log(f"Browser queue: {len(browser_queue)} → {bq_file.name}")
+    return output_files, browser_queue
+
+def main():
+    SUB_DIR.mkdir(parents=True, exist_ok=True)
+    if not PROP_FILE.exists():
+        log(f"ERROR: No proposals file: {PROP_FILE}"); sys.exit(1)
+
+    prop_data = json.loads(PROP_FILE.read_text())
+    proposals = prop_data.get("proposals",[])
+    submitted = []
+    manual    = []
+
+    log(f"=== AUTO-SUBMIT v2.0: {len(proposals)} proposals | {TODAY_NICE} ===")
+    log(f"Submission account: {EMAIL}")
+
+    # Reddit auto-submit
+    reddit_props = [p for p in proposals if p["platform"] == "reddit"]
+    reddit_count = 0
+    if reddit_props:
+        token = get_reddit_token()
+        if token:
+            log(f"Reddit OAuth: ✓")
+            day_count = 0
+            for p in reddit_props:
+                if day_count >= 10: manual.append(p); continue
+                post_id = extract_reddit_id(p["job_url"])
+                if not post_id or p.get("relevance_score",0) < 60:
+                    manual.append(p); continue
+                if reddit_reply(token, post_id, p["proposal_text"]):
+                    p["status"] = "submitted"
+                    p["submitted_at"] = datetime.datetime.now().isoformat()
+                    submitted.append(p); reddit_count += 1; day_count += 1
+                    log(f"  Reddit ✓ [{day_count}/10] {p['job_title'][:50]}")
+                    time.sleep(10)
+                else:
+                    log(f"  Reddit ✗ {p['job_title'][:50]}"); manual.append(p)
+        else:
+            log("Reddit: no credentials → manual")
+            manual.extend(reddit_props)
+
+    # All other platforms
+    other_props = [p for p in proposals if p["platform"] != "reddit"]
+    manual.extend(other_props)
+    files, bq = write_platform_files(manual)
+
+    ht_count = sum(1 for x in bq if x.get("is_high_ticket"))
+    prop_data["submissions"] = {
+        "auto_submitted": len(submitted), "manual_ready": len(manual),
+        "reddit_auto": reddit_count, "browser_queue_size": len(bq),
+        "high_ticket_queued": ht_count,
+        "submitted_at": datetime.datetime.now().isoformat(),
+        "email_account": EMAIL
+    }
+    prop_data["submission_files"] = files
+    PROP_FILE.write_text(json.dumps(prop_data, indent=2))
+
+    log(f"Reddit auto: {reddit_count} | Manual: {len(manual)} | "
+        f"Browser queue: {len(bq)} (🔥 {ht_count} HT)")
+    return json.dumps({"submitted":len(submitted),"manual":len(manual),"browser_queue":len(bq)})
+
+if __name__ == "__main__":
+    print(main())

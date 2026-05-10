@@ -1,0 +1,319 @@
+#!/usr/bin/env python3
+"""
+AGENCY ORCHESTRATOR — Phase 3: Proposal Submission
+Reads proposals_YYYYMMDD.json, submits via OpenClaw (Brave browser sessions).
+
+LOGIN ARCHITECTURE:
+  NO credentials stored in code. Uses existing browser sessions in Brave:
+  - Upwork: Brave already logged in → OpenClaw controls tab → submits proposal
+  - LinkedIn: Brave already logged in → OpenClaw sends DM
+  - Reddit: Brave already logged in → OpenClaw posts reply
+  OpenClaw Gateway (:18789) → Brave browser (:18791) → your logged-in sessions
+
+CONNECTS CONSERVATION:
+  Upwork connects are precious (100-150 available).
+  System tracks spent connects in connects_tracker.json.
+  Hard stops: if connects_remaining < CONNECTS_EMERGENCY_RESERVE → halt all Upwork.
+
+TIMING GATES:
+  Upwork: jobs must be posted within 2 hours (first 5 proposals get 3x views)
+  LinkedIn/Reddit/Indeed/Other: jobs must be within 48 hours (2 days)
+"""
+
+import os, sys, json, datetime, requests, time
+from pathlib import Path
+
+HOME = Path.home()
+AGENCY_DIR = HOME / ".claude/agency"
+DATA_DIR   = AGENCY_DIR / "data"
+PROP_DIR   = AGENCY_DIR / "proposals"
+LOG_FILE   = AGENCY_DIR / "logs/submission.log"
+TODAY      = datetime.date.today().strftime("%Y%m%d")
+PROP_FILE  = PROP_DIR / f"proposals_{TODAY}.json"
+CONNECTS_FILE = DATA_DIR / "connects_tracker.json"
+
+OPENCLAW_API = "http://127.0.0.1:18789"
+
+# ── SNIPER CONFIG ─────────────────────────────────────────────────────────────
+DAILY_TOTAL_MAX  = 3     # Hard cap: max 3 submissions/day
+MIN_BDM_SCORE    = 80    # Only Tier A (score ≥ 80). No exceptions.
+
+# Upwork connects cost (typically 6 connects per proposal for Expert jobs)
+CONNECTS_PER_PROPOSAL    = 6
+CONNECTS_EMERGENCY_RESERVE = 20  # Never go below this — keep buffer for urgent jobs
+
+# Timing gates — proposals must be recent enough to be worth applying to
+UPWORK_MAX_AGE_HOURS   = 2    # Upwork: within 2 hours only (first-mover advantage)
+OTHER_MAX_AGE_HOURS    = 48   # LinkedIn/Reddit/etc: within 48 hours
+
+# Per-platform daily caps
+DAILY_LIMITS = {
+    "upwork": 3,
+    "linkedin": 2,
+    "indeed": 1,
+    "naukri": 1,
+    "reddit": 2,
+    "pvago": 1,
+    "hussle": 1
+}
+
+def log(msg):
+    ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    line = f"[{ts}] {msg}"
+    print(line)
+    with open(LOG_FILE, "a") as f:
+        f.write(line + "\n")
+
+def notify_mac(title, msg):
+    os.system(f"osascript -e 'display notification \"{msg}\" with title \"{title}\" sound name \"Glass\"'")
+
+# ── CONNECTS TRACKER ──────────────────────────────────────────────────────────
+
+def load_connects():
+    """Load connects tracker. Returns dict with remaining count."""
+    if CONNECTS_FILE.exists():
+        return json.loads(CONNECTS_FILE.read_text())
+    # Initialize — user says they have 100-150 connects
+    return {
+        "total_purchased": 150,
+        "spent_this_month": 0,
+        "remaining": 150,
+        "history": [],
+        "last_updated": datetime.date.today().isoformat()
+    }
+
+def save_connects(tracker):
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    CONNECTS_FILE.write_text(json.dumps(tracker, indent=2))
+
+def spend_connects(tracker, job_title, job_url, amount=CONNECTS_PER_PROPOSAL):
+    """Deduct connects and log usage."""
+    tracker["spent_this_month"] += amount
+    tracker["remaining"] = max(0, tracker["remaining"] - amount)
+    tracker["last_updated"] = datetime.date.today().isoformat()
+    tracker.setdefault("history", []).append({
+        "date": datetime.datetime.now().isoformat(),
+        "job": job_title[:60],
+        "url": job_url,
+        "connects_spent": amount,
+        "connects_remaining": tracker["remaining"]
+    })
+    return tracker
+
+def check_connects_ok(tracker):
+    """True if safe to spend connects."""
+    return tracker["remaining"] > CONNECTS_EMERGENCY_RESERVE
+
+# ── TIMING GATE ───────────────────────────────────────────────────────────────
+
+def is_job_fresh(proposal):
+    """
+    Returns (is_fresh: bool, age_hours: float).
+    Checks posted_at field from job discovery.
+    If no timestamp available, defaults to accepting (can't reject what we can't measure).
+    """
+    posted_at = proposal.get("posted_at", "") or ""
+    if not posted_at:
+        # No timestamp — accept but log warning
+        return True, None
+
+    try:
+        # Try parsing ISO format
+        if posted_at.endswith("Z"):
+            posted_at = posted_at[:-1] + "+00:00"
+        dt = datetime.datetime.fromisoformat(posted_at)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=datetime.timezone.utc)
+        now = datetime.datetime.now(datetime.timezone.utc)
+        age_hours = (now - dt).total_seconds() / 3600
+    except Exception:
+        return True, None  # Can't parse — accept
+
+    platform = proposal.get("platform", "")
+    max_age = UPWORK_MAX_AGE_HOURS if platform == "upwork" else OTHER_MAX_AGE_HOURS
+    return age_hours <= max_age, age_hours
+
+# ── OPENCLAW SUBMISSION ───────────────────────────────────────────────────────
+
+def openclaw_task(action, payload):
+    """Send task to OpenClaw/Agent37 via local gateway (uses Brave browser sessions)."""
+    try:
+        r = requests.post(
+            f"{OPENCLAW_API}/v1/task",
+            json={"action": action, "payload": payload},
+            timeout=60
+        )
+        return r.json() if r.status_code == 200 else {"error": r.text}
+    except Exception as e:
+        return {"error": str(e)}
+
+def submit_upwork_proposal(proposal, connects_tracker):
+    """
+    Submit via OpenClaw → Brave browser → Upwork (uses existing logged-in session).
+    Costs CONNECTS_PER_PROPOSAL connects. Checks connects balance first.
+    """
+    if not check_connects_ok(connects_tracker):
+        log(f"  HALT: Connects too low ({connects_tracker['remaining']} remaining, reserve={CONNECTS_EMERGENCY_RESERVE})")
+        return False, connects_tracker
+
+    # Determine connects needed (default 6 for expert jobs)
+    connects_needed = proposal.get("client_info", {}).get("connects_needed", CONNECTS_PER_PROPOSAL)
+
+    log(f"  Upwork: spending {connects_needed} connects ({connects_tracker['remaining']} → {connects_tracker['remaining']-connects_needed})")
+
+    result = openclaw_task("upwork_apply", {
+        "job_url": proposal["job_url"],
+        "proposal_text": proposal["proposal_text"],
+        "bid_rate": proposal.get("budget", "").replace("/hr","").replace("$","") or "25",
+        "connects_to_spend": connects_needed
+    })
+
+    if result.get("error"):
+        log(f"  Upwork submit FAILED: {result['error']}")
+        return False, connects_tracker
+
+    connects_tracker = spend_connects(connects_tracker, proposal["job_title"], proposal["job_url"], connects_needed)
+    log(f"  Upwork submitted: {proposal['job_title'][:50]} | connects left: {connects_tracker['remaining']}")
+    return True, connects_tracker
+
+def submit_linkedin_message(proposal):
+    """Send LinkedIn DM via OpenClaw → Brave → existing LinkedIn session."""
+    result = openclaw_task("linkedin_message", {
+        "job_url": proposal["job_url"],
+        "message": proposal["proposal_text"],
+        "company": proposal.get("client_info", {}).get("company", "")
+    })
+    if result.get("error"):
+        log(f"  LinkedIn FAILED: {result['error']}")
+        return False
+    log(f"  LinkedIn sent: {proposal['job_title'][:50]}")
+    return True
+
+def submit_reddit_reply(proposal):
+    """Reply via OpenClaw → Brave → existing Reddit session."""
+    result = openclaw_task("reddit_reply", {
+        "post_url": proposal["job_url"],
+        "reply_text": proposal["proposal_text"]
+    })
+    if result.get("error"):
+        log(f"  Reddit FAILED: {result['error']}")
+        return False
+    log(f"  Reddit replied: {proposal['job_title'][:50]}")
+    return True
+
+def submit_email_application(proposal):
+    """Queue for Gmail MCP delivery (Indeed/Naukri/cold outreach)."""
+    queue_file = DATA_DIR / "email_queue.jsonl"
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    with open(queue_file, "a") as f:
+        f.write(json.dumps({
+            "to": proposal.get("client_info", {}).get("email", ""),
+            "subject": f"Re: {proposal['job_title'][:60]}",
+            "body": proposal["proposal_text"],
+            "job_url": proposal["job_url"],
+            "proposal_id": proposal["job_id"]
+        }) + "\n")
+    log(f"  Email queued: {proposal['job_title'][:50]}")
+    return True
+
+# ── MAIN ──────────────────────────────────────────────────────────────────────
+
+def main(auto_mode=False):
+    if not PROP_FILE.exists():
+        log(f"ERROR: Proposals file not found: {PROP_FILE}")
+        sys.exit(1)
+
+    data = json.loads(PROP_FILE.read_text())
+    proposals = [p for p in data.get("proposals", []) if p["status"] == "draft"]
+    log(f"=== SUBMISSION PHASE: {len(proposals)} draft proposals ===")
+
+    connects_tracker = load_connects()
+    log(f"Connects: {connects_tracker['remaining']} remaining (reserve={CONNECTS_EMERGENCY_RESERVE})")
+
+    if not check_connects_ok(connects_tracker):
+        log(f"ABORT: Connects critically low ({connects_tracker['remaining']}). Skipping Upwork today.")
+
+    # Sort by BDM score — highest value first
+    proposals.sort(key=lambda p: p.get("relevance_score", 0), reverse=True)
+
+    counts = {}
+    submitted = []
+    total_sent = 0
+    skipped_stale = 0
+    skipped_score = 0
+    skipped_connects = 0
+
+    for proposal in proposals:
+        if total_sent >= DAILY_TOTAL_MAX:
+            log(f"  STOP: Daily cap ({DAILY_TOTAL_MAX}) reached")
+            break
+
+        platform = proposal.get("platform", "other")
+        counts.setdefault(platform, 0)
+
+        # ── Gate 1: BDM Score ──
+        bdm_score = proposal.get("relevance_score", 0)
+        if bdm_score < MIN_BDM_SCORE:
+            skipped_score += 1
+            log(f"  SKIP [score {bdm_score}<{MIN_BDM_SCORE}]: {proposal['job_title'][:45]}")
+            continue
+
+        # ── Gate 2: Timing ──
+        fresh, age_hours = is_job_fresh(proposal)
+        age_str = f"{age_hours:.1f}h old" if age_hours is not None else "age unknown"
+        if not fresh:
+            skipped_stale += 1
+            max_age = UPWORK_MAX_AGE_HOURS if platform == "upwork" else OTHER_MAX_AGE_HOURS
+            log(f"  SKIP [stale {age_str} > {max_age}h limit]: {proposal['job_title'][:45]}")
+            continue
+
+        # ── Gate 3: Connects (Upwork only) ──
+        if platform == "upwork" and not check_connects_ok(connects_tracker):
+            skipped_connects += 1
+            log(f"  SKIP [low connects {connects_tracker['remaining']}]: {proposal['job_title'][:45]}")
+            continue
+
+        # ── Gate 4: Per-platform daily cap ──
+        if counts[platform] >= DAILY_LIMITS.get(platform, 1):
+            log(f"  SKIP [platform cap {platform}]: {proposal['job_title'][:45]}")
+            continue
+
+        log(f"\n[{total_sent+1}/{DAILY_TOTAL_MAX}] {platform.upper()} | score={bdm_score} | {age_str}")
+        log(f"  Job: {proposal['job_title'][:60]}")
+        log(f"  Pain points: {proposal.get('pain_points', [])}")
+
+        success = False
+        if platform == "upwork":
+            success, connects_tracker = submit_upwork_proposal(proposal, connects_tracker)
+        elif platform == "linkedin":
+            success = submit_linkedin_message(proposal)
+        elif platform == "reddit":
+            success = submit_reddit_reply(proposal)
+        else:
+            success = submit_email_application(proposal)
+
+        if success:
+            proposal["status"] = "submitted"
+            proposal["submitted_at"] = datetime.datetime.now().isoformat()
+            counts[platform] = counts.get(platform, 0) + 1
+            total_sent += 1
+            submitted.append(proposal)
+            save_connects(connects_tracker)
+            notify_mac("Agency", f"[{total_sent}/{DAILY_TOTAL_MAX}] {platform}: {proposal['job_title'][:35]} (score {bdm_score})")
+            time.sleep(8)  # human-like pause between submissions
+
+    # Save updated proposal statuses
+    data["proposals"] = proposals
+    data["submitted_count"] = len(submitted)
+    data["submission_breakdown"] = counts
+    PROP_FILE.write_text(json.dumps(data, indent=2))
+    save_connects(connects_tracker)
+
+    log(f"\n=== DONE: {total_sent} submitted | {skipped_stale} stale | {skipped_score} low-score | {skipped_connects} low-connects ===")
+    log(f"Connects remaining: {connects_tracker['remaining']}")
+    log(f"Breakdown: {counts}")
+    return submitted
+
+if __name__ == "__main__":
+    auto = "--auto" in sys.argv
+    main(auto_mode=auto)

@@ -1,0 +1,511 @@
+#!/usr/bin/env python3
+"""
+skill-scanner — Claude/OpenClaw AI Security Scanner v2.0
+Inspired by: Avast, Windows Defender, ClamAV architecture
+Covers: ~/.claude/skills/, ~/.claude/skills-archive/, ~/.openclaw/workspace/skills/, ~/.agents/skills/
+
+Runs: pattern scan (zero tokens) → Tier 0 LLM BURST (10 models parallel) → AUTO-DELETE + report
+Action: DELETE (not quarantine) — confirmed malicious files are permanently removed.
+Real-time: fswatch watcher + hourly LaunchAgent — always active.
+"""
+
+import os, sys, json, re, shutil, hashlib, datetime, subprocess, glob, argparse
+import concurrent.futures, urllib.request, urllib.error
+from pathlib import Path
+
+# ── Config ──────────────────────────────────────────────────────────────────
+HOME = Path.home()
+SECURITY_DIR = HOME / ".claude/security"
+QUARANTINE = SECURITY_DIR / "quarantine"
+REPORTS = SECURITY_DIR / "reports"
+SIGNATURES_FILE = SECURITY_DIR / "signatures/malware-patterns.json"
+SCAN_LOG = SECURITY_DIR / "logs/scan.log"
+HASH_DB = SECURITY_DIR / "logs/clean-hashes.json"
+
+SCAN_TARGETS = [
+    HOME / ".claude/skills",
+    HOME / ".claude/skills-archive",
+    HOME / ".openclaw/workspace/skills",
+    HOME / ".agents/skills",
+    HOME / ".openclaw/agents",
+]
+
+SCAN_EXTENSIONS = {".md", ".txt", ".sh", ".py", ".js", ".ts", ".json", ".yaml", ".yml", ".toml"}
+
+# ── Helpers ──────────────────────────────────────────────────────────────────
+def log(msg, level="INFO"):
+    ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    line = f"[{ts}] [{level}] {msg}"
+    print(line)
+    SCAN_LOG.parent.mkdir(parents=True, exist_ok=True)
+    with open(SCAN_LOG, "a") as f:
+        f.write(line + "\n")
+
+def file_hash(path):
+    try:
+        return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+    except:
+        return None
+
+def load_sigs():
+    try:
+        return json.loads(SIGNATURES_FILE.read_text())
+    except:
+        log("Signature file missing — using built-in patterns", "WARN")
+        return {"signatures": {}}
+
+def load_hash_db():
+    try:
+        return json.loads(HASH_DB.read_text())
+    except:
+        return {}
+
+def save_hash_db(db):
+    HASH_DB.parent.mkdir(parents=True, exist_ok=True)
+    HASH_DB.write_text(json.dumps(db, indent=2))
+
+def delete_file(path, reason, severity, report):
+    """Permanently DELETE malicious file. Write forensic report first."""
+    fname = Path(path)
+    ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+
+    # Save forensic copy of content BEFORE deleting (report only, file gone)
+    try:
+        content_backup = fname.read_text(errors="replace")[:5000]
+    except:
+        content_backup = "[unreadable]"
+
+    report_data = {
+        "timestamp": datetime.datetime.now().isoformat(),
+        "action": "DELETED",
+        "original_path": str(path),
+        "severity": severity,
+        "reason": reason,
+        "content_preview": content_backup[:500],
+        "report": report
+    }
+    REPORTS.mkdir(parents=True, exist_ok=True)
+    rfile = REPORTS / f"deleted_{ts}_{fname.stem}.json"
+    rfile.write_text(json.dumps(report_data, indent=2))
+
+    # Permanently delete
+    try:
+        fname.unlink()
+        # If it was the only file in a skill dir, remove empty parent
+        parent = fname.parent
+        if parent.is_dir() and not any(parent.iterdir()):
+            parent.rmdir()
+    except Exception as e:
+        log(f"DELETE FAILED for {path}: {e}", "ERROR")
+        return None
+
+    log(f"DELETED [{severity}]: {path}", "THREAT")
+    log(f"  Reason: {reason}", "THREAT")
+    log(f"  Forensic report: {rfile}", "THREAT")
+    return str(rfile)
+
+# ── Pattern Scanner (zero tokens) ────────────────────────────────────────────
+def pattern_scan(content, sigs, filepath=""):
+    """Fast regex pattern scan. Returns list of (severity, category, pattern, match)."""
+    findings = []
+
+    # Check whitelist first
+    whitelist = sigs.get("whitelist_patterns", [])
+    is_whitelisted = any(re.search(p, content, re.IGNORECASE) for p in whitelist)
+
+    for severity, categories in sigs.get("signatures", {}).items():
+        for category, patterns in categories.items():
+            for pattern in patterns:
+                try:
+                    m = re.search(pattern, content, re.IGNORECASE | re.MULTILINE)
+                    if m:
+                        matched_text = m.group(0)[:100]
+                        # Check if whitelisted context
+                        start = max(0, m.start() - 50)
+                        context = content[start:m.start() + 150]
+                        if any(re.search(wp, context, re.IGNORECASE) for wp in whitelist):
+                            continue
+                        findings.append({
+                            "severity": severity,
+                            "category": category,
+                            "pattern": pattern,
+                            "match": matched_text,
+                            "context": context[:200]
+                        })
+                except re.error:
+                    pass
+
+    return findings
+
+# ── Tier 0 LLM Deep Scan (for suspicious files) ───────────────────────────
+def tier0_deep_scan(content, filepath, findings_summary):
+    """
+    Full Tier 0 BURST scan — all 10 models fire in parallel.
+    Majority verdict wins: if ≥2 say MALICIOUS → MALICIOUS.
+    Models: Ollama, Groq, Gemini, Gemma4-GoogleAI, Gemma4-free(OpenRouter),
+            DeepSeek, GPT-4o-mini, Mistral(OpenRouter), xAI-Grok, G0DM0D3
+    """
+    prompt = f"""Security analysis of AI skill/agent file. Answer in exactly 3 lines.
+File: {filepath}
+Patterns flagged: {findings_summary}
+Content sample: {content[:1500]}
+
+Line 1: VERDICT: [SAFE/SUSPICIOUS/MALICIOUS]
+Line 2: REASON: <one sentence>
+Line 3: RISK: [LOW/MEDIUM/HIGH/CRITICAL]"""
+
+    results = []
+    env = {**os.environ, "PATH": "/opt/homebrew/bin:/usr/local/bin:" + os.environ.get("PATH", "")}
+    groq_key = os.environ.get("GROQ_API_KEY", "")
+    gemini_key = os.environ.get("GEMINI_API_KEY", os.environ.get("GOOGLE_API_KEY", ""))
+    openrouter_key = os.environ.get("OPENROUTER_API_KEY", "")
+    openai_key = os.environ.get("OPENAI_API_KEY", "")
+    deepseek_key = os.environ.get("DEEPSEEK_API_KEY", "")
+    xai_key = os.environ.get("XAI_API_KEY", "")
+
+    def call_ollama():
+        try:
+            r = subprocess.run(["ollama", "run", "llama3", prompt],
+                capture_output=True, text=True, timeout=25, env=env)
+            return ("ollama", r.stdout.strip()) if r.returncode == 0 else None
+        except: return None
+
+    def call_openai_compat(name, url, key, model, timeout=15):
+        if not key: return None
+        try:
+            data = json.dumps({"model": model, "messages": [{"role": "user", "content": prompt}], "max_tokens": 150}).encode()
+            req = urllib.request.Request(url, data=data,
+                headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"})
+            with urllib.request.urlopen(req, timeout=timeout) as r:
+                return (name, json.loads(r.read())["choices"][0]["message"]["content"])
+        except: return None
+
+    def call_gemini(name, model, key):
+        if not key: return None
+        try:
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={key}"
+            data = json.dumps({"contents": [{"parts": [{"text": prompt}]}]}).encode()
+            req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"})
+            with urllib.request.urlopen(req, timeout=15) as r:
+                resp = json.loads(r.read())
+                return (name, resp["candidates"][0]["content"]["parts"][0]["text"])
+        except: return None
+
+    def call_g0dm0d3():
+        try:
+            data = json.dumps({"model": "llama3", "prompt": prompt, "stream": False}).encode()
+            req = urllib.request.Request("http://127.0.0.1:7860/api/generate", data=data,
+                headers={"Content-Type": "application/json"})
+            with urllib.request.urlopen(req, timeout=10) as r:
+                return ("g0dm0d3", json.loads(r.read()).get("response", ""))
+        except: return None
+
+    # Fire all in parallel
+    tasks = [
+        call_ollama,
+        lambda: call_openai_compat("groq", "https://api.groq.com/openai/v1/chat/completions",
+            groq_key, "llama-3.3-70b-versatile"),
+        lambda: call_gemini("gemini", "gemini-2.0-flash", gemini_key),
+        lambda: call_gemini("gemma4-google", "gemma-4-31b-it", gemini_key),
+        lambda: call_openai_compat("gemma4-free", "https://openrouter.ai/api/v1/chat/completions",
+            openrouter_key, "google/gemma-4-31b-it:free"),
+        lambda: call_openai_compat("deepseek", "https://api.deepseek.com/v1/chat/completions",
+            deepseek_key, "deepseek-chat"),
+        lambda: call_openai_compat("gpt4o-mini", "https://api.openai.com/v1/chat/completions",
+            openai_key, "gpt-4o-mini"),
+        lambda: call_openai_compat("mistral", "https://openrouter.ai/api/v1/chat/completions",
+            openrouter_key, "mistralai/mistral-7b-instruct"),
+        lambda: call_openai_compat("xai-grok", "https://api.x.ai/v1/chat/completions",
+            xai_key, "grok-beta"),
+        call_g0dm0d3,
+    ]
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as ex:
+        futures = [ex.submit(t) for t in tasks]
+        for f in concurrent.futures.as_completed(futures, timeout=30):
+            try:
+                r = f.result()
+                if r: results.append(r)
+            except: pass
+
+    if not results:
+        return "VERDICT: SUSPICIOUS\nREASON: Pattern matches found, no LLM available\nRISK: MEDIUM"
+
+    # Tally verdicts
+    verdicts = {"MALICIOUS": 0, "SUSPICIOUS": 0, "SAFE": 0}
+    for name, text in results:
+        t = text.upper()
+        if "MALICIOUS" in t: verdicts["MALICIOUS"] += 1
+        elif "SUSPICIOUS" in t: verdicts["SUSPICIOUS"] += 1
+        elif "SAFE" in t: verdicts["SAFE"] += 1
+
+    # Majority rule
+    total = len(results)
+    summary = f"[{total} models] MALICIOUS:{verdicts['MALICIOUS']} SUSPICIOUS:{verdicts['SUSPICIOUS']} SAFE:{verdicts['SAFE']}"
+    log(f"  Tier0 burst verdict: {summary}", "SCAN")
+
+    if verdicts["MALICIOUS"] >= 2:
+        return f"VERDICT: MALICIOUS\nREASON: {verdicts['MALICIOUS']}/{total} models confirmed malicious\nRISK: CRITICAL"
+    elif verdicts["SAFE"] > verdicts["MALICIOUS"] + verdicts["SUSPICIOUS"]:
+        return f"VERDICT: SAFE\nREASON: {verdicts['SAFE']}/{total} models confirmed safe\nRISK: LOW"
+    else:
+        return f"VERDICT: SUSPICIOUS\nREASON: Mixed verdict — {summary}\nRISK: HIGH"
+
+# ── Main Scanner ──────────────────────────────────────────────────────────────
+def scan_file(path, sigs, hash_db, deep=False, auto_quarantine=True):
+    """Scan a single file. Returns threat dict or None."""
+    path = Path(path)
+
+    if not path.exists() or not path.is_file():
+        return None
+
+    # Check extension
+    if path.suffix.lower() not in SCAN_EXTENSIONS:
+        return None
+
+    # Check hash cache (already verified clean)
+    fhash = file_hash(path)
+    if fhash and hash_db.get(fhash) == "clean":
+        return None  # Known clean, skip
+
+    try:
+        content = path.read_text(errors="replace")
+    except:
+        return None
+
+    # Pattern scan
+    findings = pattern_scan(content, sigs, str(path))
+
+    if not findings:
+        # Mark as clean in hash DB
+        if fhash:
+            hash_db[fhash] = "clean"
+        return None
+
+    # Determine max severity
+    severity_order = ["LOW", "MEDIUM", "HIGH", "CRITICAL"]
+    max_severity = max(findings, key=lambda f: severity_order.index(f["severity"]))["severity"]
+
+    summary = f"{len(findings)} pattern(s) matched. Highest: {max_severity}. Categories: {', '.join(set(f['category'] for f in findings))}"
+
+    # Deep LLM scan for HIGH/CRITICAL or when requested
+    llm_verdict = None
+    if deep or max_severity in ("HIGH", "CRITICAL"):
+        llm_verdict = tier0_deep_scan(content, str(path), summary)
+        # If LLM says SAFE and severity is not CRITICAL, downgrade
+        if llm_verdict and "VERDICT: SAFE" in llm_verdict and max_severity != "CRITICAL":
+            if fhash:
+                hash_db[fhash] = "clean"
+            return None
+
+    threat = {
+        "path": str(path),
+        "severity": max_severity,
+        "findings": findings,
+        "summary": summary,
+        "llm_verdict": llm_verdict,
+        "hash": fhash
+    }
+
+    # Action: QUARANTINE (not delete) — user can restore false positives
+    # Only CRITICAL with LLM MALICIOUS confirmation → delete
+    # Everything else → quarantine (safe, reversible)
+    should_act = (
+        max_severity in ("CRITICAL", "HIGH") and
+        (llm_verdict and "MALICIOUS" in llm_verdict)
+    )
+    only_delete = (
+        max_severity == "CRITICAL" and
+        llm_verdict and "MALICIOUS" in llm_verdict and
+        findings and any(f["category"] in ("prompt_injection", "data_exfiltration", "backdoor") for f in findings)
+    )
+
+    if should_act and auto_quarantine:
+        reason = f"[{max_severity}] {'; '.join(f['category'] + ': ' + f['match'] for f in findings[:3])}"
+        if only_delete:
+            threat["deleted"] = delete_file(str(path), reason, max_severity, threat)
+        else:
+            # Quarantine: move to quarantine dir (reversible)
+            QUARANTINE.mkdir(parents=True, exist_ok=True)
+            ts_str = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+            dest = QUARANTINE / f"{ts_str}_{Path(path).name}"
+            try:
+                Path(path).rename(dest)
+                threat["quarantined"] = str(dest)
+                log(f"QUARANTINED [{max_severity}]: {path} → {dest}", "THREAT")
+                log(f"  Reason: {reason}", "THREAT")
+                log(f"  Restore: mv '{dest}' '{path}'", "THREAT")
+            except Exception as e:
+                log(f"QUARANTINE FAILED: {e}", "ERROR")
+
+    return threat
+
+def scan_directory(target_dir, sigs, hash_db, deep=False, auto_quarantine=True, progress=True):
+    """Scan all files in directory tree."""
+    target = Path(target_dir)
+    if not target.exists():
+        return []
+
+    threats = []
+    files = list(target.rglob("*"))
+    total = len([f for f in files if f.is_file() and f.suffix.lower() in SCAN_EXTENSIONS])
+
+    if progress:
+        log(f"Scanning {target} — {total} files")
+
+    scanned = 0
+    for fpath in files:
+        if not fpath.is_file():
+            continue
+        if fpath.suffix.lower() not in SCAN_EXTENSIONS:
+            continue
+        # Skip quarantine dir and excluded paths
+        fpath_str = str(fpath)
+        excluded = sigs.get("excluded_paths", [])
+        if ".claude/security/quarantine" in fpath_str:
+            continue
+        if any(fpath_str.startswith(ep) for ep in excluded):
+            continue
+
+        threat = scan_file(fpath, sigs, hash_db, deep=deep, auto_quarantine=auto_quarantine)
+        if threat:
+            threats.append(threat)
+            level = threat["severity"]
+            log(f"  [{level}] {fpath.name}: {threat['summary']}", level)
+
+        scanned += 1
+        if progress and scanned % 500 == 0:
+            log(f"  Progress: {scanned}/{total} files scanned, {len(threats)} threats found")
+
+    return threats
+
+def generate_report(all_threats, scan_duration, targets_scanned):
+    """Generate human-readable scan report."""
+    ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+
+    report = {
+        "scan_id": ts,
+        "timestamp": datetime.datetime.now().isoformat(),
+        "duration_seconds": scan_duration,
+        "targets": [str(t) for t in targets_scanned],
+        "total_threats": len(all_threats),
+        "by_severity": {},
+        "deleted": sum(1 for t in all_threats if "deleted" in t),
+        "threats": all_threats
+    }
+
+    for t in all_threats:
+        s = t["severity"]
+        report["by_severity"][s] = report["by_severity"].get(s, 0) + 1
+
+    rfile = REPORTS / f"scan_report_{ts}.json"
+    rfile.write_text(json.dumps(report, indent=2))
+
+    # Summary to stdout
+    print(f"\n{'='*60}")
+    print(f"SCAN COMPLETE — {ts}")
+    print(f"{'='*60}")
+    print(f"Files scanned across {len(targets_scanned)} directories")
+    print(f"Duration: {scan_duration:.1f}s")
+    print(f"Threats found: {len(all_threats)}")
+    for sev, count in sorted(report["by_severity"].items()):
+        print(f"  {sev}: {count}")
+    print(f"Deleted: {report['deleted']}")
+    print(f"Report: {rfile}")
+    print(f"{'='*60}\n")
+
+    return str(rfile)
+
+# ── CLI ───────────────────────────────────────────────────────────────────────
+def main():
+    parser = argparse.ArgumentParser(description="Claude/OpenClaw Security Scanner")
+    parser.add_argument("--deep", action="store_true", help="Enable Tier 0 LLM deep scan for all suspicious files")
+    parser.add_argument("--no-quarantine", action="store_true", help="Report only, do not quarantine")
+    parser.add_argument("--target", help="Scan specific path only")
+    parser.add_argument("--restore", metavar="HASH", help="Restore quarantined file by hash prefix")
+    parser.add_argument("--list-quarantine", action="store_true", help="List quarantined files")
+    parser.add_argument("--update-sigs", action="store_true", help="Update signature database")
+    parser.add_argument("--status", action="store_true", help="Show security status")
+    args = parser.parse_args()
+
+    # Load tier0 env for LLM keys
+    tier0_env = Path.home() / ".claude/tier0.env"
+    if tier0_env.exists():
+        for line in tier0_env.read_text().splitlines():
+            if line.startswith("export "):
+                line = line[7:]
+                if "=" in line:
+                    k, v = line.split("=", 1)
+                    os.environ.setdefault(k.strip(), v.strip().strip('"\''))
+
+    if args.status:
+        q_count = sum(1 for _ in QUARANTINE.rglob("*") if Path(_).is_file()) if QUARANTINE.exists() else 0
+        db = load_hash_db()
+        print(f"\n=== Claude/OpenClaw Security Status ===")
+        print(f"Quarantined files: {q_count}")
+        print(f"Clean hash cache: {len(db)} entries")
+        print(f"Signature file: {'OK' if SIGNATURES_FILE.exists() else 'MISSING'}")
+        print(f"Last scan log: {SCAN_LOG}")
+        reports = list(REPORTS.glob("scan_report_*.json")) if REPORTS.exists() else []
+        if reports:
+            last = max(reports, key=lambda p: p.stat().st_mtime)
+            r = json.loads(last.read_text())
+            print(f"Last scan: {r['timestamp']} — {r['total_threats']} threats")
+        return
+
+    if args.list_quarantine:
+        if not QUARANTINE.exists():
+            print("Quarantine empty")
+            return
+        for f in sorted(QUARANTINE.rglob("*")):
+            if f.is_file():
+                print(f"  {f}")
+        return
+
+    if args.restore:
+        for f in QUARANTINE.rglob("*"):
+            if f.is_file() and args.restore in f.name:
+                # Find original path from report
+                for rp in REPORTS.glob(f"threat_*_{f.stem.split('__')[0]}.json"):
+                    r = json.loads(rp.read_text())
+                    orig = Path(r["original_path"])
+                    orig.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.move(str(f), str(orig))
+                    print(f"Restored: {orig}")
+                    return
+                print(f"No report found for {f.name}")
+        print(f"No quarantined file matching: {args.restore}")
+        return
+
+    # Run scan
+    import time
+    start = time.time()
+    sigs = load_sigs()
+    hash_db = load_hash_db()
+    all_threats = []
+
+    targets = [Path(args.target)] if args.target else [t for t in SCAN_TARGETS if t.exists()]
+
+    log(f"=== SCAN START === targets={len(targets)} deep={args.deep} auto_quarantine={not args.no_quarantine}")
+
+    for target in targets:
+        threats = scan_directory(
+            target, sigs, hash_db,
+            deep=args.deep,
+            auto_quarantine=not args.no_quarantine
+        )
+        all_threats.extend(threats)
+
+    # Save clean hash DB
+    save_hash_db(hash_db)
+
+    duration = time.time() - start
+    generate_report(all_threats, duration, targets)
+
+    log(f"=== SCAN END === {len(all_threats)} threats in {duration:.1f}s")
+
+    # Exit code: 0=clean, 1=threats found
+    sys.exit(1 if all_threats else 0)
+
+if __name__ == "__main__":
+    main()

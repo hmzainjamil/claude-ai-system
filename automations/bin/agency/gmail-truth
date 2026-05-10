@@ -1,0 +1,62 @@
+#!/usr/bin/env python3
+"""
+GMAIL TRUTH CHECK — Distinguishes DRAFTS vs ACTUAL SENDS.
+No more lying about email status. This script reports the literal truth.
+
+THREE STATES:
+  DRAFTED     — created via Gmail MCP, sitting in Drafts folder, NOT sent
+  PENDING     — queued in pending.jsonl, waiting for SMTP send
+  SENT        — actually delivered via SMTP (requires GMAIL_APP_PASSWORD)
+
+REALITY:
+  - Gmail MCP exposes only create_draft, NOT send.
+  - Without GMAIL_APP_PASSWORD, NOTHING gets sent — only drafted.
+  - This script tells the user the unvarnished truth.
+"""
+import os, json, datetime
+from pathlib import Path
+
+HOME   = Path.home()
+AGENCY = HOME / ".claude/agency"
+
+def count_jsonl(path):
+    if not path.exists(): return 0
+    return sum(1 for line in path.read_text().splitlines() if line.strip())
+
+def main():
+    pending_pipeline = AGENCY / "data/email_pipeline_pending.jsonl"
+    pending_mcp      = AGENCY / "data/mcp_email_pending.jsonl"
+    sent_log         = AGENCY / "data/email_sent.jsonl"
+
+    pending_p = count_jsonl(pending_pipeline)
+    pending_m = count_jsonl(pending_mcp)
+    sent_count = count_jsonl(sent_log)
+
+    smtp_ready = bool(os.environ.get("GMAIL_APP_PASSWORD"))
+
+    print(f"\n{'='*52}")
+    print(f"GMAIL TRUTH CHECK — zulqarnain@digiminds.org")
+    print('='*52)
+    print(f"\n  DRAFTED (Gmail MCP, in Drafts folder, NOT sent)")
+    print(f"     → Open gmail.com → Drafts to send manually")
+    print(f"")
+    print(f"  PENDING SMTP queue:    {pending_p:>3} emails")
+    print(f"  PENDING MCP queue:     {pending_m:>3} emails")
+    print(f"  ACTUALLY SENT (log):   {sent_count:>3} emails")
+    print(f"")
+    print(f"  SMTP send capability:  {'✓ READY' if smtp_ready else '✗ DISABLED'}")
+
+    if not smtp_ready:
+        print(f"\n  ⚠ NOTHING WILL ACTUALLY SEND until you set:")
+        print(f"     export GMAIL_APP_PASSWORD='xxxx-xxxx-xxxx-xxxx'")
+        print(f"     in ~/.claude/tier0.env")
+        print(f"")
+        print(f"  Get app password: myaccount.google.com/apppasswords")
+        print(f"  (Requires Google 2FA enabled first)")
+    else:
+        print(f"\n  ✓ Pipeline can SEND on next agency-run")
+
+    print()
+
+if __name__ == "__main__":
+    main()

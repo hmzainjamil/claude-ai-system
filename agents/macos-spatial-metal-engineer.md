@@ -168,7 +168,7 @@ class VisionProCompositor {
 ### Spatial Interaction System
 ```swift
 // Gaze and gesture handling for Vision Pro
-class SpatialInteractionHandler {
+class S[REDACTED] {
     struct RaycastHit {
         let nodeId: String
         let distance: Float

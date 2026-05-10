@@ -1,0 +1,126 @@
+#!/usr/bin/env bash
+# skill-load — Blockchain-style dependency loader for skills
+# Reads manifest.json from a skill dir, auto-activates all deps
+# Usage: skill-load <skill-name> [--unload]
+#
+# Architecture: like M1 chip — declare what you need, system loads/unloads atomically
+
+set -e
+SKILLS="$HOME/.claude/skills"
+ARCHIVE="$HOME/.claude/skills-archive"
+SKILL_ON="$HOME/.claude/bin/skill-on"
+SKILL_OFF="$HOME/.claude/bin/skill-off"
+
+if [ $# -eq 0 ]; then
+  echo "Usage: skill-load <skill-name> [--unload]" >&2
+  exit 1
+fi
+
+SKILL_NAME="$1"
+MODE="${2:-}"
+MANIFEST="$SKILLS/$SKILL_NAME/manifest.json"
+
+if [ ! -f "$MANIFEST" ]; then
+  echo "? No manifest found for '$SKILL_NAME' at $MANIFEST" >&2
+  exit 1
+fi
+
+# ── Parse always_load deps ────────────────────────────────────────
+ALWAYS_LOAD=$(python3 -c "
+import json, sys
+try:
+    d = json.load(open('$MANIFEST'))
+    deps = d.get('always_load', [])
+    print(' '.join(deps))
+except Exception as e:
+    sys.exit(0)
+" 2>/dev/null)
+
+# ── Parse task intent from env (set by skill-auto-activate) ──────
+TASK_INTENT="${TASK_INTENT:-}"
+
+# ── Parse routing + intent_map deps ──────────────────────────────
+ROUTING_SKILLS=$(python3 - "$MANIFEST" "$TASK_INTENT" <<'PYEOF'
+import json, sys, os
+
+manifest_path = sys.argv[1]
+task = (sys.argv[2] if len(sys.argv) > 2 else "").lower()
+
+try:
+    d = json.load(open(manifest_path))
+except:
+    sys.exit(0)
+
+all_skills = []
+
+# Legacy routing key support
+for skills in d.get('routing', {}).values():
+    if isinstance(skills, list):
+        all_skills.extend(skills)
+
+# New intent_map support — match by task keywords
+intent_map = d.get('intent_map', {})
+if task:
+    for intent_name, intent_config in intent_map.items():
+        keywords = intent_config.get('keywords', [])
+        if any(kw.lower() in task for kw in keywords):
+            skills = intent_config.get('load_skills', [])
+            if isinstance(skills, list):
+                all_skills.extend(skills)
+else:
+    # No task provided — load all intent skills (full manifest)
+    for intent_config in intent_map.values():
+        skills = intent_config.get('load_skills', [])
+        if isinstance(skills, list):
+            all_skills.extend(skills)
+
+# Deduplicate preserving order
+seen = set()
+unique = [s for s in all_skills if not (s in seen or seen.add(s))]
+print(' '.join(unique))
+PYEOF
+)
+
+if [ "$MODE" = "--unload" ]; then
+  echo "Unloading $SKILL_NAME deps..."
+  for skill in $ALWAYS_LOAD $ROUTING_SKILLS; do
+    "$SKILL_OFF" "$skill" 2>/dev/null || true
+  done
+  echo "Done."
+  exit 0
+fi
+
+# ── Load all deps ─────────────────────────────────────────────────
+echo "Loading $SKILL_NAME manifest deps..."
+LOADED=0
+SKIPPED=0
+
+for skill in $ALWAYS_LOAD; do
+  if [ -e "$SKILLS/$skill" ]; then
+    echo "= $skill (active)"
+    SKIPPED=$((SKIPPED+1))
+  elif [ -e "$ARCHIVE/$skill" ]; then
+    mv "$ARCHIVE/$skill" "$SKILLS/$skill"
+    echo "+ $skill"
+    LOADED=$((LOADED+1))
+  else
+    echo "? $skill (not in archive)" >&2
+  fi
+done
+
+echo "--- routing skills ---"
+for skill in $ROUTING_SKILLS; do
+  if [ -e "$SKILLS/$skill" ]; then
+    echo "= $skill (active)"
+    SKIPPED=$((SKIPPED+1))
+  elif [ -e "$ARCHIVE/$skill" ]; then
+    mv "$ARCHIVE/$skill" "$SKILLS/$skill"
+    echo "+ $skill"
+    LOADED=$((LOADED+1))
+  else
+    echo "~ $skill (not in archive, skip)"
+  fi
+done
+
+echo ""
+echo "Loaded: $LOADED new | Already active: $SKIPPED"

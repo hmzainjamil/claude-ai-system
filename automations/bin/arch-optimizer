@@ -1,0 +1,505 @@
+#!/usr/bin/env python3
+"""
+arch-optimizer — Daily Self-Improvement Daemon v1.0
+Analyzes session logs, skill usage, security threats, and error patterns.
+Fires all Tier 0 LLMs in parallel for improvement suggestions.
+Auto-patches: signature DB, skill routing, optimize-commands, scanner config.
+Zero Claude tokens. Runs daily at 3am via LaunchAgent.
+"""
+
+import os, sys, json, re, datetime, subprocess, glob, hashlib, random
+import concurrent.futures, urllib.request, urllib.error
+from pathlib import Path
+from collections import Counter, defaultdict
+
+HOME = Path.home()
+CLAUDE_DIR = HOME / ".claude"
+LOG_DIR = CLAUDE_DIR / "security/logs"
+REPORTS_DIR = CLAUDE_DIR / "security/reports"
+SIGS_FILE = CLAUDE_DIR / "security/signatures/malware-patterns.json"
+OPTIMIZER_LOG = LOG_DIR / "arch-optimizer.log"
+CHANGELOG = CLAUDE_DIR / "ARCHITECTURE_CHANGELOG.md"
+SESSIONS_DIR = CLAUDE_DIR / "projects"
+SKILLS_DIR = CLAUDE_DIR / "skills"
+OPT_SKILL = CLAUDE_DIR / "skills/optimize-commands/optimize-commands.md"
+TIER0_ENV = CLAUDE_DIR / "tier0.env"
+
+# ── Logging ───────────────────────────────────────────────────────────────────
+def log(msg, level="INFO"):
+    ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    line = f"[{ts}] [{level}] {msg}"
+    print(line)
+    LOG_DIR.mkdir(parents=True, exist_ok=True)
+    with open(OPTIMIZER_LOG, "a") as f:
+        f.write(line + "\n")
+
+# ── Load Tier 0 env ───────────────────────────────────────────────────────────
+def load_tier0_env():
+    if TIER0_ENV.exists():
+        for line in TIER0_ENV.read_text().splitlines():
+            if line.startswith("export "):
+                line = line[7:]
+                if "=" in line:
+                    k, v = line.split("=", 1)
+                    os.environ.setdefault(k.strip(), v.strip().strip('"\''))
+
+# ── Data Collection ───────────────────────────────────────────────────────────
+def collect_session_patterns():
+    """Parse recent JSONL session files for patterns: errors, skills used, commands."""
+    patterns = {
+        "errors": [],
+        "skills_used": Counter(),
+        "commands": Counter(),
+        "failed_tools": Counter(),
+        "slow_operations": [],
+        "frequent_tasks": Counter(),
+    }
+
+    # Scan recent session files (last 24h)
+    cutoff = datetime.datetime.now() - datetime.timedelta(hours=24)
+    jsonl_files = list(SESSIONS_DIR.rglob("*.jsonl")) if SESSIONS_DIR.exists() else []
+    recent = [f for f in jsonl_files if datetime.datetime.fromtimestamp(f.stat().st_mtime) > cutoff]
+
+    for fpath in recent[:20]:  # cap at 20 files
+        try:
+            for line in fpath.read_text(errors="replace").splitlines()[:500]:
+                try:
+                    msg = json.loads(line)
+                    content = str(msg)
+                    # Extract skill invocations
+                    for m in re.finditer(r'skill[_-]?name["\s:]+([a-z0-9_-]+)', content, re.IGNORECASE):
+                        patterns["skills_used"][m.group(1)] += 1
+                    # Extract errors
+                    if "error" in content.lower() or "failed" in content.lower():
+                        snippet = content[:200]
+                        if snippet not in patterns["errors"]:
+                            patterns["errors"].append(snippet)
+                    # Extract tool usage
+                    for m in re.finditer(r'"tool_name":\s*"([^"]+)"', content):
+                        patterns["commands"][m.group(1)] += 1
+                except:
+                    pass
+        except:
+            pass
+
+    return patterns
+
+def collect_security_patterns():
+    """Parse scan reports and logs for new threat patterns and false positives."""
+    threat_patterns = []
+    false_positive_hints = []
+
+    # Recent deleted-threat reports
+    if REPORTS_DIR.exists():
+        for rfile in sorted(REPORTS_DIR.glob("deleted_*.json"))[-50:]:
+            try:
+                r = json.loads(rfile.read_text())
+                preview = r.get("content_preview", "")
+                reason = r.get("reason", "")
+                if preview:
+                    threat_patterns.append({"reason": reason, "preview": preview[:300]})
+            except:
+                pass
+
+    # Scan log for THREAT lines
+    scan_log = LOG_DIR / "scan.log"
+    if scan_log.exists():
+        for line in scan_log.read_text(errors="replace").splitlines()[-500:]:
+            if "[THREAT]" in line:
+                threat_patterns.append({"log": line})
+            elif "false positive" in line.lower() or "whitelisted" in line.lower():
+                false_positive_hints.append(line)
+
+    return threat_patterns, false_positive_hints
+
+def collect_guardian_stats():
+    """Guardian log stats — hourly scan results over last 7 days."""
+    stats = {"total_scans": 0, "clean_scans": 0, "threat_scans": 0, "avg_threats": 0}
+    glog = LOG_DIR / "guardian.log"
+    if not glog.exists():
+        return stats
+
+    lines = glog.read_text(errors="replace").splitlines()[-1000:]
+    threats = []
+    for line in lines:
+        if "Guardian scan complete" in line:
+            stats["total_scans"] += 1
+        elif "Scan clean" in line:
+            stats["clean_scans"] += 1
+        elif "Threats detected:" in line:
+            stats["threat_scans"] += 1
+            m = re.search(r'Threats detected: (\d+)', line)
+            if m:
+                threats.append(int(m.group(1)))
+
+    if threats:
+        stats["avg_threats"] = sum(threats) / len(threats)
+
+    return stats
+
+# ── Tier 0 LLM Blast ─────────────────────────────────────────────────────────
+def tier0_improvement_blast(analysis_data):
+    """
+    Fire all Tier 0 models with analysis data.
+    Ask each: what improvements to make to the architecture?
+    Returns list of improvement suggestions as JSON.
+    """
+    prompt = f"""You are an AI architecture optimizer. Analyze this daily usage data and suggest specific improvements.
+Return ONLY valid JSON array of improvements. Max 5 items. No markdown, no prose.
+
+Data:
+{json.dumps(analysis_data, indent=2)[:3000]}
+
+Return format (JSON array only):
+[
+  {{
+    "target": "signatures|routing|scanner_config|skill_index|optimize_commands",
+    "action": "add_pattern|update_rule|fix_config|add_skill_route",
+    "description": "one sentence",
+    "data": {{...specific change data...}}
+  }}
+]"""
+
+    results = []
+    groq_key = os.environ.get("GROQ_API_KEY", "")
+    gemini_key = os.environ.get("GEMINI_API_KEY", os.environ.get("GOOGLE_API_KEY", ""))
+    openrouter_key = os.environ.get("OPENROUTER_API_KEY", "")
+    openai_key = os.environ.get("OPENAI_API_KEY", "")
+    deepseek_key = os.environ.get("DEEPSEEK_API_KEY", "")
+    glm_key = os.environ.get("GLM_API_KEY", "")
+    dashscope_key = os.environ.get("DASHSCOPE_API_KEY", "")
+
+    def call_openai_compat(name, url, key, model, timeout=20):
+        if not key: return None
+        try:
+            data = json.dumps({"model": model, "messages": [{"role": "user", "content": prompt}],
+                "max_tokens": 600, "temperature": 0.3}).encode()
+            req = urllib.request.Request(url, data=data,
+                headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"})
+            with urllib.request.urlopen(req, timeout=timeout) as r:
+                return (name, json.loads(r.read())["choices"][0]["message"]["content"])
+        except: return None
+
+    def call_gemini(name, model, key):
+        if not key: return None
+        try:
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={key}"
+            data = json.dumps({"contents": [{"parts": [{"text": prompt}]}],
+                "generationConfig": {"maxOutputTokens": 600, "temperature": 0.3}}).encode()
+            req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"})
+            with urllib.request.urlopen(req, timeout=20) as r:
+                resp = json.loads(r.read())
+                return (name, resp["candidates"][0]["content"]["parts"][0]["text"])
+        except: return None
+
+    def call_gpt4all():
+        model_path = os.path.expanduser(
+            "~/Library/Application Support/nomic.ai/GPT4All/Meta-Llama-3-8B-Instruct.Q4_0.gguf")
+        if not os.path.exists(model_path): return None
+        try:
+            r = subprocess.run(
+                ["python3", os.path.expanduser("~/.claude/bin/gpt4all-inference"), prompt],
+                capture_output=True, text=True, timeout=60,
+                env={**os.environ, "PATH": "/opt/homebrew/bin:/usr/local/bin:" + os.environ.get("PATH", "")})
+            return ("gpt4all", r.stdout.strip()) if r.returncode == 0 and r.stdout.strip() else None
+        except: return None
+
+    def call_ollama():
+        try:
+            r = subprocess.run(["ollama", "run", "llama3", prompt],
+                capture_output=True, text=True, timeout=30,
+                env={**os.environ, "PATH": "/opt/homebrew/bin:/usr/local/bin:" + os.environ.get("PATH", "")})
+            return ("ollama", r.stdout.strip()) if r.returncode == 0 else None
+        except: return None
+
+    def call_g0dm0d3():
+        try:
+            data = json.dumps({"model": "llama3", "prompt": prompt, "stream": False}).encode()
+            req = urllib.request.Request("http://127.0.0.1:7860/api/generate", data=data,
+                headers={"Content-Type": "application/json"})
+            with urllib.request.urlopen(req, timeout=15) as r:
+                return ("g0dm0d3", json.loads(r.read()).get("response", ""))
+        except: return None
+
+    tasks = [
+        call_gpt4all,
+        call_ollama,
+        lambda: call_openai_compat("groq", "https://api.groq.com/openai/v1/chat/completions",
+            groq_key, "llama-3.3-70b-versatile"),
+        lambda: call_gemini("gemini", "gemini-2.0-flash", gemini_key),
+        lambda: call_gemini("gemma4-google", "gemma-4-31b-it", gemini_key),
+        lambda: call_openai_compat("gemma4-free", "https://openrouter.ai/api/v1/chat/completions",
+            openrouter_key, "google/gemma-4-31b-it:free"),
+        lambda: call_openai_compat("deepseek", "https://api.deepseek.com/v1/chat/completions",
+            deepseek_key, "deepseek-chat"),
+        lambda: call_openai_compat("gpt4o-mini", "https://api.openai.com/v1/chat/completions",
+            openai_key, "gpt-4o-mini"),
+        lambda: call_openai_compat("mistral", "https://openrouter.ai/api/v1/chat/completions",
+            openrouter_key, "mistralai/mistral-7b-instruct"),
+        lambda: call_openai_compat("glm", "https://open.bigmodel.cn/api/paas/v4/chat/completions",
+            glm_key, "glm-4.5-air"),
+        lambda: call_openai_compat("dashscope", "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions",
+            dashscope_key, "qwen-turbo"),
+        call_g0dm0d3,
+    ]
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=12) as ex:
+        futures = [ex.submit(t) for t in tasks]
+        for fut in concurrent.futures.as_completed(futures, timeout=35):
+            try:
+                r = fut.result()
+                if r:
+                    results.append(r)
+            except: pass
+
+    log(f"Tier 0 blast: {len(results)}/9 models responded")
+    return results
+
+# ── Parse & Deduplicate Suggestions ──────────────────────────────────────────
+def parse_suggestions(llm_results):
+    """Extract JSON arrays from LLM outputs, deduplicate by description."""
+    all_suggestions = []
+    seen = set()
+
+    for name, text in llm_results:
+        # Extract JSON array
+        m = re.search(r'\[[\s\S]*?\]', text)
+        if not m:
+            continue
+        try:
+            items = json.loads(m.group(0))
+            for item in items:
+                if not isinstance(item, dict):
+                    continue
+                desc = item.get("description", "")
+                key = hashlib.md5(desc.encode()).hexdigest()[:8]
+                if key not in seen:
+                    seen.add(key)
+                    item["_source"] = name
+                    all_suggestions.append(item)
+        except:
+            pass
+
+    log(f"Parsed {len(all_suggestions)} unique suggestions from {len(llm_results)} models")
+    return all_suggestions
+
+# ── Apply Improvements ────────────────────────────────────────────────────────
+def apply_signatures_update(suggestion):
+    """Add new malware patterns to signatures DB."""
+    data = suggestion.get("data", {})
+    new_patterns = data.get("patterns", [])
+    severity = data.get("severity", "MEDIUM")
+    category = data.get("category", "auto_detected")
+
+    if not new_patterns or not isinstance(new_patterns, list):
+        return False
+
+    try:
+        sigs = json.loads(SIGS_FILE.read_text())
+    except:
+        return False
+
+    if severity not in sigs["signatures"]:
+        sigs["signatures"][severity] = {}
+
+    existing = sigs["signatures"][severity].get(category, [])
+    added = []
+    for p in new_patterns:
+        if isinstance(p, str) and p not in existing:
+            try:
+                re.compile(p)  # validate regex
+                existing.append(p)
+                added.append(p)
+            except:
+                pass
+
+    if not added:
+        return False
+
+    sigs["signatures"][severity][category] = existing
+    sigs["updated"] = datetime.date.today().isoformat()
+    SIGS_FILE.write_text(json.dumps(sigs, indent=2))
+    log(f"  Signatures: +{len(added)} patterns to [{severity}][{category}]")
+    return True
+
+def apply_routing_update(suggestion):
+    """Add new skill routing keyword to optimize-commands."""
+    data = suggestion.get("data", {})
+    keyword = data.get("keyword", "")
+    skills = data.get("skills", [])
+
+    if not keyword or not skills or not OPT_SKILL.exists():
+        return False
+
+    content = OPT_SKILL.read_text()
+    # Check if keyword already present
+    if keyword.lower() in content.lower():
+        return False
+
+    # Insert into routing table before the closing ---
+    new_row = f"| {keyword} | {', '.join(skills)} | — |\n"
+    # Find routing table section and append
+    if "| keyword" in content.lower() and "| ads/meta" in content.lower():
+        # Add before last row of skill routing table
+        insert_marker = "| g0dm0d3/godmode"
+        content = content.replace(insert_marker, new_row + insert_marker)
+        OPT_SKILL.write_text(content)
+        log(f"  Routing: +keyword '{keyword}' → {skills}")
+        return True
+
+    return False
+
+def apply_scanner_config(suggestion):
+    """Update scanner whitelist or scan targets."""
+    data = suggestion.get("data", {})
+    safe_domains = data.get("safe_domains", [])
+    whitelist_patterns = data.get("whitelist_patterns", [])
+
+    if not safe_domains and not whitelist_patterns:
+        return False
+
+    try:
+        sigs = json.loads(SIGS_FILE.read_text())
+    except:
+        return False
+
+    changed = False
+    for d in safe_domains:
+        if isinstance(d, str) and d not in sigs.get("known_safe_domains", []):
+            sigs.setdefault("known_safe_domains", []).append(d)
+            changed = True
+
+    for p in whitelist_patterns:
+        if isinstance(p, str) and p not in sigs.get("whitelist_patterns", []):
+            try:
+                re.compile(p)
+                sigs.setdefault("whitelist_patterns", []).append(p)
+                changed = True
+            except:
+                pass
+
+    if changed:
+        SIGS_FILE.write_text(json.dumps(sigs, indent=2))
+        log(f"  Scanner config: +{len(safe_domains)} safe domains, +{len(whitelist_patterns)} whitelist patterns")
+
+    return changed
+
+def apply_suggestions(suggestions):
+    """Apply all valid suggestions and return list of applied changes."""
+    applied = []
+
+    for s in suggestions:
+        target = s.get("target", "")
+        action = s.get("action", "")
+        desc = s.get("description", "unknown")
+
+        try:
+            if target == "signatures" and action == "add_pattern":
+                if apply_signatures_update(s):
+                    applied.append({"target": target, "action": action, "description": desc})
+
+            elif target == "routing" and action in ("add_skill_route", "update_rule"):
+                if apply_routing_update(s):
+                    applied.append({"target": target, "action": action, "description": desc})
+
+            elif target == "scanner_config" and action in ("fix_config", "add_pattern"):
+                if apply_scanner_config(s):
+                    applied.append({"target": target, "action": action, "description": desc})
+
+        except Exception as e:
+            log(f"  Failed to apply [{target}/{action}]: {e}", "WARN")
+
+    return applied
+
+# ── Changelog Writer ──────────────────────────────────────────────────────────
+def write_changelog(applied, stats, suggestions_count):
+    ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+    date = datetime.date.today().isoformat()
+
+    entry = f"""
+## [{date}] Daily Architecture Optimization
+
+**Run at**: {ts}
+**Tier 0 suggestions parsed**: {suggestions_count}
+**Changes applied**: {len(applied)}
+**Guardian stats**: {stats.get('total_scans', 0)} scans, {stats.get('threat_scans', 0)} with threats
+
+"""
+    if applied:
+        entry += "### Changes\n"
+        for c in applied:
+            entry += f"- `[{c['target']}]` {c['description']}\n"
+    else:
+        entry += "_No actionable changes this cycle._\n"
+
+    entry += "\n---\n"
+
+    if CHANGELOG.exists():
+        existing = CHANGELOG.read_text()
+        CHANGELOG.write_text(entry + existing)
+    else:
+        CHANGELOG.write_text(f"# Architecture Changelog\n\n" + entry)
+
+    log(f"Changelog updated: {CHANGELOG}")
+
+# ── Main ──────────────────────────────────────────────────────────────────────
+def main():
+    log("=" * 60)
+    log("arch-optimizer starting — daily improvement cycle")
+    log("=" * 60)
+
+    load_tier0_env()
+
+    # 1. Collect data
+    log("Phase 1: Collecting patterns...")
+    session_patterns = collect_session_patterns()
+    threat_patterns, fp_hints = collect_security_patterns()
+    guardian_stats = collect_guardian_stats()
+
+    log(f"  Session errors: {len(session_patterns['errors'])}")
+    log(f"  Threat patterns: {len(threat_patterns)}")
+    log(f"  Guardian scans: {guardian_stats['total_scans']}")
+    log(f"  Top skills: {dict(session_patterns['skills_used'].most_common(5))}")
+
+    # 2. Build analysis summary for LLMs
+    analysis = {
+        "date": datetime.date.today().isoformat(),
+        "session_errors": session_patterns["errors"][:5],
+        "top_skills_used": dict(session_patterns["skills_used"].most_common(10)),
+        "top_commands": dict(session_patterns["commands"].most_common(10)),
+        "recent_threats": threat_patterns[:10],
+        "false_positive_hints": fp_hints[:5],
+        "guardian_stats": guardian_stats,
+        "request": "Suggest specific improvements to: malware signature patterns, skill routing keywords, scanner whitelist patterns, or safe domain list. Focus on reducing false positives and catching new threat patterns. Return actionable JSON only."
+    }
+
+    # 3. Fire all Tier 0 LLMs
+    log("Phase 2: Tier 0 LLM blast (9 models parallel)...")
+    llm_results = tier0_improvement_blast(analysis)
+
+    if not llm_results:
+        log("No LLM responses — skipping optimization cycle", "WARN")
+        write_changelog([], guardian_stats, 0)
+        return
+
+    # 4. Parse suggestions
+    log("Phase 3: Parsing suggestions...")
+    suggestions = parse_suggestions(llm_results)
+
+    # 5. Apply improvements
+    log("Phase 4: Applying improvements...")
+    applied = apply_suggestions(suggestions)
+
+    # 6. Write changelog
+    write_changelog(applied, guardian_stats, len(suggestions))
+
+    log(f"Cycle complete — {len(applied)}/{len(suggestions)} suggestions applied")
+    log("=" * 60)
+
+    # Signal guardian to reload sigs on next scan
+    reload_signal = LOG_DIR / "sig-reload-needed"
+    if applied:
+        reload_signal.touch()
+
+if __name__ == "__main__":
+    main()

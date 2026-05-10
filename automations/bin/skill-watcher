@@ -1,0 +1,55 @@
+#!/usr/bin/env bash
+# skill-watcher — Real-time AI skill/agent file watcher
+# Uses fswatch to monitor all skill directories and scan new/modified files instantly
+# Always active — complements hourly guardian daemon
+
+export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:$HOME/.claude/bin:$PATH"
+source ~/.claude/tier0.env 2>/dev/null || true
+
+SCANNER="$HOME/.claude/bin/skill-scanner"
+LOG="$HOME/.claude/security/logs/watcher.log"
+PYTHON="/usr/bin/python3"
+
+mkdir -p "$(dirname "$LOG")"
+
+ts() { date '+%Y-%m-%d %H:%M:%S'; }
+
+echo "[$(ts)] Skill watcher starting..." >> "$LOG"
+
+# Directories to watch
+WATCH_DIRS=(
+    "$HOME/.claude/skills"
+    "$HOME/.claude/skills-archive"
+    "$HOME/.openclaw/workspace/skills"
+    "$HOME/.agents/skills"
+    "$HOME/.openclaw/agents"
+)
+
+# Filter to only dirs that exist
+EXISTING_DIRS=()
+for d in "${WATCH_DIRS[@]}"; do
+    [ -d "$d" ] && EXISTING_DIRS+=("$d")
+done
+
+if [ ${#EXISTING_DIRS[@]} -eq 0 ]; then
+    echo "[$(ts)] No watch directories found" >> "$LOG"
+    exit 1
+fi
+
+echo "[$(ts)] Watching: ${EXISTING_DIRS[*]}" >> "$LOG"
+
+# Run fswatch and pipe new/modified files to scanner
+fswatch -r -e ".*" -i "\.(md|sh|py|js|ts|json|yaml|yml|toml)$" \
+    --event Created --event Updated --event Renamed \
+    "${EXISTING_DIRS[@]}" 2>/dev/null \
+| while IFS= read -r filepath; do
+    # Skip security dirs themselves
+    [[ "$filepath" == *"security/quarantine"* ]] && continue
+    [[ "$filepath" == *"security/reports"* ]] && continue
+    [[ "$filepath" == *"security/logs"* ]] && continue
+
+    echo "[$(ts)] File change detected: $filepath" >> "$LOG"
+
+    # Scan immediately in background
+    "$PYTHON" "$SCANNER" --target "$filepath" >> "$LOG" 2>&1 &
+done

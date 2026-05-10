@@ -1,0 +1,231 @@
+#!/usr/bin/env bash
+# openclaw-skill-add — Bulk install ANY OpenClaw skills from GitHub (bypasses ClawHub rate limits)
+# Usage:
+#   openclaw-skill-add cold-email go-to-market agent-memory          # by name
+#   openclaw-skill-add --file skills.txt                             # from file (one per line)
+#   openclaw-skill-add --all-category marketing-and-sales            # all in a category
+#   openclaw-skill-add --search "email"                              # search and install matches
+#   openclaw-skill-add --list                                        # show all available (10k+)
+#
+# NO ClawHub API. Reads directly from openclaw/skills GitHub repo → zero rate limits.
+
+set -e
+export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
+
+REPO_DIR=~/installed-repos/openclaw-skills-official
+WORKSPACE=~/.openclaw/workspace/skills
+INDEX=~/.claude/openclaw-skill-index.json
+CATALOG_DIR=~/installed-repos/awesome-openclaw-skills/categories
+
+mkdir -p "$WORKSPACE"
+
+# Ensure repo is cloned
+if [ ! -d "$REPO_DIR/.git" ]; then
+  echo "[openclaw-skill-add] Cloning openclaw/skills repo (sparse)..."
+  git clone --filter=blob:none --sparse --depth=1 \
+    https://github.com/openclaw/skills "$REPO_DIR"
+  git -C "$REPO_DIR" sparse-checkout init --cone
+fi
+
+# Ensure index exists
+if [ ! -f "$INDEX" ]; then
+  echo "[openclaw-skill-add] Building skill index..."
+  python3 - << 'PYEOF'
+import re, json, os, glob
+index = {}
+catalog_dir = os.path.expanduser("~/installed-repos/awesome-openclaw-skills/categories")
+for f in glob.glob(f"{catalog_dir}/*.md"):
+    for line in open(f):
+        m = re.search(r'\[([^\]]+)\]\(https://clawskills\.sh/skills/([^)]+)\)', line)
+        if m:
+            label, slug = m.group(1).strip().lower().replace(' ', '-'), m.group(2)
+            index[label] = slug
+            index[slug] = slug
+with open(os.path.expanduser("~/.claude/openclaw-skill-index.json"), "w") as out:
+    json.dump(index, out)
+print(f"Indexed {len(index)} skills")
+PYEOF
+fi
+
+install_skill() {
+  local name="$1"
+  local slug
+
+  # Look up in index
+  slug=$(python3 -c "
+import json,sys
+idx=json.load(open('$INDEX'))
+k='$name'.lower().replace(' ','-')
+# try exact, then prefix match
+if k in idx: print(idx[k]); sys.exit()
+matches=[v for kk,v in idx.items() if kk.startswith(k) or k in kk]
+if matches: print(matches[0]); sys.exit()
+sys.exit(1)
+" 2>/dev/null) || true
+
+  if [ -z "$slug" ]; then
+    echo "  ✗ $name — not found in index"
+    return 1
+  fi
+
+  # slug format: author-skillname → becomes skills/author/skillname in repo
+  # BUT: author slug in catalog = everything before last segment matching skill label
+  # Repo path: find by looking up the sparse repo
+  # Strategy: sparse-checkout the full author dir, find the skill subdir
+
+  # Extract likely repo path from catalog slug
+  # catalog slug = "author-skillname" → repo = "skills/author/skillname"
+  # We need to find the right split point
+  local repo_path
+  repo_path=$(python3 - << PYEOF
+import json, sys, os, re
+slug = "$slug"
+repo_dir = os.path.expanduser("$REPO_DIR/skills")
+idx = json.load(open(os.path.expanduser("$INDEX")))
+
+# The slug in catalog is author-skillname concatenated with dash
+# We don't know where author ends and skill begins
+# Best approach: look at existing dirs in sparse checkout
+# OR: try splitting slug differently
+
+# Try: skill-name is what appears after the first dash component
+# Most slugs: author-skill or author-skillname
+# Check if any existing dir matches last component
+
+parts = slug.split('-')
+for i in range(1, len(parts)):
+    author = '-'.join(parts[:i])
+    skill = '-'.join(parts[i:])
+    p = os.path.join(repo_dir, author, skill)
+    if os.path.isdir(p):
+        print(f"skills/{author}/{skill}")
+        sys.exit(0)
+
+# Not found locally — return best guess (longest author prefix that's ≤2 parts)
+author = parts[0]
+skill = '-'.join(parts[1:])
+print(f"skills/{author}/{skill}")
+PYEOF
+)
+
+  local skill_name
+  skill_name=$(basename "$repo_path")
+  local dst="$WORKSPACE/$skill_name"
+
+  if [ -d "$dst" ]; then
+    echo "  ~ $skill_name (already installed)"
+    return 0
+  fi
+
+  # Try from existing sparse checkout first
+  local src="$REPO_DIR/$repo_path"
+  if [ ! -d "$src" ]; then
+    # Sparse-checkout the path
+    git -C "$REPO_DIR" sparse-checkout add "$repo_path" 2>/dev/null || true
+    git -C "$REPO_DIR" pull --depth=1 origin main 2>/dev/null || true
+  fi
+
+  if [ -d "$src" ]; then
+    cp -r "$src" "$dst"
+    echo "  ✓ $skill_name"
+    return 0
+  else
+    echo "  ✗ $skill_name (repo path not found: $repo_path)"
+    return 1
+  fi
+}
+
+install_all_category() {
+  local cat="$1"
+  local file="$CATALOG_DIR/${cat}.md"
+  [ ! -f "$file" ] && file="$CATALOG_DIR/${cat%.md}.md"
+  if [ ! -f "$file" ]; then
+    echo "Category file not found: $cat"
+    echo "Available: $(ls $CATALOG_DIR | sed 's/\.md//' | tr '\n' ' ')"
+    exit 1
+  fi
+  echo "[openclaw-skill-add] Installing all skills from: $cat"
+  local count=0
+  while IFS= read -r line; do
+    slug=$(echo "$line" | grep -o 'clawskills\.sh/skills/[^)]*' | sed 's|clawskills\.sh/skills/||')
+    [ -z "$slug" ] && continue
+    install_skill "$slug" && ((count++)) || true
+  done < "$file"
+  echo "[openclaw-skill-add] Installed $count skills from $cat"
+}
+
+# --- Main dispatch ---
+case "${1:-}" in
+  --list)
+    python3 -c "
+import json
+idx=json.load(open('$INDEX'))
+skills=sorted(set(idx.values()))
+for s in skills: print(s)
+" | head -${2:-50}
+    echo "... ($(python3 -c "import json; print(len(set(json.load(open('$INDEX')).values())))" ) total)"
+    ;;
+
+  --search)
+    TERM="${2:-}"
+    echo "Skills matching '$TERM':"
+    python3 -c "
+import json
+idx=json.load(open('$INDEX'))
+term='$TERM'.lower()
+matches=sorted(set(v for k,v in idx.items() if term in k))
+for m in matches: print('  ' + m)
+print(f'({len(matches)} matches)')
+"
+    ;;
+
+  --file)
+    FILE="${2:-}"
+    [ ! -f "$FILE" ] && echo "File not found: $FILE" && exit 1
+    echo "[openclaw-skill-add] Installing from file: $FILE"
+    count=0
+    while IFS= read -r skill; do
+      [[ "$skill" =~ ^#|^$ ]] && continue
+      install_skill "$skill" && ((count++)) || true
+    done < "$FILE"
+    echo "[openclaw-skill-add] Done: $count skills installed"
+    ;;
+
+  --all-category)
+    install_all_category "${2:-marketing-and-sales}"
+    ;;
+
+  --sync-all)
+    # Mass install: pull ALL skills from ALL categories
+    echo "[openclaw-skill-add] MASS SYNC: installing ALL skills from all categories..."
+    total=0
+    for cat_file in "$CATALOG_DIR"/*.md; do
+      cat_name=$(basename "$cat_file" .md)
+      echo "  Category: $cat_name"
+      while IFS= read -r line; do
+        slug=$(echo "$line" | grep -o 'clawskills\.sh/skills/[^)]*' | sed 's|clawskills\.sh/skills/||')
+        [ -z "$slug" ] && continue
+        install_skill "$slug" 2>/dev/null && ((total++)) || true
+      done < "$cat_file"
+    done
+    echo "[openclaw-skill-add] MASS SYNC complete: $total skills"
+    ;;
+
+  *)
+    if [ $# -eq 0 ]; then
+      echo "Usage: openclaw-skill-add <skill1> [skill2] ..."
+      echo "       openclaw-skill-add --file skills.txt"
+      echo "       openclaw-skill-add --all-category marketing-and-sales"
+      echo "       openclaw-skill-add --search <keyword>"
+      echo "       openclaw-skill-add --list [limit]"
+      echo "       openclaw-skill-add --sync-all"
+      exit 0
+    fi
+    # Install all named skills
+    ok=0; fail=0
+    for skill in "$@"; do
+      install_skill "$skill" && ((ok++)) || ((fail++))
+    done
+    echo "[openclaw-skill-add] Done: $ok installed, $fail failed"
+    ;;
+esac
