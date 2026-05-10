@@ -149,3 +149,54 @@ else
 fi
 
 echo "[github-sync] Done at $(date '+%Y-%m-%d %H:%M:%S')"
+
+# ── SYNC SUB-REPOS ────────────────────────────────────────────────────────────
+TOKEN="${GITHUB_TOKEN}"
+UNAME="${GITHUB_USERNAME:-hmzainjamil}"
+DATE=$(date '+%Y-%m-%d %H:%M')
+
+# hmz-skills-archive — re-deduplicate and push
+echo "[github-sync] Syncing hmz-skills-archive..."
+python3 << 'PYEOF'
+import os, re, shutil
+
+src = os.path.expanduser("~/.claude/skills-archive")
+out = "/tmp/hmz-skills-archive-sync/skills"
+shutil.rmtree("/tmp/hmz-skills-archive-sync", ignore_errors=True)
+os.makedirs(out, exist_ok=True)
+
+if not os.path.isdir(src): exit(0)
+
+groups = {}
+for d in os.listdir(src):
+    base = re.sub(r'-[A-F0-9]{8}$', '', d)
+    skill_file = os.path.join(src, d, "SKILL.md")
+    if os.path.exists(skill_file):
+        content = open(skill_file, errors='ignore').read()
+        if base not in groups or len(content) > len(groups[base]):
+            groups[base] = content
+
+hmz_note = "\n\n---\n*Curated by [Hafiz Muhammad Zulqarnain](https://github.com/hmzainjamil) — HMZ AI System*\n"
+for base, content in groups.items():
+    os.makedirs(f"{out}/{base}", exist_ok=True)
+    # Scrub tokens
+    content = re.sub(r'AIRTABLE_API_KEY=[A-Za-z0-9._]+', 'AIRTABLE_API_KEY=[YOUR_TOKEN]', content)
+    content = re.sub(r'ghp_[A-Za-z0-9]{10,}', '[YOUR_GITHUB_TOKEN]', content)
+    content = re.sub(r'sk-[A-Za-z0-9]{20,}', '[YOUR_OPENAI_KEY]', content)
+    with open(f"{out}/{base}/SKILL.md", 'w') as f:
+        f.write(content + hmz_note)
+
+print(f"Skills: {len(groups)}")
+PYEOF
+
+cd /tmp/hmz-skills-archive-sync 2>/dev/null && {
+  git init -q -b main 2>/dev/null
+  git config user.name "Hafiz Muhammad Zulqarnain"
+  git config user.email "hmzainjamil@users.noreply.github.com"
+  git remote add origin "https://${TOKEN}@github.com/${UNAME}/hmz-skills-archive.git" 2>/dev/null
+  git add -A
+  git diff --staged --quiet || git commit -q -m "sync: ${DATE} — skills archive update"
+  git push origin main --force 2>/dev/null && echo "[github-sync] hmz-skills-archive pushed" || true
+} || true
+
+echo "[github-sync] All repos synced."

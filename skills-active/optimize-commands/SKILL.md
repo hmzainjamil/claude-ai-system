@@ -547,3 +547,98 @@ Skill: `~/.claude/skills/lead-gen-ai/SKILL.md`
 - `mcp__8b8885d8-497d-4b96-be50-89e1511947c7__apollo_contacts_search` — filter contacts
 
 **Output:** `~/Downloads/leads.xlsx` — 11-column Excel, auto-width, bold headers
+
+---
+
+## LLM AGENTS BUNDLE — AUTO-ROUTING (always-on)
+
+Installed at: `~/installed-repos/llm-agents-bundle/`
+
+26 specialized AI agent repos — auto-routed by keyword detection.
+
+**Auto-routing table:**
+
+| Prompt contains | Repo | Capability |
+|---|---|---|
+| "google stitch" / "stitch design" / "stitch mockup" / "stitch sdk" | stitch-skills / stitch-sdk / design.md | Google Stitch AI design tool + SDK |
+| "stock agent" / "stock trading" / "equity agent" / "stock analysis ai" | Stockagent | LLM-powered stock market agent |
+| "antigravity skills" / "antigravity global" / "spec kit" | antigravity_global_skills / antigravity-skills / Spec-Kit-Antigravity-Skills | Antigravity Claude skill collections |
+| "recommendation ai" / "recai" / "recommender system" | RecAI | Microsoft RecAI — LLM recommendation systems |
+| "shopping agent" / "ecom agent" / "shopping gpt" | ShoppingGPT | AI shopping assistant agent |
+| "job agent" / "jobber" / "autonomous job" | jobber | Sentient Engineering autonomous job agent |
+| "real estate agent" / "property ai" / "real estate assistant" | ai-real-estate-assistant | AI real estate analysis + recommendation |
+| "medical ai" / "diagnosis agent" / "medical diagnostics" | AI-Agents-for-Medical-Diagnostics | LLM medical diagnostics agents |
+| "genai agents" / "agent patterns" / "agent cookbook" | GenAI_Agents | NirDiamant's GenAI agent collection (100+ patterns) |
+| "mirror gpt" / "persona clone" / "digital twin" | MirrorGPT | GPT persona mirroring system |
+| "edu gpt" / "education agent" / "tutoring ai" | EduGPT | AI education/tutoring agent |
+| "travel agent ai" / "trip planner ai" | ai-travel-agent | AI travel planning agent |
+| "llm game" / "agent game" / "game agent" | LLM-agent-game | LLM-powered game agent |
+| "decepticon" / "adversarial agent" / "agent deception" | Decepticon | Adversarial/deceptive agent research |
+| "cyber security agent" / "security llm" / "nviso" | cyber-security-llm-agents | NVISO cybersecurity LLM agents |
+| "legal ai" / "legal agent" / "contract ai" | legalai | Legal AI agent system |
+| "autonomous driving ai" / "driving agent" / "drivlme" | driVLMe | VLM autonomous driving agent |
+| "industrial automation ai" / "llm4ias" | llm4ias | LLM for industrial automation |
+| "agri bot" / "agriculture ai" / "farming agent" | LLM_Agri_Bot | LLM agriculture assistant |
+| "mirai" / "geopolitical ai" / "conflict prediction" | MIRAI | Geopolitical event prediction AI |
+
+**Quick access:**
+```bash
+ls ~/installed-repos/llm-agents-bundle/          # list all 26
+cd ~/installed-repos/llm-agents-bundle/GenAI_Agents  # 100+ agent patterns
+cd ~/installed-repos/llm-agents-bundle/stitch-skills  # Google Stitch skills
+```
+
+**Top 5 most useful for HMZ:**
+1. **GenAI_Agents** — 100+ production agent patterns (RAG, ReAct, multi-agent, tools)
+2. **stitch-skills + stitch-sdk** — Google Stitch for premium web design mockups
+3. **jobber** — autonomous job application agent (BDM pipeline enhancement)
+4. **cyber-security-llm-agents** — security audit capabilities
+5. **Stockagent** — financial analysis for client campaigns
+
+---
+
+## PAPERCLIP AI — ALWAYS-ON (auto-routes on keyword detection)
+
+Installed at: `~/installed-repos/paperclip/`
+Running at: `http://127.0.0.1:3100` (pnpm dev, embedded PostgreSQL on port 54329)
+LaunchAgent: `ai.hmz.paperclip` (manual start when needed)
+
+**What it is:** Open-source orchestration platform for zero-human companies. Manages AI agents like employees — org charts, budgets, goals, task tracking, cost monitoring.
+
+**Auto-routing triggers:**
+| Prompt contains | Action |
+|---|---|
+| "paperclip" / "paperclip ai" / "papercliping" | Use paperclip at http://127.0.0.1:3100 |
+| "zero-human company" / "agent company" | Start paperclip: `pnpm dev` in ~/installed-repos/paperclip |
+| "agent orchestration platform" / "autonomous company" | Use paperclip dashboard |
+| "agent org chart" / "agent budget" / "agent goals" | Use paperclip |
+
+**Start/stop:**
+```bash
+cd ~/installed-repos/paperclip && pnpm dev   # start (auto-migrates DB)
+# or via LaunchAgent:
+launchctl load ~/Library/LaunchAgents/ai.hmz.paperclip.plist
+```
+
+**Access:** http://127.0.0.1:3100 — dashboard, agents, goals, costs
+
+---
+
+## APIFY ORG REPOS — AUTO-ROUTING (always-on)
+
+Installed at: `~/installed-repos/apify-org/`
+
+| Repo | Purpose | Trigger phrases |
+|---|---|---|
+| **mcpc** (594★) | Universal MCP CLI client — run any MCP server from terminal | "mcpc" / "mcp cli" / "mcp client" / "run mcp server" |
+| **awesome-skills** | 9 curated Apify Claude skills collection | "apify awesome" / "apify skill collection" |
+| **apify-openclaw-plugin** | Apify integration for OpenClaw AI | "apify openclaw" / "openclaw apify" |
+| **n8n-nodes-apify** | Apify n8n community node | "apify n8n" / "n8n apify node" |
+| **cursor-plugins** | Apify Cursor IDE plugins | "apify cursor" / "cursor apify" |
+
+**mcpc quick start (most useful):**
+```bash
+cd ~/installed-repos/apify-org/mcpc
+npm install
+npx mcpc --help    # run any MCP server from CLI
+```

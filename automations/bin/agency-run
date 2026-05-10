@@ -85,7 +85,7 @@ def run_health_check():
         return True
     result = subprocess.run(
         [sys.executable, str(health_script)],
-        capture_output=True, text=True, timeout=30
+        capture_output=True, text=True, timeout=120
     )
     try:
         out = result.stdout.strip().split("\n")
@@ -284,7 +284,7 @@ def main():
             try:
                 result = subprocess.run(
                     [sys.executable, str(gmail_sender)],
-                    capture_output=True, text=True, timeout=300
+                    capture_output=True, text=True, timeout=1200
                 )
                 for line in result.stdout.strip().split("\n")[-15:]:
                     if line.strip(): log(f"  {line}")

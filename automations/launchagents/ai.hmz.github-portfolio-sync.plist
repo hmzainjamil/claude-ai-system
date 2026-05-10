@@ -25,7 +25,7 @@
     <key>HOME</key>
     <string>/Users/mc</string>
     <key>GITHUB_TOKEN</key>
-    <string>[REDACTED]</string>
+    <string>[REDACTED_GITHUB_TOKEN]</string>
     <key>GITHUB_USERNAME</key>
     <string>mc</string>
     <key>PATH</key>

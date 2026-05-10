@@ -396,6 +396,61 @@ L99_MANDATE="[L99 ACTIVE] Max performance. Full capability. No hedging. No half-
 CODE_BASE_MANDATE="[CODE-AGENT ALWAYS-ON] For ANY coding task: PLAN first (Sonnet PlanMode) → BUILD (Sonnet Medium) → VERIFY citations. Extractor=Haiku. Curator=Opus ONLY if critical/architectural. Max 3 exchanges per chat. Never skip plan. Cite all external library/API refs: [SOURCE: name|version|verified:yes/no]."
 echo "$OODA_MANDATE $L99_MANDATE $CODE_BASE_MANDATE" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
 
+
+# ── PAPERCLIP AI — zero-human company orchestration ──────────────
+if match "paperclip|zero-human company|agent company|agent orchestration platform|autonomous company|agent org chart|agent budget|papercliping"; then
+  echo "[skill-auto-activate] Paperclip AI → http://127.0.0.1:3100 (run: cd ~/installed-repos/paperclip && pnpm dev)"
+fi
+
+# ── APIFY ORG REPOS ───────────────────────────────────────────────
+if match "mcpc|mcp cli|mcp client|universal mcp|apify openclaw|apify n8n|apify cursor"; then
+  echo "[skill-auto-activate] Apify org repos → ~/installed-repos/apify-org/"
+fi
+
+# ── LLM AGENTS BUNDLE ────────────────────────────────────────────
+if match "stitch design|stitch mockup|stitch skill|stitch loop|stitch sdk|google stitch"; then
+  on stitch-design; on stitch-loop; on design-md
+fi
+if match "shadcn|shadcn-ui|radix ui|headless ui|component library"; then
+  on shadcn-ui; on react-components
+fi
+if match "remotion|video code|react video|programmatic video"; then
+  on remotion
+fi
+if match "enhance prompt|improve prompt|prompt engineering|prompt optimize"; then
+  on enhance-prompt
+fi
+if match "stock agent|stock trading|equity agent|stock analysis|financial agent"; then
+  on software_architecture; on idea_to_action
+fi
+if match "security audit|pentest|vulnerability|cyber security agent|nviso|security llm"; then
+  on security_audit
+fi
+if match "software architecture|system design|architecture diagram|tech stack design"; then
+  on software_architecture
+fi
+if match "scaffold test|write tests|generate tests|test suite|pytest|jest"; then
+  on scaffold_tests; on test_runner
+fi
+if match "code review|review code|audit code|pr review|pull request review"; then
+  on code_review
+fi
+if match "debug|fix bug|traceback|crash|error trace|stacktrace"; then
+  on debug_issue
+fi
+if match "frontend|react component|ui component|enhance ui|build ui|ui design code"; then
+  on frontend_design; on enhance_ui
+fi
+if match "web performance|core web vital|lighthouse|page speed|cwv|lcp|cls|inp"; then
+  on web_performance_optimization
+fi
+if match "release|changelog|version bump|publish package|open source prep"; then
+  on release_helper; on open_source_prep
+fi
+if match "antigravity skill|idea to action|daily log|document api|repo infographic"; then
+  on idea_to_action; on daily_log; on document_api; on repo_infographic
+fi
+
 # ── Step 4: Log metrics ──────────────────────────────────────────
 ACTIVE_COUNT=$(ls "$ACTIVE" 2>/dev/null | wc -l | tr -d ' ')
 ACTIVATED_STR="${ACTIVATED[*]:-none}"
