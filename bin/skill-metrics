@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+# Show token efficiency metrics from dispatch log.
+METRICS="$HOME/.claude/metrics.log"
+[ ! -f "$METRICS" ] && echo "No metrics yet. Use Claude Code to generate some." && exit 0
+
+echo "=== Dispatch Router Metrics ==="
+echo "Total activations: $(wc -l < "$METRICS")"
+echo ""
+echo "Last 10 sessions:"
+tail -10 "$METRICS" | while IFS= read -r line; do
+  active=$(echo "$line" | grep -o 'active=[0-9]*' | cut -d= -f2)
+  activated=$(echo "$line" | sed 's/.*activated="\([^"]*\)".*/\1/')
+  ts=$(echo "$line" | awk '{print $1}')
+  echo "  $ts → $active skills active [$activated]"
+done
+
+echo ""
+echo "Top activated skills:"
+grep -oP 'activated="\K[^"]+' "$METRICS" | tr ' ' '\n' | grep -v '^none$' | grep -v '^$' | sort | uniq -c | sort -rn | head -10 | awk '{printf "  %-4s %s\n", $1, $2}'
+
+echo ""
+echo "Avg skills per session: $(python3 -c "
+import re
+nums=[int(m) for line in open('$METRICS') for m in re.findall(r'active=(\d+)',line)]
+print(f'{sum(nums)/len(nums):.1f}' if nums else '0')
+")"
