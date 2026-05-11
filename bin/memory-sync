@@ -1,0 +1,61 @@
+#!/usr/bin/env bash
+# memory-sync — Keeps MEMORY.md index in sync with actual memory files
+# Scans memory dir for .md files not yet in MEMORY.md index, adds them
+# Run manually or from PostToolUse hook on Write tool
+
+set -e
+MEMORY_DIR="$HOME/.claude/projects/-Users-mc/memory"
+MEMORY_INDEX="$MEMORY_DIR/MEMORY.md"
+ADDED=0
+
+[ ! -d "$MEMORY_DIR" ] && exit 0
+
+for filepath in "$MEMORY_DIR"/*.md; do
+  filename=$(basename "$filepath")
+  [ "$filename" = "MEMORY.md" ] && continue
+  [ ! -f "$filepath" ] && continue
+
+  # Already indexed?
+  grep -qF "$filename" "$MEMORY_INDEX" 2>/dev/null && continue
+
+  # Parse name + description from frontmatter
+  NAME=$(python3 -c "
+import sys
+try:
+    lines = open('$filepath').readlines()
+    in_fm = False
+    for l in lines:
+        if l.strip() == '---':
+            in_fm = not in_fm
+            continue
+        if in_fm and l.startswith('name:'):
+            print(l.split(':',1)[1].strip())
+            break
+except: pass
+" 2>/dev/null)
+
+  DESC=$(python3 -c "
+import sys
+try:
+    lines = open('$filepath').readlines()
+    in_fm = False
+    for l in lines:
+        if l.strip() == '---':
+            in_fm = not in_fm
+            continue
+        if in_fm and l.startswith('description:'):
+            print(l.split(':',1)[1].strip())
+            break
+except: pass
+" 2>/dev/null)
+
+  [ -z "$NAME" ] && NAME="${filename%.md}"
+  [ -z "$DESC" ] && DESC="(no description)"
+
+  echo "- [$NAME]($filename) — $DESC" >> "$MEMORY_INDEX"
+  ADDED=$((ADDED+1))
+  echo "+ indexed: $filename"
+done
+
+[ $ADDED -gt 0 ] && echo "memory-sync: added $ADDED entries to MEMORY.md"
+exit 0
