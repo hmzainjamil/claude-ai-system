@@ -1,0 +1,353 @@
+#!/usr/bin/env python3
+"""
+AGENCY ORCHESTRATOR — Master Daily Runner
+Orchestrates all phases:
+  Phase 0:   Pre-Research & Strategy
+  Phase 0.5: Facebook Group Engagement (humanized expert comments)
+  Phase 1:   Job Discovery (Apify + RAG scrapers)
+  Phase 2:   Proposal Generation (G0DM0D3/Groq LLM)
+  Phase 2.5: Free Audit Generation (attached to high-score proposals)
+  Phase 2.8: Email Outreach — Cold/Warm/SQL sequences (zulqarnain@digiminds.org)
+  Phase 2.9: Gmail Queue Send (drafts → send via Gmail MCP)
+  Phase 3:   Submission (OpenClaw/Brave browser sessions)
+  Phase 4:   Daily Report (Gmail + Slack + Dashboard)
+  Phase 4.5: CRM Dashboard (pipeline + revenue forecast)
+
+Usage:
+  agency-run               # Full daily run (all phases)
+  agency-run --discover    # Phase 1 only
+  agency-run --proposals   # Phase 2 only
+  agency-run --audit       # Phase 2.5 only (generate audits)
+  agency-run --email       # Phase 2.8 only (email outreach)
+  agency-run --send-emails # Phase 2.9 only (send queued emails via Gmail)
+  agency-run --submit      # Phase 3 only
+  agency-run --report      # Phase 4 only
+  agency-run --crm         # Phase 4.5 only (CRM pipeline dashboard)
+  agency-run --facebook    # Phase 0.5 only (FB group engagement)
+  agency-run --status      # Show today's status
+  agency-run --learn       # Update learning from response feedback
+
+EMAIL: zulqarnain@digiminds.org — brand authority + domain trust
+CRM:   Full GoHighLevel-style pipeline (COLD → OUTREACH → WARM → CLOSED)
+"""
+
+import os, sys, json, datetime, subprocess, time
+from pathlib import Path
+
+HOME = Path.home()
+AGENCY_DIR = HOME / ".claude/agency"
+BIN_DIR    = HOME / ".claude/bin/agency"
+TODAY      = datetime.date.today().strftime("%Y%m%d")
+
+# Global health state (set by health-check phase)
+PIPELINE_HEALTH = {"health": "GREEN", "batch_size": 110, "can_proceed": True}
+
+def log(msg):
+    ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    print(f"[{ts}] {msg}")
+
+def run_health_check():
+    """Phase -1: Self-heal first, then health-check. Auto-heals. Never blocks unless critical."""
+    global PIPELINE_HEALTH
+    log("▶ Phase -1a: Self-Heal (auto-fix filesystem, queues, state files)...")
+
+    # Step 1: Run self-heal silently (fixes dirs, state files, queues, logs)
+    self_heal = BIN_DIR / "self-heal"
+    if self_heal.exists():
+        heal_result = subprocess.run(
+            [sys.executable, str(self_heal), "--json"],
+            capture_output=True, text=True, timeout=60
+        )
+        try:
+            for line in reversed(heal_result.stdout.strip().split("\n")):
+                if line.startswith("{"):
+                    h = json.loads(line)
+                    fixes = h.get("fixes", 0)
+                    issues = h.get("issues", 0)
+                    if fixes > 0:
+                        log(f"  ✓ Self-heal: {fixes} issues auto-fixed")
+                    if issues > 0:
+                        log(f"  ⚠ Self-heal: {issues} issues need manual attention (see ~/.claude/agency/health/heal_{TODAY}.json)")
+                    if not h.get("llm_ok"):
+                        log("  ✗ Self-heal: All LLMs offline — pipeline blocked")
+                        return False
+                    break
+        except Exception:
+            pass
+    else:
+        log("  self-heal not found — skipping auto-repair")
+
+    # Step 2: Full health check
+    log("▶ Phase -1b: Health Check + Anomaly Detection...")
+    health_script = BIN_DIR / "health-check"
+    if not health_script.exists():
+        log("  health-check not found — skipping (non-blocking)")
+        return True
+    result = subprocess.run(
+        [sys.executable, str(health_script)],
+        capture_output=True, text=True, timeout=120
+    )
+    try:
+        out = result.stdout.strip().split("\n")
+        # Last line is JSON
+        for line in reversed(out):
+            if line.startswith("{"):
+                h = json.loads(line)
+                PIPELINE_HEALTH.update(h)
+                break
+    except Exception:
+        pass
+
+    health = PIPELINE_HEALTH.get("health","GREEN")
+    if health == "RED":
+        log(f"  ✗ Health: RED — pipeline BLOCKED. Check ~/.claude/agency/health/")
+        return False
+    elif health == "YELLOW":
+        log(f"  ⚠ Health: YELLOW — issues auto-fixed, proceeding with batch_size={PIPELINE_HEALTH.get('batch_size',110)}")
+    else:
+        log(f"  ✓ Health: GREEN — all systems OK")
+    return True
+
+def run_phase(script, label):
+    log(f"▶ Starting {label}...")
+    result = subprocess.run(
+        [sys.executable, str(BIN_DIR / script)],
+        capture_output=False
+    )
+    if result.returncode != 0:
+        log(f"✗ {label} FAILED (exit {result.returncode})")
+        return False
+    log(f"✓ {label} complete")
+    return True
+
+def show_status():
+    """Show today's run status."""
+    data_dir = AGENCY_DIR / "data"
+    prop_dir = AGENCY_DIR / "proposals"
+
+    jobs_file = data_dir / f"jobs_{TODAY}.json"
+    prop_file = prop_dir / f"proposals_{TODAY}.json"
+
+    print(f"\n{'='*50}")
+    print(f"AGENCY STATUS — {datetime.date.today().strftime('%B %d, %Y')}")
+    print('='*50)
+
+    if jobs_file.exists():
+        d = json.loads(jobs_file.read_text())
+        print(f"Jobs discovered: {d.get('total_discovered',0)}")
+        print(f"Jobs qualified:  {d.get('total_qualified',0)}")
+        print(f"By platform: {d.get('platform_breakdown',{})}")
+    else:
+        print("Jobs: NOT YET DISCOVERED")
+
+    if prop_file.exists():
+        d = json.loads(prop_file.read_text())
+        props = d.get("proposals", [])
+        sent = [p for p in props if p["status"] == "submitted"]
+        replies = [p for p in props if p.get("response_received")]
+        print(f"\nProposals generated: {len(props)}")
+        print(f"Proposals submitted: {len(sent)}")
+        print(f"Responses received:  {len(replies)}")
+    else:
+        print("Proposals: NOT YET GENERATED")
+
+    feedback = AGENCY_DIR / "learning/feedback.json"
+    if feedback.exists():
+        f = json.loads(feedback.read_text())
+        print(f"\nCumulative stats:")
+        print(f"  Total submitted: {f.get('total_submitted',0)}")
+        print(f"  Total responses: {f.get('total_responses',0)}")
+        print(f"  Avg response rate: {f.get('avg_response_rate',0)}%")
+    print()
+
+def send_queued_emails_via_mcp():
+    """
+    Process email queue — generates a Claude Code MCP command file
+    that the user can run to send emails via Gmail MCP.
+    """
+    queue_file = AGENCY_DIR / "data/email_queue.jsonl"
+    if not queue_file.exists():
+        return
+
+    emails = [json.loads(l) for l in queue_file.read_text().strip().split("\n") if l.strip()]
+    if not emails:
+        return
+
+    # Write MCP command script for Gmail
+    cmd_file = AGENCY_DIR / "data/send_emails_now.md"
+    cmd_lines = ["# Send Queued Emails via Gmail MCP\n", "Run these Gmail MCP commands:\n\n"]
+    for em in emails:
+        if em.get("to"):
+            cmd_lines.append(f"**To:** {em['to']}\n")
+            cmd_lines.append(f"**Subject:** {em['subject']}\n")
+            cmd_lines.append(f"**Body:** (see proposals_{TODAY}.json)\n\n")
+
+    cmd_file.write_text("".join(cmd_lines))
+    log(f"{len(emails)} emails queued. Run: agency-run --report to process via Gmail MCP.")
+
+def send_queued_slack_via_mcp():
+    """Write Slack queue status."""
+    queue_file = AGENCY_DIR / "data/slack_queue.jsonl"
+    if queue_file.exists():
+        msgs = [json.loads(l) for l in queue_file.read_text().strip().split("\n") if l.strip()]
+        log(f"{len(msgs)} Slack messages queued for MCP delivery")
+
+def main():
+    args = sys.argv[1:]
+    AGENCY_DIR.mkdir(parents=True, exist_ok=True)
+    (AGENCY_DIR / "learning").mkdir(exist_ok=True)
+
+    if "--status" in args:
+        show_status()
+        return
+
+    # Self-heal standalone
+    if "--heal" in args:
+        log("▶ Running self-heal (full audit + auto-fix)...")
+        result = subprocess.run([sys.executable, str(BIN_DIR / "self-heal")], capture_output=False)
+        return
+
+    # Show system manifest
+    if "--manifest" in args:
+        manifest = HOME / ".claude/agency/SYSTEM_MANIFEST.md"
+        if manifest.exists():
+            print(manifest.read_text())
+        else:
+            print("Manifest not found. Run: agency-run --heal to generate.")
+        return
+
+    # Phase -1: Health Check (always runs first — auto-heals, never blocks unless RED)
+    if "--health" in args:
+        run_health_check()
+        return
+
+    health_ok = run_health_check()
+    if not health_ok:
+        log("Pipeline blocked by health check — RED status. Fix issues first.")
+        sys.exit(1)
+
+    os.system("""osascript -e 'display notification "Agency Orchestrator starting daily run..." with title "Agency" sound name "Morse"'""")
+
+    # Phase 0: Pre-research (runs FIRST — sets today's strategy)
+    if not args or "--preresearch" in args or not any(a.startswith("--") for a in args):
+        run_phase("pre-research", "Phase 0: Daily Pre-Research & Strategy")
+        time.sleep(1)
+
+    # Phase 0.5: Social Engagement (Reddit auto + LinkedIn/Facebook/Instagram expert content)
+    if not args or "--social" in args or "--facebook" in args or not any(a.startswith("--") for a in args):
+        run_phase("social-engage", "Phase 0.5: Social Engagement (Reddit+LinkedIn+Facebook+Instagram)")
+        time.sleep(2)
+
+    if not args or "--discover" in args:
+        # Use live scraper — direct platform scraping, not stale Google cache
+        live_scraper = BIN_DIR / "discover-jobs-live"
+        if live_scraper.exists():
+            run_phase("discover-jobs-live", "Phase 1: LIVE Job Discovery (Upwork/Freelancer/Guru/PPH/Reddit)")
+        else:
+            run_phase("discover-jobs", "Phase 1: Job Discovery (Multi-Platform)")
+        time.sleep(2)
+
+    # Phase 1.5: TIGHT QUALITY FILTER — rejects 75-85% of scraped jobs
+    # Only quality + high-ticket leads pass through. Quality > Quantity.
+    if not args or "--filter" in args or "--proposals" in args:
+        log("▶ Phase 1.5: Quality Filter (tight benchmarks)...")
+        today = TODAY
+        jobs_file = AGENCY_DIR / f"data/jobs_{today}.json"
+        if jobs_file.exists():
+            result = subprocess.run(
+                [sys.executable, str(BIN_DIR / "quality-filter"),
+                 str(jobs_file), "--apply"],
+                capture_output=True, text=True
+            )
+            print(result.stdout[-500:] if len(result.stdout) > 500 else result.stdout)
+        time.sleep(1)
+
+    if not args or "--proposals" in args:
+        run_phase("generate-proposals", "Phase 2: BDM Proposal Generation (filtered jobs only)")
+        time.sleep(2)
+
+    # Phase 2.5: Free Audit Generation (high-score proposals only)
+    if not args or "--audit" in args or not any(a.startswith("--") for a in args):
+        run_phase("generate-audit", "Phase 2.5: Free Audit Generation")
+        time.sleep(2)
+
+    # Phase 2.8: Email Marketing Pipeline (full dedup, intl standards, 4-step sequences)
+    if not args or "--email" in args or not any(a.startswith("--") for a in args):
+        run_phase("email-pipeline", "Phase 2.8: Email Marketing Pipeline (CAN-SPAM+GDPR+dedup)")
+        time.sleep(2)
+
+    # Phase 2.85: Send queued cold email drafts via Chrome (zero setup)
+    if "--send-emails" in args or "--cold" in args or not any(a.startswith("--") for a in args):
+        log("▶ Phase 2.85: Sending Gmail drafts via Chrome AppleScript...")
+        gmail_sender = BIN_DIR / "agency" / "gmail-send-drafts"
+        if gmail_sender.exists():
+            try:
+                result = subprocess.run(
+                    [sys.executable, str(gmail_sender)],
+                    capture_output=True, text=True, timeout=1200
+                )
+                for line in result.stdout.strip().split("\n")[-15:]:
+                    if line.strip(): log(f"  {line}")
+            except subprocess.TimeoutExpired:
+                log("  gmail-send-drafts timeout — Chrome may need to be opened")
+        else:
+            log("  ✗ gmail-send-drafts not found")
+        time.sleep(2)
+
+    # Phase 2.9 / 3: Real platform submissions via platform-submit
+    # Submits directly ON job platforms (Upwork bid, LinkedIn Easy Apply, Freelancer bid, etc.)
+    # NOT to the user's own email — to actual clients
+    if "--send-emails" in args or "--submit" in args or not any(a.startswith("--") for a in args):
+        log("▶ Phase 2.9/3: Real platform submissions (Upwork/LinkedIn/Freelancer/Guru/PPH/Reddit)...")
+        plat_submit = BIN_DIR / "platform-submit"
+        if plat_submit.exists():
+            result = subprocess.run(
+                [sys.executable, str(plat_submit), "--run"],
+                capture_output=True, text=True, timeout=600
+            )
+            for line in result.stdout.strip().split("\n"):
+                if line.strip():
+                    log(f"  {line}")
+            if result.returncode != 0 and result.stderr:
+                log(f"  platform-submit stderr: {result.stderr[:300]}")
+        else:
+            log("  ✗ platform-submit not found — skipping")
+        time.sleep(2)
+
+    if not args or "--report" in args:
+        run_phase("daily-report", "Phase 4: Daily Report (Gmail+Slack+Dashboard)")
+        send_queued_emails_via_mcp()
+        send_queued_slack_via_mcp()
+
+    # Phase 4.5: CRM Dashboard
+    if not args or "--crm" in args or not any(a.startswith("--") for a in args):
+        run_phase("crm-dashboard", "Phase 4.5: CRM Pipeline Dashboard")
+
+    # Phase 5: Verification & Briefing (always runs last)
+    if not args or not any(a.startswith("--") for a in args) or "--report" in args:
+        run_phase("verify-report", "Phase 5: Verification & Briefing Report")
+
+    # Agent workers standalone run
+    if "--agents" in args:
+        run_phase("agent-workers", "Agent37+OpenClaw Full Pipeline")
+        return
+
+    # Dedup stats
+    if "--dedup" in args:
+        result = subprocess.run([sys.executable, str(BIN_DIR/"dedup"), "stats"],
+                                capture_output=False)
+        return
+
+    if "--learn" in args:
+        # Re-analyze feedback and update strategy
+        feedback = AGENCY_DIR / "learning/feedback.json"
+        if feedback.exists():
+            f = json.loads(feedback.read_text())
+            log(f"Learning: {f.get('avg_response_rate',0)}% response rate over {f.get('total_sessions',0)} sessions")
+            log(f"Best platforms: {f.get('best_platforms',{})}")
+
+    show_status()
+    os.system("""osascript -e 'display notification "Daily run complete! Check dashboard." with title "Agency Orchestrator" sound name "Glass"'""")
+
+if __name__ == "__main__":
+    main()
