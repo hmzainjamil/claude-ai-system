@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+source ~/.claude/tier0.env 2>/dev/null
+G0D_DIR="$HOME/installed-repos/G0DM0D3"
+G0D_PORT=7860
+
+if lsof -i ":$G0D_PORT" 2>/dev/null | grep -q LISTEN; then
+    echo "✓ G0DM0D3 ULTRAPLINIAN — already running on :$G0D_PORT (55 models)"
+    exit 0
+fi
+
+export OPENROUTER_API_KEY="$OPENROUTER_API_KEY"
+export GODMODE_API_KEY="$G0DM0D3_KEY"
+export GODMODE_TIER_KEYS="pro:$G0DM0D3_KEY"
+export PORT=$G0D_PORT CORS_ORIGIN="*"
+PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
+
+cd "$G0D_DIR" && \
+  PATH="/opt/homebrew/bin:/usr/local/bin:$PATH" \
+  /opt/homebrew/bin/npx ts-node --transpile-only --project api/tsconfig.json api/server.ts \
+  > /tmp/g0dm0d3.log 2>&1 &
+
+sleep 5
+if lsof -i ":$G0D_PORT" 2>/dev/null | grep -q LISTEN; then
+    echo "✓ G0DM0D3 ULTRAPLINIAN — started on :$G0D_PORT (55 models racing)"
+else
+    echo "✗ G0DM0D3 — failed (check /tmp/g0dm0d3.log)"
+fi
