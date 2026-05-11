@@ -1,0 +1,341 @@
+#!/usr/bin/env python3
+"""
+AGENCY ORCHESTRATOR — Phase 4: Daily Report v3.0
+- HTML dashboard (local)
+- Email report → queued to email_queue.jsonl for Gmail MCP send
+  Recipient: zulqarnain@digiminds.org
+  Includes: every proposal, client details, quality scores, submission links
+"""
+import os, sys, json, datetime
+from pathlib import Path
+
+HOME       = Path.home()
+AGENCY_DIR = HOME / ".claude/agency"
+DATA_DIR   = AGENCY_DIR / "data"
+PROP_DIR   = AGENCY_DIR / "proposals"
+SUB_DIR    = AGENCY_DIR / "submissions"
+REPORT_DIR = AGENCY_DIR / "reports"
+LOG_FILE   = AGENCY_DIR / "logs/report.log"
+TODAY      = datetime.date.today().strftime("%Y%m%d")
+TODAY_NICE = datetime.date.today().strftime("%B %d, %Y")
+JOBS_FILE  = DATA_DIR / f"jobs_{TODAY}.json"
+PROP_FILE  = PROP_DIR / f"proposals_{TODAY}.json"
+EMAIL_QUEUE= DATA_DIR / "email_queue.jsonl"
+REPORT_EMAIL = "zulqarnain@digiminds.org"
+
+def log(msg):
+    ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    line = f"[{ts}] {msg}"
+    print(line)
+    with open(LOG_FILE,"a") as f: f.write(line+"\n")
+
+def load():
+    j = json.loads(JOBS_FILE.read_text()) if JOBS_FILE.exists() else {}
+    p = json.loads(PROP_FILE.read_text()) if PROP_FILE.exists() else {}
+    return j, p
+
+def build_html_email(jobs_data, prop_data):
+    """Full rich HTML email with every proposal expanded."""
+    props    = prop_data.get("proposals",[])
+    total_d  = jobs_data.get("total_discovered", 0)
+    total_q  = jobs_data.get("total_qualified", 0)
+    high_t   = prop_data.get("high_ticket_proposals", 0)
+    total_p  = prop_data.get("total_proposals", 0)
+    avg_q    = prop_data.get("avg_quality_score", 0)
+    auto_sub = prop_data.get("submissions",{}).get("auto_submitted", 0)
+    bq_size  = prop_data.get("submissions",{}).get("browser_queue_size", 0)
+    brkd     = jobs_data.get("platform_breakdown",{})
+    qs_stats = prop_data.get("quality_stats",{})
+
+    # Platform bar chart
+    bar_rows = ""
+    for plat, cnt in sorted(brkd.items(), key=lambda x: -x[1]):
+        bar_w = min(cnt * 15, 280)
+        bar_rows += f"""
+        <tr>
+          <td style="padding:4px 8px;font-size:13px;width:120px;color:#374151">{plat}</td>
+          <td style="padding:4px 8px">
+            <div style="background:#2563eb;height:14px;width:{bar_w}px;border-radius:3px;display:inline-block"></div>
+          </td>
+          <td style="padding:4px 8px;font-size:13px;font-weight:600;color:#1d4ed8">{cnt}</td>
+        </tr>"""
+
+    # Individual proposal cards
+    proposal_cards = ""
+    for p in props:
+        qs        = p.get("quality_score", 0)
+        rs        = p.get("relevance_score", 0)
+        ht_badge  = '<span style="background:#7c3aed;color:#fff;padding:2px 7px;border-radius:10px;font-size:11px;margin-left:6px">🔥 HIGH TICKET</span>' if p.get("is_high_ticket") else ""
+        qs_color  = "#16a34a" if qs >= 80 else "#d97706" if qs >= 65 else "#dc2626"
+        rs_color  = "#16a34a" if rs >= 80 else "#d97706" if rs >= 60 else "#dc2626"
+        url       = p.get("job_url","#")
+        budget    = p.get("budget","N/A")
+        pain      = ", ".join(p.get("pain_points",[])[:3]) or "—"
+        wc        = p.get("word_count", len(p["proposal_text"].split()))
+        platform  = p["platform"].upper()
+        issues    = p.get("quality_issues",[])
+        issues_html = ""
+        if issues:
+            issues_html = f'<p style="font-size:11px;color:#9ca3af;margin:4px 0">QR notes: {"; ".join(issues[:2])}</p>'
+
+        client   = p.get("client_info",{}) or {}
+        cname    = client.get("name") or client.get("company","") or ""
+        cloc     = client.get("location","")
+        client_line = f'<p style="font-size:12px;color:#6b7280;margin:2px 0">Client: {cname}{" · " + cloc if cloc else ""}</p>' if cname else ""
+
+        proposal_html = p["proposal_text"].replace("&","&amp;").replace("<","&lt;").replace(">","&gt;").replace("\n","<br>")
+
+        proposal_cards += f"""
+        <div style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;margin-bottom:16px;overflow:hidden">
+          <div style="background:#f9fafb;padding:12px 16px;border-bottom:1px solid #e5e7eb">
+            <div style="display:flex;align-items:center;flex-wrap:wrap;gap:4px">
+              <span style="background:#dbeafe;color:#1e40af;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600">{platform}</span>
+              {ht_badge}
+              <a href="{url}" style="font-size:14px;font-weight:600;color:#111827;text-decoration:none;margin-left:4px">{p['job_title']}</a>
+            </div>
+            <div style="display:flex;gap:16px;margin-top:6px;flex-wrap:wrap">
+              <span style="font-size:12px;color:#6b7280">Budget: <b>{budget}</b></span>
+              <span style="font-size:12px">Relevance: <b style="color:{rs_color}">{rs}/100</b></span>
+              <span style="font-size:12px">Quality: <b style="color:{qs_color}">{qs}/100</b></span>
+              <span style="font-size:12px;color:#6b7280">Words: {wc}</span>
+            </div>
+            <p style="font-size:12px;color:#6b7280;margin:4px 0">Pain points: {pain}</p>
+            {client_line}
+            {issues_html}
+          </div>
+          <div style="padding:14px 16px">
+            <p style="font-size:13px;color:#374151;line-height:1.6;margin:0;white-space:pre-line">{proposal_html}</p>
+          </div>
+          <div style="background:#f0fdf4;padding:8px 16px;border-top:1px solid #d1fae5">
+            <a href="{url}" style="font-size:12px;color:#16a34a;font-weight:600">→ Open & Submit in Brave (zulqarnain@digiminds.org)</a>
+          </div>
+        </div>"""
+
+    return f"""<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>DigiMinds Daily Report — {TODAY_NICE}</title></head>
+<body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;background:#f3f4f6;margin:0;padding:20px">
+<div style="max-width:760px;margin:0 auto">
+
+  <!-- Header -->
+  <div style="background:linear-gradient(135deg,#1e3a8a,#2563eb);color:#fff;padding:28px 32px;border-radius:12px 12px 0 0">
+    <h1 style="font-size:24px;font-weight:800;margin:0">DigiMinds Agency — Daily Report</h1>
+    <p style="margin:6px 0 0;opacity:.85;font-size:14px">{TODAY_NICE} · Google Ads + Meta Ads Pipeline · zulqarnain@digiminds.org</p>
+  </div>
+
+  <!-- Stats -->
+  <div style="background:#fff;padding:20px 32px;border-left:1px solid #e5e7eb;border-right:1px solid #e5e7eb">
+    <table width="100%" cellspacing="0"><tr>
+      <td style="text-align:center;padding:8px">
+        <div style="font-size:32px;font-weight:800;color:#2563eb">{total_d}</div>
+        <div style="font-size:11px;color:#6b7280">SCRAPED</div>
+      </td>
+      <td style="text-align:center;padding:8px">
+        <div style="font-size:32px;font-weight:800;color:#2563eb">{total_q}</div>
+        <div style="font-size:11px;color:#6b7280">QUALIFIED</div>
+      </td>
+      <td style="text-align:center;padding:8px">
+        <div style="font-size:32px;font-weight:800;color:#7c3aed">{high_t}</div>
+        <div style="font-size:11px;color:#6b7280">HIGH TICKET 🔥</div>
+      </td>
+      <td style="text-align:center;padding:8px">
+        <div style="font-size:32px;font-weight:800;color:#059669">{total_p}</div>
+        <div style="font-size:11px;color:#6b7280">PROPOSALS</div>
+      </td>
+      <td style="text-align:center;padding:8px">
+        <div style="font-size:32px;font-weight:800;color:#d97706">{avg_q}</div>
+        <div style="font-size:11px;color:#6b7280">AVG QUALITY</div>
+      </td>
+      <td style="text-align:center;padding:8px">
+        <div style="font-size:32px;font-weight:800;color:#0891b2">{bq_size}</div>
+        <div style="font-size:11px;color:#6b7280">IN QUEUE</div>
+      </td>
+    </tr></table>
+  </div>
+
+  <!-- Quality Stats -->
+  <div style="background:#fff;padding:14px 32px;border-left:1px solid #e5e7eb;border-right:1px solid #e5e7eb;border-top:1px solid #f3f4f6">
+    <p style="font-size:13px;color:#374151;margin:0">
+      Quality Review: <b style="color:#16a34a">{qs_stats.get('passed_first_review',0)} passed</b> · 
+      <b style="color:#d97706">{qs_stats.get('improved_by_regen',0)} improved by regen</b> · 
+      <b style="color:#dc2626">{qs_stats.get('failed',0)} failed</b>
+    </p>
+  </div>
+
+  <!-- Platform Breakdown -->
+  <div style="background:#fff;padding:16px 32px;border-left:1px solid #e5e7eb;border-right:1px solid #e5e7eb;border-top:1px solid #f3f4f6">
+    <h2 style="font-size:14px;font-weight:700;color:#374151;margin:0 0 10px">Platform Breakdown</h2>
+    <table cellspacing="0">{bar_rows}</table>
+  </div>
+
+  <!-- Process used -->
+  <div style="background:#eff6ff;padding:14px 32px;border-left:1px solid #dbeafe;border-right:1px solid #dbeafe;border-top:1px solid #dbeafe">
+    <h2 style="font-size:13px;font-weight:700;color:#1e40af;margin:0 0 6px">Today's Process</h2>
+    <p style="font-size:12px;color:#1e40af;margin:0;line-height:1.8">
+      🔍 <b>Discovery:</b> RAG Web Browser (Apify standby) → 10 platforms in parallel<br>
+      🤖 <b>Scoring:</b> OpenRouter DeepSeek-V3 → Groq Llama → keyword fallback<br>
+      ✍️ <b>Proposals:</b> Groq llama-3.1-8b → GLM-4.5-air → Ollama llama3 (sequential, rate-safe)<br>
+      ✅ <b>Quality Review:</b> Rule-based QR score ≥75 required; auto-regen if below<br>
+      📤 <b>Submission:</b> Reddit OAuth auto-post + per-platform ready files for Brave browser<br>
+      📧 <b>Report:</b> This email + HTML dashboard + browser_queue.json
+    </p>
+  </div>
+
+  <!-- All Proposals -->
+  <div style="background:#f9fafb;padding:20px 32px;border:1px solid #e5e7eb;border-top:none;border-radius:0 0 12px 12px">
+    <h2 style="font-size:16px;font-weight:700;color:#111827;margin:0 0 16px">
+      All Proposals ({len(props)}) — sorted by quality × relevance
+    </h2>
+    {proposal_cards}
+  </div>
+
+  <p style="font-size:11px;color:#9ca3af;text-align:center;margin-top:16px">
+    DigiMinds Agency Orchestrator · {TODAY_NICE} · Claude Code + Agent37 + OpenClaw
+  </p>
+</div>
+</body></html>"""
+
+def build_html_dashboard(jobs_data, prop_data):
+    """Local dashboard — compact, click-to-expand."""
+    props    = prop_data.get("proposals",[])
+    total_d  = jobs_data.get("total_discovered",0)
+    total_q  = jobs_data.get("total_qualified",0)
+    high_t   = prop_data.get("high_ticket_proposals",0)
+    total_p  = prop_data.get("total_proposals",0)
+    auto_sub = prop_data.get("submissions",{}).get("auto_submitted",0)
+    brkd     = jobs_data.get("platform_breakdown",{})
+
+    rows = ""
+    for p in props:
+        sc_color  = "#22c55e" if p["relevance_score"]>=80 else "#f59e0b" if p["relevance_score"]>=60 else "#ef4444"
+        qc_color  = "#22c55e" if p.get("quality_score",0)>=80 else "#f59e0b" if p.get("quality_score",0)>=65 else "#ef4444"
+        ht_badge  = '<span style="background:#7c3aed;color:#fff;padding:1px 5px;border-radius:8px;font-size:10px;margin-left:3px">🔥HT</span>' if p.get("is_high_ticket") else ""
+        proposal_safe = p["proposal_text"].replace('<','&lt;').replace('>','&gt;').replace('\n','<br>')
+        rows += f"""
+        <tr onclick="var n=this.nextElementSibling;n.style.display=n.style.display=='none'?'table-row':'none'" style="cursor:pointer">
+          <td><a href="{p['job_url']}" target="_blank" onclick="event.stopPropagation()">{p['job_title'][:52]}</a>{ht_badge}</td>
+          <td><b style="color:{sc_color}">{p['relevance_score']}</b></td>
+          <td><b style="color:{qc_color}">{p.get('quality_score','—')}</b></td>
+          <td><span style="background:#1e40af;color:#fff;padding:1px 7px;border-radius:10px;font-size:11px">{p['platform'].upper()}</span></td>
+          <td>{p.get('budget','—')}</td>
+        </tr>
+        <tr style="display:none;background:#f9fafb">
+          <td colspan="5" style="padding:14px 16px;font-size:12px;white-space:pre-wrap;font-family:monospace">{proposal_safe}</td>
+        </tr>"""
+
+    bars = "".join(f'<div style="display:flex;align-items:center;gap:8px;margin:3px 0"><span style="width:110px;font-size:12px">{p}</span><div style="background:#2563eb;height:14px;width:{min(v*14,300)}px;border-radius:2px"></div><span style="font-size:12px">{v}</span></div>' for p,v in sorted(brkd.items(),key=lambda x:-x[1]))
+
+    return f"""<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">
+<title>DigiMinds Dashboard — {TODAY_NICE}</title>
+<style>*{{box-sizing:border-box;margin:0;padding:0}}body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f1f5f9;color:#1e293b}}.header{{background:linear-gradient(135deg,#1e3a8a,#2563eb);color:#fff;padding:28px 36px}}.header h1{{font-size:26px;font-weight:800}}.header p{{opacity:.8;margin-top:4px;font-size:14px}}.stats{{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;padding:20px 36px;background:#fff;border-bottom:1px solid #e2e8f0}}.stat{{text-align:center}}.stat .n{{font-size:32px;font-weight:800;color:#2563eb}}.stat.ht .n{{color:#7c3aed}}.stat .l{{font-size:11px;color:#64748b;margin-top:2px}}.content{{padding:20px 36px}}h2{{font-size:16px;font-weight:700;margin-bottom:10px;margin-top:20px}}table{{width:100%;border-collapse:collapse;background:#fff;border-radius:8px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.07)}}th{{background:#f8fafc;padding:9px 12px;text-align:left;font-size:11px;font-weight:600;color:#64748b;border-bottom:1px solid #e2e8f0}}td{{padding:10px 12px;border-bottom:1px solid #f1f5f9;font-size:13px}}tr:hover td{{background:#f8fafc}}a{{color:#2563eb;text-decoration:none}}a:hover{{text-decoration:underline}}.bars{{background:#fff;border-radius:8px;padding:16px;box-shadow:0 1px 3px rgba(0,0,0,.07)}}</style>
+</head><body>
+<div class="header"><h1>DigiMinds Agency Dashboard</h1><p>{TODAY_NICE} · Google Ads + Meta Ads Pipeline</p></div>
+<div class="stats">
+  <div class="stat"><div class="n">{total_d}</div><div class="l">Scraped</div></div>
+  <div class="stat"><div class="n">{total_q}</div><div class="l">Qualified</div></div>
+  <div class="stat ht"><div class="n">{high_t}</div><div class="l">High Ticket 🔥</div></div>
+  <div class="stat"><div class="n">{total_p}</div><div class="l">Proposals</div></div>
+  <div class="stat"><div class="n">{auto_sub}</div><div class="l">Auto-Posted</div></div>
+</div>
+<div class="content">
+  <h2>Platform Breakdown</h2><div class="bars">{bars}</div>
+  <h2>All Proposals — click row to expand</h2>
+  <table><thead><tr><th>Job Title</th><th>Rel.</th><th>Qual.</th><th>Platform</th><th>Budget</th></tr></thead>
+  <tbody>{rows}</tbody></table>
+  <p style="margin-top:16px;font-size:12px;color:#64748b">
+    Manual files: <code>~/.claude/agency/submissions/{TODAY}_*_ready.txt</code><br>
+    Browser queue: <code>~/.claude/agency/submissions/{TODAY}_browser_queue.json</code>
+  </p>
+</div></body></html>"""
+
+def queue_email(subject, html_body):
+    """Queue email for Gmail MCP send (processed by send-emails phase)."""
+    entry = {
+        "to": REPORT_EMAIL,
+        "subject": subject,
+        "html_body": html_body,
+        "queued_at": datetime.datetime.now().isoformat(),
+        "type": "daily_report"
+    }
+    with open(EMAIL_QUEUE, "a") as f:
+        f.write(json.dumps(entry) + "\n")
+    log(f"Email queued → {REPORT_EMAIL} | Subject: {subject}")
+
+def build_text_report(jobs_data, prop_data):
+    props    = prop_data.get("proposals",[])
+    total_d  = jobs_data.get("total_discovered",0)
+    total_q  = jobs_data.get("total_qualified",0)
+    high_t   = prop_data.get("high_ticket_proposals",0)
+    total_p  = prop_data.get("total_proposals",0)
+    avg_q    = prop_data.get("avg_quality_score",0)
+    brkd     = jobs_data.get("platform_breakdown",{})
+    auto_sub = prop_data.get("submissions",{}).get("auto_submitted",0)
+    bq_size  = prop_data.get("submissions",{}).get("browser_queue_size",0)
+    ht_q     = prop_data.get("submissions",{}).get("high_ticket_queued",0)
+
+    lines = [
+        "="*62,
+        f"  DIGIMINDS DAILY REPORT — {TODAY_NICE}",
+        f"  zulqarnain@digiminds.org | digiminds.org",
+        "="*62, "",
+        "DISCOVERY",
+        f"  Scraped    : {total_d}",
+        f"  Qualified  : {total_q}",
+        f"  High Ticket: {high_t} 🔥",
+        "",
+        "PROPOSALS",
+        f"  Generated  : {total_p}",
+        f"  Avg Quality: {avg_q}/100",
+        f"  Auto-posted: {auto_sub} (Reddit)",
+        f"  Browser Q  : {bq_size} ({ht_q} high-ticket priority)",
+        "",
+        "PLATFORM BREAKDOWN",
+    ]
+    for p,v in sorted(brkd.items(),key=lambda x:-x[1]):
+        bar = "█" * min(v, 30)
+        lines.append(f"  {p:<16} {bar} {v}")
+
+    lines += ["", "TOP 20 PROPOSALS (by quality × relevance)", ""]
+    sorted_props = sorted(props, key=lambda x: -(x.get("quality_score",0)*0.6 + x.get("relevance_score",0)*0.4))
+    for p in sorted_props[:20]:
+        ht = " 🔥" if p.get("is_high_ticket") else ""
+        qs = p.get("quality_score","—")
+        lines.append(f"  [{p['relevance_score']:>3}/Q{qs}]{ht} {p['platform'].upper():<12} {p['job_title'][:45]}")
+        lines.append(f"        {p['job_url'][:68]}")
+        lines.append("")
+
+    lines += [
+        "─"*62,
+        f"Dashboard : ~/.claude/agency/reports/dashboard.html",
+        f"Sub files : ~/.claude/agency/submissions/{TODAY}_*_ready.txt",
+        f"Browser Q : ~/.claude/agency/submissions/{TODAY}_browser_queue.json",
+        "="*62
+    ]
+    return "\n".join(lines)
+
+def main():
+    REPORT_DIR.mkdir(parents=True, exist_ok=True)
+    jobs_data, prop_data = load()
+
+    # HTML dashboard (local)
+    dash_html = build_html_dashboard(jobs_data, prop_data)
+    dash = REPORT_DIR / "dashboard.html"
+    dash.write_text(dash_html)
+    log(f"Dashboard → {dash}")
+
+    # Text report
+    report = build_text_report(jobs_data, prop_data)
+    rpt_file = REPORT_DIR / f"report_{TODAY}.txt"
+    rpt_file.write_text(report)
+    log(f"Text report → {rpt_file}")
+
+    # Full HTML email → queue for Gmail MCP
+    email_html = build_html_email(jobs_data, prop_data)
+    subject = f"DigiMinds Daily Report — {TODAY_NICE} | {prop_data.get('total_proposals',0)} Proposals | {prop_data.get('high_ticket_proposals',0)} High Ticket"
+    queue_email(subject, email_html)
+
+    print(report)
+    return str(dash)
+
+if __name__ == "__main__":
+    print(main())
