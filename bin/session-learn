@@ -1,0 +1,84 @@
+#!/usr/bin/env bash
+# session-learn — Auto-learning processor
+# Runs on Stop hook. Processes ~/.claude/session-queue.jsonl
+# Each entry → writes memory file + updates MEMORY.md index
+#
+# Queue entry format (one JSON per line):
+# {"type":"feedback","name":"slug","description":"one-line","body":"full content"}
+# {"type":"user","name":"slug","description":"one-line","body":"full content"}
+# {"type":"project","name":"slug","description":"one-line","body":"full content"}
+# {"type":"reference","name":"slug","description":"one-line","body":"full content"}
+
+set -e
+QUEUE="$HOME/.claude/session-queue.jsonl"
+MEMORY_DIR="$HOME/.claude/projects/-Users-mc/memory"
+MEMORY_INDEX="$MEMORY_DIR/MEMORY.md"
+LOG="$HOME/.claude/learn.log"
+
+[ ! -f "$QUEUE" ] && exit 0
+[ ! -s "$QUEUE" ] && exit 0
+
+TS=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
+WRITTEN=0
+SKIPPED=0
+
+while IFS= read -r line; do
+  [ -z "$line" ] && continue
+
+  # Parse fields
+  TYPE=$(echo "$line" | python3 -c "import json,sys; d=json.loads(sys.stdin.read()); print(d.get('type','feedback'))" 2>/dev/null)
+  NAME=$(echo "$line" | python3 -c "import json,sys; d=json.loads(sys.stdin.read()); print(d.get('name','unknown'))" 2>/dev/null)
+  DESC=$(echo "$line" | python3 -c "import json,sys; d=json.loads(sys.stdin.read()); print(d.get('description',''))" 2>/dev/null)
+  BODY=$(echo "$line" | python3 -c "import json,sys; d=json.loads(sys.stdin.read()); print(d.get('body',''))" 2>/dev/null)
+
+  [ -z "$NAME" ] || [ "$NAME" = "unknown" ] && continue
+  [ -z "$BODY" ] && continue
+
+  FILENAME="${TYPE}_${NAME}.md"
+  FILEPATH="$MEMORY_DIR/$FILENAME"
+
+  # Write memory file
+  cat > "$FILEPATH" << MEMEOF
+---
+name: ${NAME}
+description: ${DESC}
+type: ${TYPE}
+---
+
+${BODY}
+MEMEOF
+
+  # Update MEMORY.md index — add entry if not already present
+  ENTRY="- [${NAME}](${FILENAME}) — ${DESC}"
+  if ! grep -qF "$FILENAME" "$MEMORY_INDEX" 2>/dev/null; then
+    echo "$ENTRY" >> "$MEMORY_INDEX"
+    WRITTEN=$((WRITTEN+1))
+    echo "$TS WROTE $FILENAME" >> "$LOG"
+  else
+    # Update existing entry (replace line containing filename)
+    python3 -c "
+import sys
+lines = open('$MEMORY_INDEX').readlines()
+out = []
+replaced = False
+for l in lines:
+    if '$FILENAME' in l:
+        out.append('$ENTRY\n')
+        replaced = True
+    else:
+        out.append(l)
+if not replaced:
+    out.append('$ENTRY\n')
+open('$MEMORY_INDEX','w').writelines(out)
+" 2>/dev/null
+    SKIPPED=$((SKIPPED+1))
+    echo "$TS UPDATED $FILENAME" >> "$LOG"
+  fi
+
+done < "$QUEUE"
+
+# Clear queue after processing
+> "$QUEUE"
+
+echo "$TS DONE wrote=$WRITTEN updated=$SKIPPED" >> "$LOG"
+exit 0
