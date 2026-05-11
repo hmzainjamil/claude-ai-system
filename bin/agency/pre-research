@@ -1,0 +1,295 @@
+#!/usr/bin/env python3
+"""
+DAILY PRE-RESEARCH MODULE
+━━━━━━━━━━━━━━━━━━━━━━━━
+Runs BEFORE job discovery every morning.
+Like a Google Ads market analysis before launching campaigns:
+  1. Refresh competitor intelligence (top Upwork/Fiverr profiles)
+  2. Scan market trends (what clients are asking for TODAY)
+  3. Update pain point intelligence from Reddit/forums
+  4. Analyze yesterday's mistakes + update strategy
+  5. Generate today's targeting brief (what to apply for, what to skip)
+
+Output: ~/.claude/agency/data/daily_brief_YYYYMMDD.json
+"""
+
+import os, sys, json, datetime, requests, re, time
+from pathlib import Path
+
+HOME = Path.home()
+AGENCY_DIR = HOME / ".claude/agency"
+DATA_DIR   = AGENCY_DIR / "data"
+LEARN_DIR  = AGENCY_DIR / "learning"
+LOG_FILE   = AGENCY_DIR / "logs/pre-research.log"
+TODAY      = datetime.date.today().strftime("%Y%m%d")
+YESTERDAY  = (datetime.date.today() - datetime.timedelta(days=1)).strftime("%Y%m%d")
+OUTPUT     = DATA_DIR / f"daily_brief_{TODAY}.json"
+INTEL_FILE = AGENCY_DIR / "BDM_INTELLIGENCE.json"
+FEEDBACK   = LEARN_DIR / "feedback.json"
+PIXEL_LOG  = LEARN_DIR / "pixel_events.jsonl"
+
+APIFY_TOKEN  = os.environ.get("APIFY_API_TOKEN", "")
+G0DM0DE_URL  = "http://localhost:7860/v1/chat/completions"
+GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
+
+def log(msg):
+    ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    line = f"[{ts}] {msg}"
+    print(line)
+    with open(LOG_FILE, "a") as f:
+        f.write(line + "\n")
+
+def call_llm(prompt, max_tokens=600):
+    """G0DM0D3 first, Groq fallback."""
+    try:
+        r = requests.post(G0DM0DE_URL, json={
+            "model": "llama3:latest",
+            "messages": [{"role": "user", "content": prompt}],
+            "max_tokens": max_tokens, "temperature": 0.3
+        }, timeout=25)
+        if r.status_code == 200:
+            return r.json()["choices"][0]["message"]["content"].strip()
+    except: pass
+
+    if GROQ_API_KEY:
+        try:
+            r = requests.post("https://api.groq.com/openai/v1/chat/completions", json={
+                "model": "llama-3.1-8b-instant",
+                "messages": [{"role": "user", "content": prompt}],
+                "max_tokens": max_tokens, "temperature": 0.3
+            }, headers={"Authorization": f"Bearer {GROQ_API_KEY}"}, timeout=20)
+            if r.status_code == 200:
+                return r.json()["choices"][0]["message"]["content"].strip()
+        except: pass
+    return ""
+
+def analyze_yesterday_mistakes() -> dict:
+    """
+    Core learning loop — like Google Ads automated rule learning.
+    Reads yesterday's pixel events and finds patterns in what failed.
+    """
+    if not PIXEL_LOG.exists():
+        return {"mistakes": [], "insights": [], "strategy_changes": []}
+
+    events = []
+    for line in PIXEL_LOG.read_text().strip().split("\n"):
+        if line.strip():
+            try:
+                e = json.loads(line)
+                # Only yesterday's events
+                if e.get("timestamp", "").startswith(datetime.date.today().strftime("%Y-%m-%d")):
+                    events.append(e)
+            except: pass
+
+    sent = [e for e in events if e["event"] == "proposal_sent"]
+    replied = [e for e in events if e["event"] == "reply_received"]
+    rejected = [e for e in events if e["event"] == "closed_lost"]
+
+    mistakes = []
+    insights = []
+    strategy_changes = []
+
+    # Pattern 1: Low response rate on specific platform
+    platform_counts = {}
+    for e in sent:
+        p = e.get("metadata", {}).get("platform", "unknown")
+        platform_counts[p] = platform_counts.get(p, {"sent": 0, "replied": 0})
+        platform_counts[p]["sent"] += 1
+
+    for e in replied:
+        p = e.get("metadata", {}).get("platform", "unknown")
+        if p in platform_counts:
+            platform_counts[p]["replied"] += 1
+
+    for plat, counts in platform_counts.items():
+        if counts["sent"] >= 3:
+            cvr = counts["replied"] / counts["sent"]
+            if cvr < 0.1:
+                mistakes.append(f"{plat}: <10% response rate ({counts['replied']}/{counts['sent']})")
+                strategy_changes.append(f"Reduce {plat} applications, focus on higher-CVR platforms")
+
+    # Pattern 2: High-score jobs that got no reply
+    for e in rejected:
+        score = e.get("metadata", {}).get("score", 0)
+        if score >= 75:
+            mistakes.append(f"High-score job rejected (score {score}) — proposal quality issue")
+            insights.append("High-scoring jobs not converting = proposal content problem, not targeting")
+
+    # Pattern 3: Low-score jobs wasting connects
+    low_score_sent = [e for e in sent if e.get("metadata", {}).get("score", 100) < 50]
+    if len(low_score_sent) >= 3:
+        mistakes.append(f"{len(low_score_sent)} low-score jobs applied to — wasted connects/effort")
+        strategy_changes.append("Tighten quality filter: minimum BDM score 60 before applying")
+
+    return {
+        "mistakes": mistakes[:5],
+        "insights": insights[:5],
+        "strategy_changes": strategy_changes[:5],
+        "platform_performance": platform_counts,
+        "total_sent_yesterday": len(sent),
+        "total_replied_yesterday": len(replied)
+    }
+
+def refresh_competitor_intelligence() -> dict:
+    """
+    Scrape what top competitors are saying/offering TODAY.
+    Like checking competitor ads before launching your own.
+    """
+    log("Refreshing competitor intelligence...")
+
+    # Use Apify to get current top Upwork profiles
+    if not APIFY_TOKEN:
+        log("No Apify token — using cached intelligence")
+        return {}
+
+    try:
+        r = requests.post(
+            "https://api.apify.com/v2/acts/apify~web-scraper/runs",
+            json={"input": {
+                "startUrls": [
+                    {"url": "https://www.upwork.com/search/profiles/?q=meta+ads+google+ads&sort=rating&rq_title=true"},
+                    {"url": "https://www.fiverr.com/search/gigs?query=meta+ads+expert&filter=rating&page=1"}
+                ],
+                "pageFunction": """
+                async function pageFunction(context) {
+                    const $ = context.jQuery;
+                    const data = { url: window.location.href, profiles: [] };
+
+                    // Upwork profile cards
+                    $('.up-card-section').each(function() {
+                        const name = $(this).find('h4').text().trim();
+                        const title = $(this).find('[class*="title"]').first().text().trim();
+                        const rate = $(this).find('[class*="rate"]').first().text().trim();
+                        const overview = $(this).find('[class*="description"]').first().text().trim().substring(0,300);
+                        if (title) data.profiles.push({ name, title, rate, overview });
+                    });
+
+                    // Fiverr gig cards
+                    $('[class*="gig-card"]').each(function() {
+                        const title = $(this).find('h3').text().trim();
+                        const seller = $(this).find('[class*="seller"]').first().text().trim();
+                        const price = $(this).find('[class*="price"]').first().text().trim();
+                        const rating = $(this).find('[class*="rating"]').first().text().trim();
+                        if (title) data.profiles.push({ title, seller, price, rating, platform: 'fiverr' });
+                    });
+
+                    return data;
+                }""",
+                "maxRequestsPerCrawl": 3
+            }},
+            headers={"Authorization": f"Bearer {APIFY_TOKEN}"},
+            timeout=30
+        )
+        if r.status_code in (200, 201):
+            run_id = r.json()["data"]["id"]
+            # Quick wait for results (60s max)
+            for _ in range(12):
+                time.sleep(5)
+                status_r = requests.get(
+                    f"https://api.apify.com/v2/actor-runs/{run_id}",
+                    headers={"Authorization": f"Bearer {APIFY_TOKEN}"},
+                    timeout=10
+                )
+                if status_r.json()["data"]["status"] == "SUCCEEDED":
+                    items_r = requests.get(
+                        f"https://api.apify.com/v2/actor-runs/{run_id}/dataset/items",
+                        headers={"Authorization": f"Bearer {APIFY_TOKEN}"},
+                        params={"format": "json"},
+                        timeout=15
+                    )
+                    profiles = items_r.json() if isinstance(items_r.json(), list) else []
+                    log(f"Competitor intel: {len(profiles)} profiles scraped")
+                    return {"profiles": profiles, "scraped_at": datetime.datetime.now().isoformat()}
+    except Exception as e:
+        log(f"Competitor scrape error: {e}")
+
+    return {}
+
+def generate_daily_targeting_brief(mistakes: dict, intel: dict) -> dict:
+    """
+    Generate today's strategy brief — like a Google Ads campaign brief.
+    What to target, what to avoid, what hook to use today.
+    """
+    feedback = json.loads(FEEDBACK.read_text()) if FEEDBACK.exists() else {}
+
+    strategy_changes = mistakes.get("strategy_changes", [])
+    best_platforms = sorted(
+        feedback.get("best_platforms", {}).items(),
+        key=lambda x: x[1].get("responses", 0) / max(x[1].get("submitted", 1), 1),
+        reverse=True
+    )
+    top_platform = best_platforms[0][0] if best_platforms else "upwork"
+
+    # Today's priority targeting
+    prompt = f"""You are a senior BDM for DigiMinds (Meta Ads + Google Ads agency).
+Based on this data, write a 3-bullet daily targeting brief for today's job applications.
+
+Yesterday's mistakes: {mistakes.get('mistakes', [])}
+Platform performance: {mistakes.get('platform_performance', {})}
+Strategy changes needed: {strategy_changes}
+Best platform: {top_platform}
+
+Write exactly 3 actionable bullets:
+1. Which platform to prioritize today and why
+2. What type of client/job to target (specific criteria)
+3. What hook/angle to lead with in proposals today
+
+Be specific and data-driven. Max 80 words total."""
+
+    brief_text = call_llm(prompt, max_tokens=150)
+
+    return {
+        "date": TODAY,
+        "priority_platform": top_platform,
+        "strategy_changes": strategy_changes,
+        "daily_brief": brief_text or "Focus on Upwork (highest volume). Target $20+/hr Meta/Google Ads jobs posted < 6h. Lead with ROAS improvement angle.",
+        "avoid_today": mistakes.get("mistakes", [])[:3],
+        "target_criteria": {
+            "min_bdm_score": 60 + (5 if len(mistakes.get("mistakes", [])) > 2 else 0),
+            "max_proposals_on_job": 20,
+            "posted_within_hours": 6,
+            "min_budget_hourly": 15
+        }
+    }
+
+def main():
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    log("=== DAILY PRE-RESEARCH MODULE ===")
+
+    # Step 1: Analyze yesterday's mistakes
+    log("Analyzing yesterday's performance...")
+    mistakes = analyze_yesterday_mistakes()
+    if mistakes["mistakes"]:
+        log(f"Mistakes found: {len(mistakes['mistakes'])}")
+        for m in mistakes["mistakes"]:
+            log(f"  ❌ {m}")
+
+    # Step 2: Refresh competitor intel (weekly — expensive)
+    comp_intel = {}
+    # Only refresh on Mondays to save Apify credits
+    if datetime.date.today().weekday() == 0:
+        comp_intel = refresh_competitor_intelligence()
+
+    # Step 3: Generate targeting brief
+    intel = json.loads(INTEL_FILE.read_text()) if INTEL_FILE.exists() else {}
+    brief = generate_daily_targeting_brief(mistakes, intel)
+
+    log(f"Today's priority platform: {brief['priority_platform']}")
+    log(f"Min BDM score today: {brief['target_criteria']['min_bdm_score']}")
+    log(f"Daily brief: {brief['daily_brief']}")
+
+    # Save output
+    output = {
+        "date": TODAY,
+        "generated_at": datetime.datetime.now().isoformat(),
+        "yesterday_analysis": mistakes,
+        "competitor_intel_updated": bool(comp_intel),
+        "daily_brief": brief,
+        "strategy_today": brief["daily_brief"]
+    }
+    OUTPUT.write_text(json.dumps(output, indent=2))
+    log(f"Daily brief saved → {OUTPUT}")
+    return str(OUTPUT)
+
+if __name__ == "__main__":
+    print(main())
