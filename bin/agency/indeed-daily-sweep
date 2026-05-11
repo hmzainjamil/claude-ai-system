@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+# Indeed Daily Sweep — runs Indeed MCP search + generates HTML report
+# Scheduled twice daily: 9 AM PKT (04:00 UTC) + 9 PM PKT (16:00 UTC)
+
+set -euo pipefail
+
+BIN="$HOME/.claude/bin/agency"
+LOG="$HOME/.claude/agency/logs/indeed-sweep.log"
+REPORT_DIR="$HOME/Downloads"
+
+mkdir -p "$(dirname "$LOG")"
+
+ts() { date '+%Y-%m-%d %H:%M:%S'; }
+log() { echo "[$(ts)] $*" | tee -a "$LOG"; }
+
+SWEEP="Morning"
+[[ $(date +%H) -ge 14 ]] && SWEEP="Evening"
+
+log "=== Indeed Daily Sweep — $SWEEP ==="
+log "Step 1: Running Indeed MCP search..."
+
+# Run indeed-mcp-search via claude --print (uses live MCP connector)
+python3 "$BIN/indeed-mcp-search" >> "$LOG" 2>&1 || {
+    log "⚠️  MCP search failed or returned empty — continuing to report"
+}
+
+log "Step 2: Generating HTML report..."
+REPORT=$(python3 "$BIN/indeed-html-report" 2>> "$LOG") || true
+log "Report: $REPORT"
+
+log "Step 3: Sending email..."
+# Send report via Gmail MCP if available
+LATEST="$REPORT_DIR/Indeed-Jobs-LATEST.html"
+if [[ -f "$LATEST" ]]; then
+    # Use claude to send via Gmail MCP
+    SUBJECT="Indeed Jobs — $SWEEP Sweep $(date '+%Y-%m-%d')"
+    BODY="Indeed job sweep complete. $SWEEP sweep results attached.\n\nReport saved: $LATEST\n\nOpen report: file://$LATEST"
+
+    claude --print --no-color "Use the Gmail MCP create_draft tool to create an email draft:
+To: hmzainjamil@gmail.com
+Subject: $SUBJECT
+Body: $BODY
+
+Just create the draft, do not send it." >> "$LOG" 2>&1 || log "⚠️  Email draft creation failed (non-critical)"
+fi
+
+log "=== Sweep complete ==="
