@@ -1,0 +1,1411 @@
+#!/usr/bin/env python3
+"""
+360° AUDIT PDF GENERATOR v3 — BigBull-style professional audit reports.
+Red/orange gradient cover, numbered section circles, score bars, dark-red table headers.
+Brand colors researched from prospect websites.
+
+Usage:
+  generate-audit-pdf --niche med_spa --business "Luxe Med Spa" --city "Tampa, FL" --url "https://luxemedspa.com"
+  generate-audit-pdf --all
+  generate-audit-pdf --bdm          (reads queue, saves to ~/Downloads/DigiMinds_BDM/YYYY-MM-DD/Audit_PDFs/)
+"""
+import os, sys, re, json, datetime, argparse, urllib.request
+from pathlib import Path
+
+HOME      = Path.home()
+TODAY     = datetime.date.today()
+TODAY_STR = TODAY.strftime("%B %d, %Y")
+DATE_DIR  = TODAY.strftime("%Y-%m-%d")
+
+BRAND = {
+    "agency":     "DigiMinds Agency",
+    "specialist": "Hafiz Muhammad Zulqarnain",
+    "email":      "zulqarnain@digiminds.org",
+    "portfolio":  "https://hafiz-muhammad-z-3n01vli.gamma.site/",
+}
+
+# ── ReportLab imports ─────────────────────────────────────────────────────────
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.colors import HexColor, white, black, Color
+from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+from reportlab.lib.enums import TA_LEFT, TA_CENTER, TA_RIGHT
+from reportlab.platypus import (
+    SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle,
+    KeepTogether, PageBreak
+)
+from reportlab.platypus.flowables import Flowable
+from reportlab.lib.units import mm
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
+
+# ── Page geometry ─────────────────────────────────────────────────────────────
+W, H      = A4
+LEFT_M    = 45
+RIGHT_M   = 45
+TOP_M     = 54
+BOT_M     = 36
+FP        = 6                         # ReportLab frame inner padding (default)
+CW        = W - LEFT_M - RIGHT_M - 2*FP   # usable frame width (~493 pts)
+FHGT      = H - TOP_M - BOT_M - 2*FP     # usable frame height (~739 pts)
+
+# ── Global color constants ────────────────────────────────────────────────────
+C_HDR   = HexColor("#B82020")   # dark red — table headers
+C_BD    = HexColor("#D0D0D0")   # border gray
+C_TXT   = HexColor("#1A1A2E")   # dark text
+C_VLIT  = HexColor("#F5F5F5")   # alternating row light
+C_RED   = HexColor("#DC2626")   # critical
+C_ORG   = HexColor("#EA580C")   # high
+C_YEL   = HexColor("#D97706")   # medium
+C_GRN   = HexColor("#16A34A")   # ok / good
+C_DRK   = HexColor("#1A1A1A")   # dark circle bg
+C_CVR1  = HexColor("#C0392B")   # cover gradient top
+C_CVR2  = HexColor("#E67E22")   # cover gradient bottom
+
+STATUS_COLORS = {
+    "Critical":    C_RED,
+    "High":        C_ORG,
+    "Medium":      C_YEL,
+    "Low":         C_GRN,
+    "Good":        C_GRN,
+    "Excellent":   C_GRN,
+    "Needs Work":  C_YEL,
+    "Missing":     C_RED,
+    "Partial":     C_ORG,
+    "Yes":         C_GRN,
+    "No":          C_RED,
+}
+
+# ── Brand color extraction ────────────────────────────────────────────────────
+def extract_brand_colors(url):
+    if not url:
+        return None, None
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+        html = urllib.request.urlopen(req, timeout=8).read().decode("utf-8", errors="replace")
+        # CSS custom properties
+        for pat in [r'--primary[-_]color\s*:\s*(#[0-9a-fA-F]{6})',
+                    r'--brand[-_]color\s*:\s*(#[0-9a-fA-F]{6})',
+                    r'--color[-_]primary\s*:\s*(#[0-9a-fA-F]{6})',
+                    r'--accent[-_]color\s*:\s*(#[0-9a-fA-F]{6})',
+                    r'--main[-_]color\s*:\s*(#[0-9a-fA-F]{6})']:
+            m = re.search(pat, html)
+            if m:
+                primary = m.group(1)
+                # find a second color
+                all_hex = re.findall(r'#([0-9a-fA-F]{6})\b', html)
+                seen = set()
+                secondary = None
+                for h in all_hex:
+                    hx = "#" + h.upper()
+                    if hx != primary.upper() and hx not in seen:
+                        seen.add(hx)
+                        if len(seen) >= 3:
+                            secondary = hx
+                            break
+                return primary, secondary or "#555555"
+        # Fallback: most common hex in stylesheet links
+        all_hex = re.findall(r'#([0-9a-fA-F]{6})\b', html)
+        freq = {}
+        for h in all_hex:
+            freq[h.upper()] = freq.get(h.upper(), 0) + 1
+        sorted_hex = sorted(freq.items(), key=lambda x: -x[1])
+        if len(sorted_hex) >= 2:
+            return "#" + sorted_hex[0][0], "#" + sorted_hex[1][0]
+    except Exception:
+        pass
+    return None, None
+
+# ── Prospect brand palettes (researched) ─────────────────────────────────────
+PROSPECT_BRANDS = {
+    "marcadis_watt_plastic_surgery_med_spa": {"P": "#8B7355", "S": "#C9A96E"},
+    "thrive_med_spa":                         {"P": "#2E7D6B", "S": "#4CAF90"},
+    "5d_smiles_dental_implant_center":        {"P": "#1565C0", "S": "#42A5F5"},
+    "smilebrite_dentistry":                   {"P": "#2EA3F2", "S": "#2d3940"},
+    "nicolet_law_office":                     {"P": "#1B3A6B", "S": "#C8102E"},
+    "dml_law_usa":                            {"P": "#204CE5", "S": "#112337"},
+}
+
+# ── Paragraph styles ──────────────────────────────────────────────────────────
+def make_styles():
+    base = getSampleStyleSheet()
+    def ps(name, **kw):
+        return ParagraphStyle(name, **kw)
+
+    return {
+        "body":    ps("body",    fontName="Helvetica",       fontSize=9,  leading=13, textColor=C_TXT),
+        "bodyB":   ps("bodyB",   fontName="Helvetica-Bold",  fontSize=9,  leading=13, textColor=C_TXT),
+        "small":   ps("small",   fontName="Helvetica",       fontSize=8,  leading=11, textColor=C_TXT),
+        "hdr":     ps("hdr",     fontName="Helvetica-Bold",  fontSize=9,  leading=12, textColor=white),
+        "hdrL":    ps("hdrL",    fontName="Helvetica-Bold",  fontSize=8,  leading=11, textColor=white, alignment=TA_LEFT),
+        "cell":    ps("cell",    fontName="Helvetica",       fontSize=8.5,leading=12, textColor=C_TXT),
+        "cellB":   ps("cellB",   fontName="Helvetica-Bold",  fontSize=8.5,leading=12, textColor=C_TXT),
+        "finding": ps("finding", fontName="Helvetica",       fontSize=8.5,leading=12, textColor=C_TXT),
+        "ccrit":   ps("ccrit",   fontName="Helvetica-Bold",  fontSize=8.5,leading=12, textColor=C_RED),
+        "chigh":   ps("chigh",   fontName="Helvetica-Bold",  fontSize=8.5,leading=12, textColor=C_ORG),
+        "cmed":    ps("cmed",    fontName="Helvetica-Bold",  fontSize=8.5,leading=12, textColor=C_YEL),
+        "cok":     ps("cok",     fontName="Helvetica-Bold",  fontSize=8.5,leading=12, textColor=C_GRN),
+        "swot":    ps("swot",    fontName="Helvetica",       fontSize=8,  leading=12, textColor=white),
+        "swotH":   ps("swotH",   fontName="Helvetica-Bold",  fontSize=10, leading=14, textColor=white),
+        "secTitle":ps("secTitle",fontName="Helvetica-Bold",  fontSize=13, leading=16, textColor=white),
+        "coverH":  ps("coverH",  fontName="Helvetica-Bold",  fontSize=28, leading=32, textColor=white, alignment=TA_CENTER),
+        "coverSub":ps("coverSub",fontName="Helvetica",       fontSize=13, leading=17, textColor=white, alignment=TA_CENTER),
+        "coverCo": ps("coverCo", fontName="Helvetica-Bold",  fontSize=18, leading=22, textColor=white, alignment=TA_CENTER),
+        "tag":     ps("tag",     fontName="Helvetica-Bold",  fontSize=20, leading=24, textColor=white, alignment=TA_CENTER),
+        "tagSub":  ps("tagSub",  fontName="Helvetica",       fontSize=9,  leading=12, textColor=HexColor("#DDDDDD"), alignment=TA_CENTER),
+        "finalH":  ps("finalH",  fontName="Helvetica-Bold",  fontSize=22, leading=26, textColor=white, alignment=TA_CENTER),
+        "finalSub":ps("finalSub",fontName="Helvetica",       fontSize=10, leading=14, textColor=HexColor("#DDDDDD"), alignment=TA_CENTER),
+    }
+
+ST = make_styles()
+
+# ── Page header/footer callback ───────────────────────────────────────────────
+def make_hf(business, pal):
+    P = HexColor(pal["P"])
+    def hf(canvas, doc):
+        canvas.saveState()
+        # Top bar
+        canvas.setFillColor(P)
+        canvas.rect(0, H - 22, W, 22, fill=1, stroke=0)
+        canvas.setFillColor(white)
+        canvas.setFont("Helvetica-Bold", 8)
+        canvas.drawString(LEFT_M, H - 14, business.upper())
+        canvas.setFont("Helvetica", 8)
+        canvas.drawRightString(W - RIGHT_M, H - 14, "CONFIDENTIAL")
+        # Bottom bar
+        canvas.setFillColor(P)
+        canvas.rect(0, 0, W, 18, fill=1, stroke=0)
+        canvas.setFillColor(white)
+        canvas.setFont("Helvetica", 7.5)
+        canvas.drawString(LEFT_M, 5, f"{BRAND['agency']}  |  {BRAND['email']}")
+        canvas.drawRightString(W - RIGHT_M, 5, f"Page {doc.page}")
+        canvas.restoreState()
+    return hf
+
+# ─────────────────────────────────────────────────────────────────────────────
+# FLOWABLES
+# ─────────────────────────────────────────────────────────────────────────────
+
+class CoverPage(Flowable):
+    def __init__(self, business, city, niche, pal):
+        super().__init__()
+        self.business = business
+        self.city     = city
+        self.niche    = niche
+        self.pal      = pal
+        self.width    = CW
+        self.height   = FHGT
+
+    def draw(self):
+        c = self.canv
+        c.saveState()
+        c.translate(-LEFT_M - FP, -BOT_M - FP)
+
+        # Gradient background (approximated with bands)
+        steps = 60
+        for i in range(steps):
+            t = i / steps
+            r1, g1, b1 = 0xC0/255, 0x39/255, 0x2B/255
+            r2, g2, b2 = 0xE6/255, 0x7E/255, 0x22/255
+            r = r1 + (r2-r1)*t
+            g = g1 + (g2-g1)*t
+            b = b1 + (b2-b1)*t
+            y  = H * (1 - (i+1)/steps)
+            bh = H / steps + 1
+            c.setFillColorRGB(r, g, b)
+            c.rect(0, y, W, bh, fill=1, stroke=0)
+
+        # Dark overlay strip at bottom 15%
+        c.setFillColorRGB(0, 0, 0, alpha=0.35)
+        c.rect(0, 0, W, H * 0.15, fill=1, stroke=0)
+
+        # Decorative diagonal lines
+        c.saveState()
+        c.setStrokeColorRGB(1, 1, 1, alpha=0.07)
+        c.setLineWidth(28)
+        for i in range(8):
+            x = -100 + i * 110
+            c.line(x, 0, x + H, H)
+        c.restoreState()
+
+        # Accent bar left edge
+        c.setFillColor(HexColor(self.pal["S"]))
+        c.rect(0, 0, 8, H, fill=1, stroke=0)
+
+        # "360° STRATEGIC AUDIT" headline
+        c.setFillColor(white)
+        c.setFont("Helvetica-Bold", 36)
+        c.drawCentredString(W/2, H - 130, "360° STRATEGIC AUDIT")
+
+        c.setFont("Helvetica", 15)
+        c.setFillColorRGB(1, 1, 1, alpha=0.85)
+        c.drawCentredString(W/2, H - 158, "Performance · Growth · Competitive Intelligence")
+
+        # Business name box
+        bx, by, bw, bh2 = 55, H - 255, W - 110, 68
+        c.setFillColorRGB(0, 0, 0, alpha=0.32)
+        c.roundRect(bx, by, bw, bh2, 6, fill=1, stroke=0)
+        c.setStrokeColor(HexColor(self.pal["S"]))
+        c.setLineWidth(1.5)
+        c.roundRect(bx, by, bw, bh2, 6, fill=0, stroke=1)
+        c.setFillColor(white)
+        c.setFont("Helvetica-Bold", 20)
+        c.drawCentredString(W/2, by + 38, self.business)
+        c.setFont("Helvetica", 12)
+        c.setFillColorRGB(1, 1, 1, alpha=0.8)
+        c.drawCentredString(W/2, by + 18, f"{self.city}  ·  {self.niche.replace('_', ' ').title()}")
+
+        # Stat boxes: 4 columns
+        stats = [("12", "SECTIONS"), ("10", "COMPETITORS"), ("47", "ACTIONS"), ("25+", "PAGES")]
+        bw2 = 90; gap = 15
+        total = len(stats) * bw2 + (len(stats)-1) * gap
+        sx = (W - total) / 2
+        sy = H - 340
+        for num, label in stats:
+            c.setFillColorRGB(0, 0, 0, alpha=0.28)
+            c.roundRect(sx, sy, bw2, 52, 5, fill=1, stroke=0)
+            c.setStrokeColorRGB(1, 1, 1, alpha=0.2)
+            c.setLineWidth(0.8)
+            c.roundRect(sx, sy, bw2, 52, 5, fill=0, stroke=1)
+            c.setFillColor(HexColor(self.pal["S"]))
+            c.setFont("Helvetica-Bold", 22)
+            c.drawCentredString(sx + bw2/2, sy + 28, num)
+            c.setFillColor(white)
+            c.setFont("Helvetica", 8)
+            c.drawCentredString(sx + bw2/2, sy + 12, label)
+            sx += bw2 + gap
+
+        # "PREPARED BY" box at bottom
+        px, py, pw, ph2 = 55, 35, W - 110, 62
+        c.setFillColorRGB(0, 0, 0, alpha=0.40)
+        c.roundRect(px, py, pw, ph2, 5, fill=1, stroke=0)
+        c.setStrokeColor(HexColor(self.pal["S"]))
+        c.setLineWidth(1)
+        c.roundRect(px, py, pw, ph2, 5, fill=0, stroke=1)
+        c.setFillColor(HexColor(self.pal["S"]))
+        c.setFont("Helvetica-Bold", 9)
+        c.drawString(px + 14, py + 46, "PREPARED BY")
+        c.setFillColor(white)
+        c.setFont("Helvetica-Bold", 13)
+        c.drawString(px + 14, py + 28, BRAND["specialist"])
+        c.setFont("Helvetica", 9)
+        c.setFillColorRGB(1, 1, 1, alpha=0.8)
+        c.drawString(px + 14, py + 12, f"{BRAND['agency']}  ·  {BRAND['email']}")
+        c.setFont("Helvetica", 9)
+        c.drawRightString(px + pw - 14, py + 12, TODAY_STR)
+
+        c.restoreState()
+
+    def wrap(self, *args):
+        return (CW, FHGT)
+
+
+class SectionHeader(Flowable):
+    """Numbered circle + colored bar — matches BigBull section style."""
+    def __init__(self, number, title, pal, height=36):
+        super().__init__()
+        self.number  = number
+        self.title   = title
+        self.pal     = pal
+        self.width   = CW
+        self.height  = height
+
+    def draw(self):
+        c = self.canv
+        P = HexColor(self.pal["P"])
+        S = HexColor(self.pal["S"])
+        c.saveState()
+
+        # Background bar
+        c.setFillColor(P)
+        c.roundRect(0, 0, self.width, self.height, 5, fill=1, stroke=0)
+
+        # Accent left strip
+        c.setFillColor(S)
+        c.roundRect(0, 0, 6, self.height, 3, fill=1, stroke=0)
+
+        # Circle number
+        cx, cy, r = 28, self.height/2, 13
+        c.setFillColor(C_DRK)
+        c.circle(cx, cy, r, fill=1, stroke=0)
+        c.setFillColor(S)
+        c.setFont("Helvetica-Bold", 11)
+        c.drawCentredString(cx, cy - 4, str(self.number))
+
+        # Title
+        c.setFillColor(white)
+        c.setFont("Helvetica-Bold", 13)
+        c.drawString(50, self.height/2 - 5, self.title.upper())
+
+        c.restoreState()
+
+    def wrap(self, *args):
+        return (self.width, self.height)
+
+
+class ScoreBar(Flowable):
+    """Horizontal score bar: label left, gray track, colored fill, score right."""
+    def __init__(self, label, score, max_score=100, color=None, height=20):
+        super().__init__()
+        self.label     = label
+        self.score     = score
+        self.max_score = max_score
+        self.color     = color or C_GRN
+        self.width     = CW
+        self.height    = height
+
+    def draw(self):
+        c = self.canv
+        c.saveState()
+        label_w = 160
+        bar_x   = label_w + 10
+        bar_w   = self.width - label_w - 60
+        bar_h   = 10
+        bar_y   = (self.height - bar_h) / 2
+
+        # Label
+        c.setFillColor(C_TXT)
+        c.setFont("Helvetica", 8.5)
+        c.drawString(0, bar_y + 1, self.label)
+
+        # Gray track
+        c.setFillColor(HexColor("#E0E0E0"))
+        c.roundRect(bar_x, bar_y, bar_w, bar_h, 3, fill=1, stroke=0)
+
+        # Colored fill
+        fill_w = max(6, bar_w * self.score / self.max_score)
+        c.setFillColor(self.color)
+        c.roundRect(bar_x, bar_y, fill_w, bar_h, 3, fill=1, stroke=0)
+
+        # Score text
+        c.setFillColor(C_TXT)
+        c.setFont("Helvetica-Bold", 9)
+        c.drawRightString(self.width, bar_y + 2, f"{self.score}/{self.max_score}")
+
+        c.restoreState()
+
+    def wrap(self, *args):
+        return (CW, self.height)
+
+
+class FinalPage(Flowable):
+    """'AUDIT COMPLETE' final page — BigBull style."""
+    def __init__(self, business, pal):
+        super().__init__()
+        self.business = business
+        self.pal      = pal
+        self.width    = CW
+        self.height   = FHGT
+
+    def draw(self):
+        c = self.canv
+        c.saveState()
+        c.translate(-LEFT_M - FP, -BOT_M - FP)
+        P = HexColor(self.pal["P"])
+        S = HexColor(self.pal["S"])
+
+        # Background gradient (same as cover)
+        steps = 50
+        for i in range(steps):
+            t = i / steps
+            r1, g1, b1 = 0x1A/255, 0x1A/255, 0x2E/255
+            r2, g2, b2 = 0x16/255, 0x21/255, 0x3E/255
+            r = r1 + (r2-r1)*t
+            g = g1 + (g2-g1)*t
+            b = b1 + (b2-b1)*t
+            y  = H * (1 - (i+1)/steps)
+            bh = H / steps + 1
+            c.setFillColorRGB(r, g, b)
+            c.rect(0, y, W, bh, fill=1, stroke=0)
+
+        # Accent bar left
+        c.setFillColor(S)
+        c.rect(0, 0, 8, H, fill=1, stroke=0)
+
+        # "AUDIT COMPLETE" box
+        bx, by, bw, bh2 = 60, H/2 + 20, W - 120, 90
+        c.setFillColor(P)
+        c.roundRect(bx, by, bw, bh2, 8, fill=1, stroke=0)
+        c.setFillColor(white)
+        c.setFont("Helvetica-Bold", 28)
+        c.drawCentredString(W/2, by + 52, "AUDIT COMPLETE")
+        c.setFillColor(S)
+        c.setFont("Helvetica", 12)
+        c.drawCentredString(W/2, by + 28, "360° Strategic Audit Report")
+        c.setFillColorRGB(1, 1, 1, alpha=0.7)
+        c.setFont("Helvetica", 10)
+        c.drawCentredString(W/2, by + 12, self.business)
+
+        # "Audit Prepared By" bordered box
+        px, py2, pw, ph2 = 60, H/2 - 110, W - 120, 100
+        c.setFillColorRGB(1, 1, 1, alpha=0.06)
+        c.roundRect(px, py2, pw, ph2, 6, fill=1, stroke=0)
+        c.setStrokeColor(S)
+        c.setLineWidth(1.5)
+        c.roundRect(px, py2, pw, ph2, 6, fill=0, stroke=1)
+        c.setFillColor(S)
+        c.setFont("Helvetica-Bold", 9)
+        c.drawCentredString(W/2, py2 + 82, "AUDIT PREPARED BY")
+        c.setFillColor(white)
+        c.setFont("Helvetica-Bold", 16)
+        c.drawCentredString(W/2, py2 + 60, BRAND["specialist"])
+        c.setFont("Helvetica", 10)
+        c.setFillColorRGB(1, 1, 1, alpha=0.75)
+        c.drawCentredString(W/2, py2 + 42, BRAND["agency"])
+        c.drawCentredString(W/2, py2 + 26, BRAND["email"])
+        c.drawCentredString(W/2, py2 + 10, BRAND["portfolio"])
+
+        # 3 meta boxes
+        mw = (W - 120 - 20) / 3
+        mx = 60
+        my = H/2 - 160
+        metas = [
+            ("CLIENT", self.business),
+            ("DATE",   TODAY_STR),
+            ("FORMAT", "360° Audit"),
+        ]
+        for label, val in metas:
+            c.setFillColorRGB(1, 1, 1, alpha=0.08)
+            c.roundRect(mx, my - 44, mw, 44, 4, fill=1, stroke=0)
+            c.setStrokeColorRGB(1, 1, 1, alpha=0.15)
+            c.setLineWidth(0.8)
+            c.roundRect(mx, my - 44, mw, 44, 4, fill=0, stroke=1)
+            c.setFillColor(S)
+            c.setFont("Helvetica-Bold", 8)
+            c.drawCentredString(mx + mw/2, my - 16, label)
+            c.setFillColor(white)
+            c.setFont("Helvetica", 9)
+            c.drawCentredString(mx + mw/2, my - 30, val)
+            mx += mw + 10
+
+        c.restoreState()
+
+    def wrap(self, *args):
+        return (CW, FHGT)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# TABLE HELPERS
+# ─────────────────────────────────────────────────────────────────────────────
+
+def tbl_style(extra=None, hdr_rows=1):
+    """Standard table style: dark red header, alternating rows, grid."""
+    cmds = [
+        ("BACKGROUND",   (0,0), (-1, hdr_rows-1), C_HDR),
+        ("TEXTCOLOR",    (0,0), (-1, hdr_rows-1), white),
+        ("FONTNAME",     (0,0), (-1, hdr_rows-1), "Helvetica-Bold"),
+        ("FONTSIZE",     (0,0), (-1, hdr_rows-1), 8.5),
+        ("ALIGN",        (0,0), (-1,-1),           "LEFT"),
+        ("VALIGN",       (0,0), (-1,-1),           "MIDDLE"),
+        ("FONTNAME",     (0,1), (-1,-1),            "Helvetica"),
+        ("FONTSIZE",     (0,1), (-1,-1),            8.5),
+        ("ROWBACKGROUNDS",(0,1),(-1,-1),            [white, C_VLIT]),
+        ("GRID",         (0,0), (-1,-1),           0.5, C_BD),
+        ("TOPPADDING",   (0,0), (-1,-1),           5),
+        ("BOTTOMPADDING",(0,0), (-1,-1),           5),
+        ("LEFTPADDING",  (0,0), (-1,-1),           6),
+        ("RIGHTPADDING", (0,0), (-1,-1),           6),
+        ("LINEABOVE",    (0,0), (-1,0),            1.5, C_HDR),
+        ("LINEBELOW",    (0, hdr_rows-1), (-1, hdr_rows-1), 1.5, C_HDR),
+    ]
+    if extra:
+        cmds.extend(extra)
+    return TableStyle(cmds)
+
+
+def status_para(text):
+    color = STATUS_COLORS.get(text, C_TXT)
+    return Paragraph(f"<b>{text}</b>", ParagraphStyle("s", fontName="Helvetica-Bold",
+                     fontSize=8.5, leading=12, textColor=color))
+
+
+def p(text, style="body"):
+    return Paragraph(str(text), ST[style])
+
+
+def score_bar_color(score, max_score=100):
+    ratio = score / max_score
+    if ratio >= 0.75: return C_GRN
+    if ratio >= 0.5:  return C_YEL
+    if ratio >= 0.3:  return C_ORG
+    return C_RED
+
+
+def score_overview_table(scores):
+    """scores = list of (label, score, max)"""
+    rows = [["Metric", "Score", "Rating"]]
+    for label, score, mx in scores:
+        ratio = score / mx
+        if ratio >= 0.75: rating = "Good"
+        elif ratio >= 0.5: rating = "Needs Work"
+        elif ratio >= 0.3: rating = "High"
+        else: rating = "Critical"
+        rows.append([p(label), p(f"{score}/{mx}", "bodyB"), status_para(rating)])
+    cw = [CW*0.55, CW*0.15, CW*0.30]
+    return Table(rows, colWidths=cw, style=tbl_style())
+
+
+def findings_table(findings):
+    """findings = list of (area, issue, priority, recommendation)"""
+    rows = [[p("AREA","hdr"), p("ISSUE","hdr"), p("PRIORITY","hdr"), p("RECOMMENDATION","hdr")]]
+    for area, issue, priority, rec in findings:
+        rows.append([p(area,"cellB"), p(issue,"cell"), status_para(priority), p(rec,"cell")])
+    cw = [CW*0.16, CW*0.27, CW*0.14, CW*0.43]
+    return Table(rows, colWidths=cw, style=tbl_style())
+
+
+def cro_checklist_table(elements):
+    """elements = list of (element, status, notes)"""
+    rows = [[p("CRO ELEMENT","hdr"), p("STATUS","hdr"), p("NOTES","hdr")]]
+    for el, status, notes in elements:
+        rows.append([p(el,"cellB"), status_para(status), p(notes,"cell")])
+    cw = [CW*0.32, CW*0.18, CW*0.50]
+    return Table(rows, colWidths=cw, style=tbl_style())
+
+
+def quick_wins_table(quick_wins):
+    """quick_wins = list of (action, impact, effort, timeline)"""
+    rows = [[p("ACTION","hdr"), p("IMPACT","hdr"), p("EFFORT","hdr"), p("TIMELINE","hdr")]]
+    for action, impact, effort, timeline in quick_wins:
+        rows.append([p(action,"cell"), status_para(impact), status_para(effort), p(timeline,"cell")])
+    cw = [CW*0.40, CW*0.18, CW*0.18, CW*0.24]
+    return Table(rows, colWidths=cw, style=tbl_style())
+
+
+def swot_table(swot, pal):
+    """swot = dict with strengths, weaknesses, opportunities, threats (lists of str)"""
+    P = HexColor(pal["P"])
+    S = HexColor(pal["S"])
+
+    def swot_cell(header, items, bg):
+        content = [Paragraph(f"<b>{header}</b>", ST["swotH"])]
+        for item in items:
+            content.append(Paragraph(f"• {item}", ST["swot"]))
+        return content
+
+    sw_style = ParagraphStyle("sw", fontName="Helvetica", fontSize=8, leading=12, textColor=white)
+    cw2 = (CW - 6) / 2
+    data = [
+        [swot_cell("STRENGTHS",    swot.get("strengths",    []), C_GRN),
+         swot_cell("WEAKNESSES",   swot.get("weaknesses",   []), P)],
+        [swot_cell("OPPORTUNITIES",swot.get("opportunities",[]), S),
+         swot_cell("THREATS",      swot.get("threats",      []), HexColor("#7C3AED"))],
+    ]
+    ts = TableStyle([
+        ("BACKGROUND",   (0,0), (0,0), C_GRN),
+        ("BACKGROUND",   (1,0), (1,0), P),
+        ("BACKGROUND",   (0,1), (0,1), S),
+        ("BACKGROUND",   (1,1), (1,1), HexColor("#7C3AED")),
+        ("VALIGN",       (0,0), (-1,-1), "TOP"),
+        ("TOPPADDING",   (0,0), (-1,-1), 10),
+        ("BOTTOMPADDING",(0,0), (-1,-1), 10),
+        ("LEFTPADDING",  (0,0), (-1,-1), 10),
+        ("RIGHTPADDING", (0,0), (-1,-1), 10),
+        ("GRID",         (0,0), (-1,-1), 1, white),
+        ("ROWHEIGHT",    (0,0), (-1,-1), 130),
+    ])
+    return Table(data, colWidths=[cw2, cw2], style=ts)
+
+
+def competitor_table(comps, pal):
+    """comps = list of (name, ads, seo, social, rating)"""
+    rows = [[p("COMPETITOR","hdr"), p("PAID ADS","hdr"), p("SEO","hdr"), p("SOCIAL","hdr"), p("THREAT","hdr")]]
+    for name, ads, seo, social, threat in comps:
+        rows.append([p(name,"cellB"), status_para(ads), status_para(seo), status_para(social), status_para(threat)])
+    cw = [CW*0.30, CW*0.175, CW*0.175, CW*0.175, CW*0.175]
+    return Table(rows, colWidths=cw, style=tbl_style())
+
+
+def keyword_table(keywords):
+    """keywords = list of (keyword, vol, difficulty, opportunity)"""
+    rows = [[p("KEYWORD","hdr"), p("VOLUME","hdr"), p("DIFFICULTY","hdr"), p("OPPORTUNITY","hdr")]]
+    for kw, vol, diff, opp in keywords:
+        rows.append([p(kw,"cell"), p(vol,"cellB"), status_para(diff), status_para(opp)])
+    cw = [CW*0.45, CW*0.15, CW*0.20, CW*0.20]
+    return Table(rows, colWidths=cw, style=tbl_style())
+
+
+def aeo_geo_table(factors, cols=None):
+    """factors = list of (factor, status, notes)"""
+    cols = cols or ["FACTOR", "STATUS", "NOTES"]
+    rows = [[p(c,"hdr") for c in cols]]
+    for row in factors:
+        rows.append([p(row[0],"cellB"), status_para(row[1]), p(row[2],"cell")])
+    cw = [CW*0.30, CW*0.20, CW*0.50]
+    return Table(rows, colWidths=cw, style=tbl_style())
+
+
+def gap_table(items):
+    """items = list of (gap, current_state, recommended_action, priority)"""
+    rows = [[p("GAP","hdr"), p("CURRENT STATE","hdr"), p("ACTION","hdr"), p("PRIORITY","hdr")]]
+    for gap, current, action, priority in items:
+        rows.append([p(gap,"cellB"), p(current,"cell"), p(action,"cell"), status_para(priority)])
+    cw = [CW*0.22, CW*0.26, CW*0.35, CW*0.17]
+    return Table(rows, colWidths=cw, style=tbl_style())
+
+
+def sprint_table(sprint):
+    """sprint = list of (task, owner, timeline, kpi)"""
+    rows = [[p("TASK","hdr"), p("CHANNEL","hdr"), p("TIMELINE","hdr"), p("SUCCESS KPI","hdr")]]
+    for task, owner, timeline, kpi in sprint:
+        rows.append([p(task,"cell"), p(owner,"cellB"), p(timeline,"cell"), p(kpi,"cell")])
+    cw = [CW*0.38, CW*0.20, CW*0.18, CW*0.24]
+    return Table(rows, colWidths=cw, style=tbl_style())
+
+
+def channel_mix_table(channels, pal):
+    """channels = list of (channel, budget_pct, expected_roi, priority)"""
+    P = HexColor(pal["P"])
+    rows = [[p("CHANNEL","hdr"), p("BUDGET %","hdr"), p("EXPECTED ROI","hdr"), p("PRIORITY","hdr")]]
+    for ch, pct, roi, pri in channels:
+        rows.append([p(ch,"cellB"), p(pct,"cell"), p(roi,"cell"), status_para(pri)])
+    cw = [CW*0.30, CW*0.20, CW*0.30, CW*0.20]
+    return Table(rows, colWidths=cw, style=tbl_style())
+
+
+def top_recs_table(recs):
+    """recs = list of (rec, impact, effort, timeline)"""
+    rows = [[p("RECOMMENDATION","hdr"), p("IMPACT","hdr"), p("EFFORT","hdr"), p("TIMELINE","hdr")]]
+    for rec, impact, effort, timeline in recs:
+        rows.append([p(rec,"cell"), status_para(impact), status_para(effort), p(timeline,"cell")])
+    cw = [CW*0.44, CW*0.17, CW*0.17, CW*0.22]
+    return Table(rows, colWidths=cw, style=tbl_style())
+
+
+def kpi_table(kpis):
+    """kpis = list of (kpi, current, target, tracking)"""
+    rows = [[p("KPI","hdr"), p("CURRENT","hdr"), p("TARGET","hdr"), p("TRACKING","hdr")]]
+    for kpi, current, target, tracking in kpis:
+        rows.append([p(kpi,"cellB"), p(current,"cell"), p(target,"cell"), status_para(tracking)])
+    cw = [CW*0.34, CW*0.22, CW*0.22, CW*0.22]
+    return Table(rows, colWidths=cw, style=tbl_style())
+
+
+def paid_audit_table(channels):
+    """channels = list of (channel, spend, cpl, cpa, roas, status)"""
+    rows = [[p("CHANNEL","hdr"), p("SPEND/MO","hdr"), p("CPL","hdr"), p("CPA","hdr"), p("ROAS","hdr"), p("STATUS","hdr")]]
+    for ch, spend, cpl, cpa, roas, status in channels:
+        rows.append([p(ch,"cellB"), p(spend,"cell"), p(cpl,"cell"), p(cpa,"cell"), p(roas,"cell"), status_para(status)])
+    cw = [CW*0.22, CW*0.14, CW*0.14, CW*0.14, CW*0.14, CW*0.22]
+    return Table(rows, colWidths=cw, style=tbl_style())
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# NICHE DATA
+# ─────────────────────────────────────────────────────────────────────────────
+
+NICHE_DATA = {
+
+# ─── MED SPA ─────────────────────────────────────────────────────────────────
+"med_spa": {
+    "tagline": "Medical Aesthetics & Wellness Growth Strategy",
+    "exec_summary": (
+        "This 360° audit reveals significant untapped revenue potential across paid media, "
+        "local SEO, and conversion optimization. Med spas in your competitive tier typically "
+        "generate 40-80 qualified leads/month from Meta Ads alone at $1,500-$3,000/mo budget. "
+        "Current digital presence shows gaps in CAPI tracking, retargeting architecture, "
+        "and GBP optimization that are directly limiting booked consults."
+    ),
+    "scores": [
+        ("Meta Ads Performance",    22, 100),
+        ("Google Ads Performance",  18, 100),
+        ("Local SEO / GBP",         35, 100),
+        ("Website CRO",             30, 100),
+        ("Social Presence",         45, 100),
+        ("Email / Automation",      15, 100),
+        ("Reputation Management",   40, 100),
+        ("Competitive Position",    38, 100),
+    ],
+    "findings": [
+        ("Meta Ads",     "No CAPI server-side tracking",            "Critical",  "Install CAPI via GTM — recovers 30-40% of lost signal"),
+        ("Meta Ads",     "Broad audience targeting — no segmentation", "High",   "Segment by service: Botox, filler, body contouring"),
+        ("Google Ads",   "Generic keywords — no modifier strategy", "High",      "Add location + service modifiers; pause broad match"),
+        ("GBP",          "Fewer than 50 reviews on Google Business","Medium",    "Launch review automation via SMS post-appointment"),
+        ("Landing Page", "Single generic homepage as ad destination","Critical", "Build service-specific landing pages with booking CTA"),
+        ("Email",        "No post-consult nurture sequence",        "High",      "Deploy 5-email sequence: consult → booking → retention"),
+        ("Retargeting",  "No retargeting campaigns running",        "High",      "Launch 90-day website visitor + IG engager retargeting"),
+        ("Tracking",     "No call tracking — can't attribute leads", "Critical", "Install CallRail or similar on all ad campaigns"),
+    ],
+    "cro": [
+        ("Above-fold CTA",        "Missing",  "Add 'Book Free Consult' button above fold on all pages"),
+        ("Before/After Gallery",  "Partial",  "Add consent-based before/after gallery per service"),
+        ("Trust Signals",         "Partial",  "Add provider credentials, certifications, media features"),
+        ("Mobile Speed",          "Needs Work","Target < 2.5s LCP — compress images, defer JS"),
+        ("Booking Form",          "Needs Work","Reduce form fields to 3 max — name, phone, service"),
+        ("Live Chat / SMS Widget","Missing",   "Add SMS chat — 10-min response = 35% vs 5% at 6hrs"),
+        ("FAQ Section",           "Missing",   "Add FAQ addressing price, pain, downtime per service"),
+        ("Video Testimonials",    "Missing",   "1 authentic video testimonial doubles conversion rate"),
+    ],
+    "swot": {
+        "strengths": ["Licensed medical providers build trust", "High LTV per client ($3k-$10k+ lifetime)", "Strong Instagram visual potential", "Local loyal clientele"],
+        "weaknesses": ["No structured ad campaigns", "Missing CAPI tracking", "No retargeting", "Weak review volume"],
+        "opportunities": ["Meta Ads 40-80 leads/mo at $1.5-3k spend", "Google LSA for local visibility", "Seasonal campaign calendar", "Referral automation"],
+        "threats": ["National med spa chains entering local markets", "Groupon price-comparison shoppers", "Negative reviews without response strategy", "HIPAA compliance risk in ads"],
+    },
+    "competitors": [
+        ("National Med Spa Chain",    "Excellent", "Good",     "Excellent", "High"),
+        ("Local Plastic Surgery Grp", "Good",      "Good",     "Good",      "High"),
+        ("Boutique Day Spa",          "Low",       "Partial",  "Good",      "Medium"),
+        ("Dermatology Practice",      "Medium",    "Excellent","Partial",   "High"),
+        ("Wellness Center",           "Missing",   "Partial",  "Medium",    "Low"),
+    ],
+    "keywords": [
+        ("botox [city]",               "880/mo",  "Medium",    "Excellent"),
+        ("med spa near me",            "2.4k/mo", "High",      "Good"),
+        ("lip filler [city]",          "590/mo",  "Low",       "Excellent"),
+        ("coolsculpting [city]",       "320/mo",  "Medium",    "Good"),
+        ("medical aesthetics [city]",  "210/mo",  "Low",       "Excellent"),
+        ("botox specials near me",     "480/mo",  "Low",       "Excellent"),
+    ],
+    "aeo": [
+        ("Featured Snippet optimization",  "Missing",  "No structured FAQ content targeting snippet positions"),
+        ("'Near me' query content",        "Partial",  "Add geo-optimized service pages per location"),
+        ("Voice search readiness",         "Missing",  "Add conversational Q&A content to service pages"),
+        ("Schema markup (MedicalBusiness)","Missing",  "Add LocalBusiness + Service schema to all pages"),
+        ("Google SGE visibility",          "Partial",  "Create authoritative service comparison content"),
+        ("E-E-A-T signals",               "Partial",  "Add provider bios, credentials, citations"),
+    ],
+    "geo_local": [
+        ("Google Business Profile completeness", "Partial",   "Add all services, hours, photos (min 20)"),
+        ("GBP post frequency",                   "Missing",   "Post 2x/week: promotions + before/after"),
+        ("Review velocity",                      "Needs Work","Target 5 new reviews/month via SMS automation"),
+        ("Local citation consistency",           "Partial",   "Audit NAP across 40+ directories"),
+        ("Local landing pages",                  "Missing",   "Create city + service combination pages"),
+        ("Local link building",                  "Partial",   "Partner with wedding vendors, gyms, spas"),
+    ],
+    "paid_channels": [
+        ("Meta Ads (Instagram/FB)",  "Not Running", "--",     "--",    "--",    "Missing"),
+        ("Google Search Ads",        "Not Running", "--",     "--",    "--",    "Missing"),
+        ("Google LSA",               "Not Running", "--",     "--",    "--",    "Missing"),
+        ("Retargeting (Meta)",       "Not Running", "--",     "--",    "--",    "Missing"),
+        ("TikTok Ads",               "Not Running", "--",     "--",    "--",    "Missing"),
+    ],
+    "gaps": [
+        ("Paid media",          "Zero ad campaigns",              "Launch Meta + Google with $1.5-2k/mo test budget",  "Critical"),
+        ("CAPI / Tracking",     "No server-side tracking",        "Install CAPI + GTM before any ad spend",            "Critical"),
+        ("Lead nurture",        "No email automation",            "Build 5-email post-consult sequence",               "High"),
+        ("Review strategy",     "Under 50 Google reviews",        "SMS review request post-appointment",               "High"),
+        ("Landing pages",       "Homepage used as ad destination","Build 3 service-specific landing pages",            "High"),
+        ("Retargeting",         "No retargeting running",         "90-day pixel audience on Meta",                     "High"),
+    ],
+    "sprint": [
+        ("Install CAPI via GTM",                    "Tracking",     "Week 1",    "< 5% event loss rate"),
+        ("Build Botox/Filler landing page",         "Web/CRO",      "Week 1-2",  "CR > 8% on paid traffic"),
+        ("Launch Meta Ads — Botox + Filler",        "Meta Ads",     "Week 2",    "CPL < $25, 20+ leads/mo"),
+        ("Set up Google LSA",                       "Google Ads",   "Week 2",    "5+ consults/mo from LSA"),
+        ("SMS review automation",                   "Reputation",   "Week 2-3",  "5 new reviews/month"),
+        ("Launch 90-day retargeting on Meta",       "Meta Ads",     "Week 3",    "ROAS > 3x on retargeting"),
+        ("Deploy post-consult email sequence",      "Email",        "Week 3-4",  "20% email → booking rate"),
+        ("Audit + fix local citations",             "Local SEO",    "Month 2",   "Top 3 local pack ranking"),
+    ],
+    "channels": [
+        ("Meta Ads (Primary)",          "40%", "3-5x ROAS",         "Excellent"),
+        ("Google Search Ads",           "25%", "4-7x ROAS",         "Good"),
+        ("Google LSA",                  "15%", "Direct bookings",   "Good"),
+        ("Retargeting (Meta + Google)", "15%", "5-8x ROAS",         "Excellent"),
+        ("TikTok Ads (Test)",           "5%",  "Brand awareness",   "Medium"),
+    ],
+    "top_recs": [
+        ("Install CAPI + launch Meta Ads (Botox/filler/body contouring)", "Critical", "Low",    "Week 1-2"),
+        ("Build 3 service landing pages with booking CTA",                "Critical", "Medium", "Week 2"),
+        ("Google LSA setup for local consult bookings",                   "High",     "Low",    "Week 2"),
+        ("SMS review automation post-appointment",                        "High",     "Low",    "Week 2-3"),
+        ("90-day Meta retargeting — website + IG engagers",              "High",     "Low",    "Week 3"),
+        ("5-email post-consult nurture sequence",                         "High",     "Low",    "Week 3-4"),
+    ],
+    "kpis": [
+        ("Cost Per Lead (Meta)",         "N/A",      "< $25",        "Missing"),
+        ("Booked Consults / Month",      "< 10",     "40-60",        "Needs Work"),
+        ("Google Review Count",          "< 50",     "100+",         "Needs Work"),
+        ("Website Conversion Rate",      "< 1%",     "> 5%",         "Needs Work"),
+        ("Email Open Rate",              "N/A",      "> 30%",        "Missing"),
+        ("ROAS (all paid)",              "N/A",      "> 4x",         "Missing"),
+    ],
+},
+
+# ─── DENTAL ──────────────────────────────────────────────────────────────────
+"dental": {
+    "tagline": "Dental Practice Growth & Patient Acquisition Strategy",
+    "exec_summary": (
+        "This 360° audit identifies immediate revenue opportunities in Google Ads, local SEO, "
+        "and patient acquisition funnels. Dental implant and cosmetic dentistry practices "
+        "running optimized Google Ads campaigns generate 15-30 qualified implant leads/month "
+        "at $150-$400 CPL. Current setup shows critical tracking gaps, keyword inefficiency, "
+        "and a homepage-as-destination problem costing an estimated $1,200+/mo in wasted spend."
+    ),
+    "scores": [
+        ("Google Ads Performance",  20, 100),
+        ("Meta Ads Performance",    18, 100),
+        ("Local SEO / GBP",         38, 100),
+        ("Website CRO",             32, 100),
+        ("Patient Reviews",         42, 100),
+        ("Email / Patient Retention",15, 100),
+        ("Competitive Position",    35, 100),
+        ("Tracking & Analytics",    20, 100),
+    ],
+    "findings": [
+        ("Google Ads",   "Broad match on 'dental implants' — bleeding budget", "Critical", "Switch to exact/phrase; add 200+ negatives"),
+        ("Google Ads",   "All traffic sent to homepage",                        "Critical", "Build implant-specific landing page"),
+        ("Google Ads",   "No call tracking — can't attribute appointments",    "Critical", "Install CallRail + import as conversions"),
+        ("Google Ads",   "Single ad group for all implant types",               "High",     "Separate: single, All-on-4, implant dentures"),
+        ("Local SEO",    "GBP incomplete — missing services + photos",          "High",     "Add 25+ photos, all services, booking link"),
+        ("Meta Ads",     "No before/after creative campaigns",                  "High",     "Launch consent-based before/after Meta campaign"),
+        ("CRO",          "No appointment booking widget above fold",            "High",     "Add online booking + click-to-call above fold"),
+        ("Tracking",     "GA4 not configured — no funnel visibility",           "Critical", "Install GA4 + GTM with form + call tracking"),
+    ],
+    "cro": [
+        ("Implant Landing Page",      "Missing",    "Build dedicated page: All-on-4 / single implant"),
+        ("Above-fold Phone + Booking","Needs Work", "Pin phone + 'Book Appointment' CTA above fold"),
+        ("Trust Signals",             "Partial",    "Add credentials, before/after photos, review count"),
+        ("Mobile Load Speed",         "Needs Work", "< 2.5s LCP; compress images; defer non-critical JS"),
+        ("Insurance / Financing Info","Missing",    "Add CareCredit/Sunbit info — critical for high-ticket"),
+        ("Live Chat",                 "Missing",    "Add SMS chat widget — responds to after-hours queries"),
+        ("FAQ Page",                  "Missing",    "Add implant FAQ: pain, cost, timeline, candidacy"),
+        ("Video Testimonials",        "Missing",    "1 real patient video doubles consultation bookings"),
+    ],
+    "swot": {
+        "strengths": ["High-ticket service — $3k-$25k+ per case", "Strong referral base", "Clinical credibility + certifications", "Established local practice"],
+        "weaknesses": ["No CAPI/call tracking", "Homepage as ad destination", "Broad match wasting budget", "No before/after gallery"],
+        "opportunities": ["Google Ads — 15-30 implant leads/mo", "All-on-4 is underserved keyword", "Financing promotions drive conversions", "GBP optimization for near-me searches"],
+        "threats": ["Corporate DSO chains — high ad budgets", "Aggregator sites (1-800-Dentist)", "Groupon/discount dentistry", "Negative reviews without monitoring"],
+    },
+    "competitors": [
+        ("Corporate DSO Chain",           "Excellent", "Excellent", "Good",    "Critical"),
+        ("Local Implant Specialist",      "Good",      "Good",      "Partial", "High"),
+        ("General Dentist (high volume)", "Medium",    "Good",      "Medium",  "Medium"),
+        ("Cosmetic Dentistry Practice",   "Good",      "Medium",    "Good",    "High"),
+        ("Low-Cost Dental Clinic",        "Low",       "Partial",   "Low",     "Low"),
+    ],
+    "keywords": [
+        ("dental implants [city]",        "1.2k/mo",  "High",   "Excellent"),
+        ("All-on-4 dental implants",      "590/mo",   "Medium", "Excellent"),
+        ("tooth implant cost [city]",     "880/mo",   "Medium", "Good"),
+        ("best implant dentist [city]",   "320/mo",   "Low",    "Excellent"),
+        ("same day dental implants",      "480/mo",   "Medium", "Good"),
+        ("dental implants near me",       "2.9k/mo",  "High",   "Good"),
+    ],
+    "aeo": [
+        ("'How much do implants cost' snippet", "Missing",  "Create dedicated cost page with structured data"),
+        ("'Near me' implant queries",           "Partial",  "Geo-optimize all service pages"),
+        ("Voice search FAQ content",            "Missing",  "Add conversational Q&A targeting voice queries"),
+        ("DentalProcedure schema markup",       "Missing",  "Add Schema for implants, All-on-4, cosmetic services"),
+        ("Google SGE answer optimization",      "Partial",  "Create authoritative comparison content"),
+        ("E-E-A-T: provider credentials",      "Partial",  "Add board certifications, education, associations"),
+    ],
+    "geo_local": [
+        ("GBP completeness",             "Partial",   "Add all procedures, photos (25+), description"),
+        ("GBP reviews",                  "Needs Work","Target 80+ reviews — SMS automation post-visit"),
+        ("Local pack ranking",           "Partial",   "Optimize for 'dental implants [city]' — top 3"),
+        ("Local citation consistency",   "Partial",   "Fix NAP across 50+ directories"),
+        ("Service area pages",           "Missing",   "Build pages per suburb/neighborhood served"),
+        ("Local link building",          "Missing",   "Chamber, medical associations, local press"),
+    ],
+    "paid_channels": [
+        ("Google Search Ads",         "Running",     "$180",    "$420",  "Unknown", "Needs Work"),
+        ("Google LSA",                "Not Running", "--",      "--",    "--",      "Missing"),
+        ("Meta Ads",                  "Not Running", "--",      "--",    "--",      "Missing"),
+        ("Retargeting",               "Not Running", "--",      "--",    "--",      "Missing"),
+        ("YouTube Ads",               "Not Running", "--",      "--",    "--",      "Missing"),
+    ],
+    "gaps": [
+        ("Call tracking",       "No call attribution",              "Install CallRail + Google Ads import",           "Critical"),
+        ("Landing pages",       "Homepage as destination",          "Build All-on-4 + single implant pages",          "Critical"),
+        ("Keyword match types", "Broad match bleeding budget",      "Restructure to exact/phrase + 200 negatives",    "Critical"),
+        ("Google LSA",          "Not using Local Services Ads",     "Set up LSA — verified dentist badge = trust",    "High"),
+        ("Meta Ads",            "No Meta campaigns",                "Launch before/after creative campaign",          "High"),
+        ("Financing messaging", "Not prominently displayed",        "Add CareCredit/Sunbit to ads + landing pages",   "High"),
+    ],
+    "sprint": [
+        ("Install CallRail + GA4 event tracking",           "Tracking",   "Week 1",    "100% call attribution"),
+        ("Restructure Google Ads — exact/phrase only",      "Google Ads", "Week 1",    "CPC drop 30-40%"),
+        ("Build implant + All-on-4 landing pages",          "Web/CRO",    "Week 1-2",  "CR > 10% on paid traffic"),
+        ("Set up Google LSA",                               "Google Ads", "Week 2",    "8-12 consults/mo from LSA"),
+        ("Launch Meta Ads — before/after campaign",         "Meta Ads",   "Week 2-3",  "CPL < $80, 10+ leads/mo"),
+        ("GBP optimization + photo upload",                 "Local SEO",  "Week 2",    "Top 3 local pack in 60 days"),
+        ("SMS review automation",                           "Reputation", "Week 3",    "5+ new reviews/month"),
+        ("Add financing info to all pages + ads",           "CRO",        "Week 3",    "5% lift in conversion"),
+    ],
+    "channels": [
+        ("Google Search Ads",           "45%", "5-10x ROAS",        "Excellent"),
+        ("Google LSA",                  "20%", "Direct bookings",   "Excellent"),
+        ("Meta Ads (before/after)",     "20%", "3-5x ROAS",         "Good"),
+        ("Retargeting",                 "10%", "6-10x ROAS",        "Excellent"),
+        ("YouTube Ads (awareness)",     "5%",  "Brand awareness",   "Medium"),
+    ],
+    "top_recs": [
+        ("Install CallRail + restructure Google Ads to exact match",   "Critical", "Low",    "Week 1"),
+        ("Build dedicated implant + All-on-4 landing pages",           "Critical", "Medium", "Week 1-2"),
+        ("Launch Google LSA — verified dentist badge",                 "High",     "Low",    "Week 2"),
+        ("Launch Meta Ads with before/after creative",                 "High",     "Low",    "Week 2-3"),
+        ("GBP optimization: 25+ photos, all services, booking link",  "High",     "Low",    "Week 2"),
+        ("Add CareCredit/Sunbit to ads + landing pages + homepage",   "High",     "Low",    "Week 3"),
+    ],
+    "kpis": [
+        ("Cost Per Implant Lead",         "~$420",    "< $180",       "Needs Work"),
+        ("Implant Consults / Month",      "< 5",      "15-25",        "Needs Work"),
+        ("Google Review Count",           "< 80",     "150+",         "Needs Work"),
+        ("Website Conversion Rate",       "< 2%",     "> 8%",         "Needs Work"),
+        ("Call Attribution Rate",         "0%",       "100%",         "Missing"),
+        ("Google Ads ROAS",               "Unknown",  "> 6x",         "Missing"),
+    ],
+},
+
+# ─── LEGAL (Personal Injury) ─────────────────────────────────────────────────
+"legal": {
+    "tagline": "Personal Injury Law Firm — Digital Acquisition Strategy",
+    "exec_summary": (
+        "Personal injury Google Ads is one of the highest-CPC verticals ($50-200/click) "
+        "but also one of the highest-ROI when tracked correctly. This audit reveals "
+        "3 critical issues driving cost-per-intake above $500+ when it should be $150-300. "
+        "Broad match keyword waste, no case-type segmentation, and missing call tracking "
+        "are the primary culprits. Fixing these alone can cut cost-per-signed-case by 40-60%."
+    ),
+    "scores": [
+        ("Google Search Ads",       22, 100),
+        ("Google LSA / Maps",       28, 100),
+        ("Local SEO",               35, 100),
+        ("Website CRO",             30, 100),
+        ("Intake Funnel",           20, 100),
+        ("Reputation / Reviews",    38, 100),
+        ("Competitive Position",    32, 100),
+        ("Tracking & Attribution",  18, 100),
+    ],
+    "findings": [
+        ("Google Ads",   "Broad match on 'personal injury lawyer'",           "Critical", "Exact/phrase only + 300+ negative keywords"),
+        ("Google Ads",   "All case types in one campaign",                    "Critical", "Separate: auto accident, slip/fall, truck, malpractice"),
+        ("Google Ads",   "No call tracking — intake attribution at 0%",      "Critical", "Install CallRail + import to Google Ads as conversions"),
+        ("Google Ads",   "Homepage as landing page for all campaigns",        "Critical", "Build case-type-specific landing pages"),
+        ("Local SEO",    "GBP incomplete — missing practice areas + photos",  "High",     "Add all practice areas, 20+ photos, attorney bios"),
+        ("Intake",       "No 24/7 chat or call answering",                    "High",     "Add live chat + after-hours intake service"),
+        ("CRO",          "No case evaluation form above fold",                "High",     "Add 3-field intake form above fold on all pages"),
+        ("Reviews",      "Under 100 Google reviews",                         "Medium",   "Client follow-up SMS for review requests"),
+    ],
+    "cro": [
+        ("Case Intake Form",          "Needs Work","Move above fold; max 3 fields — name, phone, incident type"),
+        ("Click-to-Call",             "Partial",   "Prominent phone number in header + sticky mobile bar"),
+        ("Trust / Social Proof",      "Partial",   "Add: case results, testimonials, settlement amounts"),
+        ("Attorney Bio Pages",        "Missing",   "Individual attorney pages with credentials + results"),
+        ("Chat Widget / After-Hours", "Missing",   "24/7 live chat + after-hours intake answering service"),
+        ("Mobile Speed",              "Needs Work","< 2.5s LCP — LCP image and render-blocking CSS"),
+        ("Case Result Statistics",    "Missing",   "Add '$X recovered', 'X cases won' to homepage hero"),
+        ("Spanish / Multi-language",  "Missing",   "Spanish landing page for Hispanic PI clients"),
+    ],
+    "swot": {
+        "strengths": ["High case value ($50k-$500k+ per case)", "Contingency model — clients pay nothing upfront", "Local reputation and referral network", "Strong online review base"],
+        "weaknesses": ["Broad match keyword waste", "No case-type landing pages", "Zero call tracking", "No LSA presence"],
+        "opportunities": ["Google LSA — verified lawyer badge doubles CTR", "Spanish-language campaigns for Hispanic market", "Competitor keywords for low-competition gains", "Truck accident — highest value case type, lower competition"],
+        "threats": ["National PI firms with $500k+/mo ad budgets", "Legal aggregators (Martindale, Avvo, FindLaw)", "Class action mills targeting your case types", "Google AI Overviews reducing organic clicks"],
+    },
+    "competitors": [
+        ("National PI Firm (TV/Digital)",  "Excellent", "Good",     "Excellent", "Critical"),
+        ("Regional PI Firm",               "Good",      "Good",     "Good",      "High"),
+        ("Local General Practice",         "Medium",    "Medium",   "Partial",   "Medium"),
+        ("Legal Aggregator (Avvo, etc.)",  "Excellent", "Excellent","Medium",    "High"),
+        ("Smaller Boutique PI Firm",       "Low",       "Partial",  "Low",       "Low"),
+    ],
+    "keywords": [
+        ("car accident lawyer [city]",      "1.9k/mo",  "High",   "Excellent"),
+        ("personal injury attorney [city]", "1.4k/mo",  "High",   "Good"),
+        ("truck accident lawyer",           "590/mo",   "Medium", "Excellent"),
+        ("slip and fall attorney [city]",   "480/mo",   "Low",    "Excellent"),
+        ("workers comp attorney [city]",    "720/mo",   "Medium", "Good"),
+        ("motorcycle accident lawyer",      "390/mo",   "Low",    "Good"),
+    ],
+    "aeo": [
+        ("'How much is my case worth' snippet", "Missing",  "Build case value calculator + FAQ content"),
+        ("Legal FAQ rich results",              "Partial",  "Add FAQ schema to all practice area pages"),
+        ("'Near me' attorney queries",          "Partial",  "Geo-targeted practice area content"),
+        ("LegalService schema markup",          "Missing",  "Add Attorney + LegalService schema"),
+        ("Google SGE legal answer boxes",       "Partial",  "Create authoritative legal guides per case type"),
+        ("E-E-A-T: attorney credentials",       "Partial",  "Add bar admissions, verdicts, publications"),
+    ],
+    "geo_local": [
+        ("GBP completeness",            "Partial",   "Add all practice areas, attorney photos, videos"),
+        ("Google Map Pack position",    "Partial",   "Target top 3 for 'PI attorney [city]'"),
+        ("Review volume + velocity",    "Needs Work","Target 100+ reviews — post-settlement outreach"),
+        ("Local citation consistency",  "Partial",   "Audit NAP across 60+ legal directories"),
+        ("Multi-location pages",        "Missing",   "Build county/city-specific landing pages"),
+        ("Local link building",         "Partial",   "Bar association, local press, sponsorships"),
+    ],
+    "paid_channels": [
+        ("Google Search Ads",       "Running",     "$350",    "$800",  "Unknown",  "Needs Work"),
+        ("Google LSA",              "Not Running", "--",      "--",    "--",       "Missing"),
+        ("Meta Ads",                "Not Running", "--",      "--",    "--",       "Missing"),
+        ("Retargeting",             "Not Running", "--",      "--",    "--",       "Missing"),
+        ("YouTube Pre-roll",        "Not Running", "--",      "--",    "--",       "Missing"),
+    ],
+    "gaps": [
+        ("Call tracking",          "Zero attribution",                 "Install CallRail — critical before any ad spend",    "Critical"),
+        ("Keyword match type",     "Broad match waste",                "Exact/phrase + 300 negatives added week 1",          "Critical"),
+        ("Case-type campaigns",    "All cases in 1 campaign",          "Separate: auto, truck, slip/fall, malpractice",      "Critical"),
+        ("Google LSA",             "Not using verified lawyer badge",  "Set up LSA — doubles CTR vs standard ads",           "High"),
+        ("Landing pages",          "Homepage as destination",          "1 landing page per case type",                       "Critical"),
+        ("After-hours intake",     "No 24/7 coverage",                 "Add live chat + answering service",                  "High"),
+    ],
+    "sprint": [
+        ("Install CallRail + GA4 conversion tracking",           "Tracking",   "Week 1",    "100% intake attribution"),
+        ("Restructure Google Ads — case-type campaigns",         "Google Ads", "Week 1",    "CPC drop 25-35%"),
+        ("Build 3 case-type landing pages",                      "Web/CRO",    "Week 1-2",  "CR > 12% on paid traffic"),
+        ("Set up Google LSA",                                    "Google Ads", "Week 2",    "8-15 intakes/mo from LSA"),
+        ("Add 300+ negative keywords",                           "Google Ads", "Week 1",    "Waste spend < 15%"),
+        ("GBP optimization + attorney photos",                   "Local SEO",  "Week 2",    "Top 3 map pack in 60 days"),
+        ("Launch retargeting — 30-day website visitors",         "Retargeting","Week 3",    "CPL < $120"),
+        ("Add after-hours chat + intake service",                "Intake",     "Week 2-3",  "25% lift in after-hours leads"),
+    ],
+    "channels": [
+        ("Google Search Ads",          "50%", "5-10x ROAS",        "Excellent"),
+        ("Google LSA",                 "25%", "Direct intakes",    "Excellent"),
+        ("Retargeting (Google+Meta)",  "15%", "6-12x ROAS",        "Excellent"),
+        ("Meta Ads (awareness)",       "7%",  "3-4x ROAS",         "Medium"),
+        ("YouTube Pre-roll",           "3%",  "Brand recall",      "Low"),
+    ],
+    "top_recs": [
+        ("Install CallRail + restructure Google Ads to case-type campaigns", "Critical", "Low",    "Week 1"),
+        ("Build case-specific landing pages (auto/truck/slip-fall)",         "Critical", "Medium", "Week 1-2"),
+        ("Set up Google LSA — verified lawyer badge",                        "High",     "Low",    "Week 2"),
+        ("Add 300+ negative keywords — criminal/divorce/bankruptcy",         "Critical", "Low",    "Week 1"),
+        ("GBP: all practice areas + attorney bios + 20+ photos",            "High",     "Low",    "Week 2"),
+        ("Launch retargeting: 30-day website visitor audience",              "High",     "Low",    "Week 3"),
+    ],
+    "kpis": [
+        ("Cost Per Intake",          "~$800",    "< $250",       "Needs Work"),
+        ("Signed Cases / Month",     "< 3",      "8-15",         "Needs Work"),
+        ("Google Review Count",      "< 100",    "200+",         "Needs Work"),
+        ("Website Conversion Rate",  "< 2%",     "> 10%",        "Needs Work"),
+        ("Call Attribution Rate",    "0%",       "100%",         "Missing"),
+        ("Cost Per Signed Case",     "Unknown",  "< $800",       "Missing"),
+    ],
+},
+
+# ─── DTC ECOMMERCE ───────────────────────────────────────────────────────────
+"dtc_ecomm": {
+    "tagline": "DTC Brand — Full-Funnel Paid Media & Growth Strategy",
+    "exec_summary": (
+        "This 360° audit identifies critical gaps in CAPI implementation, Meta funnel "
+        "architecture, and Google Shopping optimization that are suppressing ROAS by "
+        "an estimated 30-50%. DTC brands at your revenue tier typically achieve "
+        "blended ROAS of 3-5x with proper full-funnel architecture. "
+        "Current setup lacks prospecting/retargeting separation, Advantage+ structure, "
+        "and server-side tracking — addressable within 30 days."
+    ),
+    "scores": [
+        ("Meta Ads (Full Funnel)",   25, 100),
+        ("Google Shopping / PMax",   28, 100),
+        ("CAPI / Tracking Setup",    20, 100),
+        ("Email / SMS Flows",        35, 100),
+        ("Creative Strategy",        38, 100),
+        ("Retention / LTV",          30, 100),
+        ("Competitive Position",     40, 100),
+        ("Analytics Maturity",       22, 100),
+    ],
+    "findings": [
+        ("CAPI",         "No server-side tracking — EMQ score < 5",           "Critical", "Install CAPI via GTM/API — recovers 35-45% of signal"),
+        ("Meta Ads",     "No prospecting / retargeting campaign separation",   "Critical", "Separate TOF/MOF/BOF campaigns with distinct budgets"),
+        ("Meta Ads",     "Creative fatigue — same assets > 30 days",          "High",     "Refresh creative weekly — UGC + testimonial formats"),
+        ("Google",       "No Performance Max campaign",                        "High",     "Launch PMax with proper asset groups per product line"),
+        ("Google",       "Shopping feed not optimized",                        "High",     "Optimize titles + attributes; fix disapproved products"),
+        ("Email",        "No abandoned cart flow or browse abandonment",       "Critical", "Build cart + browse flows — 20-35% recovery rate"),
+        ("Email",        "No post-purchase LTV sequence",                      "High",     "Build cross-sell + replenishment flow"),
+        ("Analytics",    "No blended ROAS tracking across channels",           "High",     "Build unified ROAS dashboard (GA4 + Triple Whale)"),
+    ],
+    "cro": [
+        ("Homepage Hero",          "Partial",    "Lead with hero benefit + social proof count"),
+        ("Product Page CTA",       "Needs Work", "Add sticky 'Add to Cart' + urgency element"),
+        ("Trust Badges",           "Missing",    "Add: reviews count, secure checkout, return policy"),
+        ("Upsell / Cross-sell",    "Missing",    "Post-add-to-cart upsell — 15-25% AOV lift"),
+        ("Page Load Speed",        "Needs Work", "< 2s load time — Core Web Vitals priority"),
+        ("Email Capture",          "Partial",    "Popup with 10-15% discount — min 3-5% capture rate"),
+        ("Subscription Option",    "Missing",    "Add Subscribe & Save — 2-3x LTV vs one-time"),
+        ("Video on PDP",           "Missing",    "Product demo video on PDP — 30% CR lift"),
+    ],
+    "swot": {
+        "strengths": ["Strong brand identity and packaging", "Existing customer base for lookalikes", "High-quality product with repeat purchase potential", "Growing category interest"],
+        "weaknesses": ["No CAPI — signal loss hurting Meta delivery", "No email automation flows", "No retargeting separation", "Creative fatigue"],
+        "opportunities": ["Advantage+ Shopping Campaigns (ASC+)", "Influencer UGC as paid creative", "Google Shopping — lower competition than Meta", "SMS marketing — 30-40% open rate vs 20% email"],
+        "threats": ["iOS 17 tracking limitations", "Rising Meta CPMs — up 20-30% YoY", "Amazon competing for branded searches", "Copycat brands undercutting on price"],
+    },
+    "competitors": [
+        ("Category Leader (scaled DTC)",    "Excellent", "Good",     "Excellent", "Critical"),
+        ("VC-backed DTC Competitor",        "Excellent", "Medium",   "Excellent", "High"),
+        ("Amazon Private Label",            "Low",       "Excellent","Low",       "High"),
+        ("Boutique DTC Brand",              "Medium",    "Partial",  "Good",      "Medium"),
+        ("Retail Brand Going DTC",          "Good",      "Good",     "Medium",    "Medium"),
+    ],
+    "keywords": [
+        ("[Product category] buy online",     "3.2k/mo",  "High",   "Excellent"),
+        ("[Brand name]",                       "1.1k/mo",  "Low",    "Excellent"),
+        ("best [product] for [benefit]",      "2.4k/mo",  "Medium", "Good"),
+        ("[Product] subscription",            "880/mo",   "Low",    "Excellent"),
+        ("[Competitor brand] alternative",    "590/mo",   "Low",    "Excellent"),
+        ("[Product] review",                  "1.8k/mo",  "Low",    "Good"),
+    ],
+    "aeo": [
+        ("Product review rich snippets",      "Partial",  "Add aggregate rating schema to all PDPs"),
+        ("'Best [product]' buying guide",     "Missing",  "Create SEO comparison content targeting buying guides"),
+        ("FAQ on product pages",              "Missing",  "Add FAQ schema addressing common objections"),
+        ("Google Shopping presence",          "Partial",  "Fix feed + launch PMax for Shopping visibility"),
+        ("Brand SERP control",                "Partial",  "Add sitelinks, reviews, social profiles to brand SERP"),
+        ("YouTube product demos",             "Missing",  "Short product demo videos for SGE feature potential"),
+    ],
+    "geo_local": [
+        ("Google Shopping feed",          "Partial",   "Fix all disapproved products + optimize titles"),
+        ("Google Merchant Center",        "Needs Work","Ensure feed health score > 90%"),
+        ("Brand keyword defense",         "Missing",   "Bid on all brand terms — prevent competitor conquest"),
+        ("Amazon brand presence",         "Partial",   "Monitor and respond to Amazon listing content"),
+        ("Retailer MAP compliance",       "N/A",       "If wholesale, monitor MAP pricing"),
+        ("International expansion",       "Missing",   "Assess UK/CA/AU shipping feasibility"),
+    ],
+    "paid_channels": [
+        ("Meta Ads",              "Running",     "$85",     "$220",  "2.1x",  "Needs Work"),
+        ("Google Shopping",       "Partial",     "$120",    "$310",  "1.8x",  "Needs Work"),
+        ("Google Search (Brand)", "Running",     "$15",     "$40",   "8.2x",  "Good"),
+        ("Retargeting (Meta)",    "Partial",     "$95",     "$180",  "3.1x",  "Good"),
+        ("TikTok Ads",            "Not Running", "--",      "--",    "--",    "Missing"),
+    ],
+    "gaps": [
+        ("CAPI tracking",      "EMQ score low — signal loss",       "Install CAPI via Conversions API + GTM",           "Critical"),
+        ("Email flows",        "No cart/browse abandonment",        "Build Klaviyo flows: cart, browse, post-purchase",  "Critical"),
+        ("Meta structure",     "No TOF/MOF/BOF separation",         "Restructure: prospecting, retargeting, retention",  "Critical"),
+        ("Google PMax",        "Not running",                       "Launch PMax with optimized asset groups",           "High"),
+        ("Creative refresh",   "Creative fatigue > 30 days",        "Weekly UGC creative rotation",                      "High"),
+        ("AOV optimization",   "No post-cart upsell",               "Add upsell modal or bundle recommendation",         "High"),
+    ],
+    "sprint": [
+        ("Install CAPI via GTM + verify EMQ > 7",              "Tracking",    "Week 1",     "EMQ score > 7.0"),
+        ("Restructure Meta — separate TOF/MOF/BOF",            "Meta Ads",    "Week 1-2",   "Blended ROAS > 3x"),
+        ("Build Klaviyo cart + browse abandonment flows",       "Email/SMS",   "Week 1-2",   "15%+ recovery rate"),
+        ("Launch Google PMax with optimized asset groups",      "Google Ads",  "Week 2",     "ROAS > 4x on Shopping"),
+        ("Launch Advantage+ Shopping Campaign (ASC+)",         "Meta Ads",    "Week 2-3",   "20% CPM reduction"),
+        ("Add post-purchase upsell modal",                      "CRO",         "Week 2",     "10-15% AOV lift"),
+        ("Build post-purchase LTV email sequence",              "Email",       "Week 3",     "Repeat purchase rate +15%"),
+        ("Launch TikTok Ads test — UGC creative",              "TikTok",      "Week 3-4",   "CPA < Meta benchmark"),
+    ],
+    "channels": [
+        ("Meta Ads (TOF prospecting)",    "35%", "3-5x ROAS",     "Excellent"),
+        ("Google Shopping + PMax",        "25%", "4-7x ROAS",     "Excellent"),
+        ("Meta Retargeting (MOF/BOF)",    "20%", "6-10x ROAS",    "Excellent"),
+        ("Email + SMS",                   "10%", "40-60x ROI",    "Excellent"),
+        ("TikTok Ads",                    "10%", "2-4x ROAS",     "Good"),
+    ],
+    "top_recs": [
+        ("Install CAPI + restructure Meta into TOF/MOF/BOF",              "Critical", "Low",    "Week 1-2"),
+        ("Build Klaviyo abandoned cart + browse flows",                    "Critical", "Low",    "Week 1-2"),
+        ("Launch Google PMax with optimized Shopping feed",               "High",     "Medium", "Week 2"),
+        ("Weekly UGC creative rotation — prevent fatigue",                "High",     "Low",    "Ongoing"),
+        ("Add post-cart upsell modal — 10-15% AOV lift",                  "High",     "Medium", "Week 2"),
+        ("Build post-purchase LTV email sequence — replenishment + XS",   "High",     "Low",    "Week 3"),
+    ],
+    "kpis": [
+        ("Blended ROAS",              "~2.1x",    "> 4x",         "Needs Work"),
+        ("Meta CAPI EMQ Score",       "< 5",      "> 7",          "Missing"),
+        ("Email Revenue / Total",     "< 10%",    "> 25%",        "Needs Work"),
+        ("Cart Abandonment Recovery", "0%",       "> 15%",        "Missing"),
+        ("Average Order Value",       "Baseline", "+15-20%",      "Needs Work"),
+        ("Customer LTV (12mo)",       "Baseline", "+25-30%",      "Needs Work"),
+    ],
+},
+
+}  # end NICHE_DATA
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PDF BUILDER
+# ─────────────────────────────────────────────────────────────────────────────
+
+def build_pdf(out_path, business, city, niche, url=""):
+    pal = PROSPECT_BRANDS.get(
+        business.lower().replace(" ", "_").replace("&", "").replace(",", "").replace(".", "").replace("'", ""),
+        None
+    )
+    if not pal:
+        # try live extraction
+        p1, p2 = extract_brand_colors(url)
+        pal = {"P": p1 or "#2563EB", "S": p2 or "#1E40AF"}
+
+    nd = NICHE_DATA.get(niche, NICHE_DATA["med_spa"])
+
+    def hf(canvas, doc):
+        make_hf(business, pal)(canvas, doc)
+
+    doc = SimpleDocTemplate(
+        str(out_path),
+        pagesize=A4,
+        leftMargin=LEFT_M, rightMargin=RIGHT_M,
+        topMargin=TOP_M,   bottomMargin=BOT_M,
+        leftPadding=0, rightPadding=0, topPadding=0, bottomPadding=0,
+    )
+
+    story = []
+    sp = lambda n: Spacer(1, n)
+
+    # ── COVER ─────────────────────────────────────────────────────────────────
+    story.append(CoverPage(business, city, niche.replace("_"," ").title(), pal))
+    story.append(PageBreak())
+
+    # ── SEC 1: EXECUTIVE SUMMARY ──────────────────────────────────────────────
+    story.append(SectionHeader(1, "Executive Summary", pal))
+    story.append(sp(10))
+    story.append(p(nd["exec_summary"]))
+    story.append(sp(12))
+
+    # Score overview bars
+    story.append(p("PERFORMANCE OVERVIEW", "bodyB"))
+    story.append(sp(6))
+    for label, score, mx in nd["scores"]:
+        c = score_bar_color(score, mx)
+        story.append(ScoreBar(label, score, mx, color=c))
+        story.append(sp(3))
+    story.append(sp(10))
+
+    # ── SEC 2: CRO ANALYSIS ───────────────────────────────────────────────────
+    story.append(SectionHeader(2, "Conversion Rate Optimization (CRO)", pal))
+    story.append(sp(10))
+    story.append(p("Website conversion audit — every element that affects whether a visitor becomes a lead.", "small"))
+    story.append(sp(8))
+    story.append(cro_checklist_table(nd["cro"]))
+    story.append(sp(12))
+
+    # ── SEC 3: SWOT ───────────────────────────────────────────────────────────
+    story.append(SectionHeader(3, "SWOT Analysis", pal))
+    story.append(sp(10))
+    story.append(swot_table(nd["swot"], pal))
+    story.append(sp(12))
+
+    # ── SEC 4: COMPETITIVE LANDSCAPE ─────────────────────────────────────────
+    story.append(SectionHeader(4, "Competitive Landscape", pal))
+    story.append(sp(10))
+    story.append(competitor_table(nd["competitors"], pal))
+    story.append(sp(12))
+
+    # ── SEC 5: SEO AUDIT ─────────────────────────────────────────────────────
+    story.append(SectionHeader(5, "SEO & Keyword Audit", pal))
+    story.append(sp(10))
+    story.append(p("Target keyword opportunities for organic and paid visibility.", "small"))
+    story.append(sp(8))
+    story.append(keyword_table(nd["keywords"]))
+    story.append(sp(12))
+
+    # ── SEC 6: AEO (Answer Engine Optimization) ───────────────────────────────
+    story.append(SectionHeader(6, "AEO — Answer Engine Optimization", pal))
+    story.append(sp(10))
+    story.append(p("Visibility in AI-powered search: Google SGE, voice search, and featured snippets.", "small"))
+    story.append(sp(8))
+    story.append(aeo_geo_table(nd["aeo"], cols=["AEO FACTOR", "STATUS", "ACTION"]))
+    story.append(sp(12))
+
+    # ── SEC 7: GEO / LOCAL SEO ────────────────────────────────────────────────
+    story.append(SectionHeader(7, "GEO / Local SEO", pal))
+    story.append(sp(10))
+    story.append(aeo_geo_table(nd["geo_local"], cols=["LOCAL FACTOR", "STATUS", "ACTION"]))
+    story.append(sp(12))
+
+    # ── SEC 8: PAID CHANNEL AUDIT ─────────────────────────────────────────────
+    story.append(SectionHeader(8, "Paid Channel Audit", pal))
+    story.append(sp(10))
+    story.append(paid_audit_table(nd["paid_channels"]))
+    story.append(sp(10))
+    story.append(p("Key Findings:", "bodyB"))
+    story.append(sp(6))
+    story.append(findings_table(nd["findings"]))
+    story.append(sp(12))
+
+    # ── SEC 9: GAP ANALYSIS ───────────────────────────────────────────────────
+    story.append(SectionHeader(9, "Gap Analysis", pal))
+    story.append(sp(10))
+    story.append(gap_table(nd["gaps"]))
+    story.append(sp(12))
+
+    # ── SEC 10: STRATEGY & RECOMMENDATIONS ───────────────────────────────────
+    story.append(SectionHeader(10, "Channel Strategy & Recommendations", pal))
+    story.append(sp(10))
+
+    story.append(p("RECOMMENDED CHANNEL MIX", "bodyB"))
+    story.append(sp(6))
+    story.append(channel_mix_table(nd["channels"], pal))
+    story.append(sp(12))
+
+    story.append(p("90-DAY SPRINT PLAN", "bodyB"))
+    story.append(sp(6))
+    story.append(sprint_table(nd["sprint"]))
+    story.append(sp(12))
+
+    story.append(p("TOP RECOMMENDATIONS", "bodyB"))
+    story.append(sp(6))
+    story.append(top_recs_table(nd["top_recs"]))
+    story.append(sp(12))
+
+    story.append(p("KPI TARGETS", "bodyB"))
+    story.append(sp(6))
+    story.append(kpi_table(nd["kpis"]))
+    story.append(sp(12))
+
+    # ── QUICK WINS ────────────────────────────────────────────────────────────
+    story.append(p("QUICK WIN OPPORTUNITIES (30 Days)", "bodyB"))
+    story.append(sp(6))
+    qw = [(r[0], r[1], r[2], r[3]) for r in nd["top_recs"][:4]]
+    story.append(quick_wins_table(qw))
+    story.append(sp(16))
+
+    # ── FINAL PAGE ────────────────────────────────────────────────────────────
+    story.append(PageBreak())
+    story.append(FinalPage(business, pal))
+
+    doc.build(story, onFirstPage=hf, onLaterPages=hf)
+    return out_path
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# MAIN
+# ─────────────────────────────────────────────────────────────────────────────
+
+BDM_QUEUE = HOME / ".claude/agency/data/cold_email_queue_20260425.jsonl"
+
+PROSPECTS = [
+    {"niche":"med_spa", "business":"Marcadis Watt Plastic Surgery & Med Spa", "city":"Tampa, FL",       "url":"https://mwpstampa.com"},
+    {"niche":"med_spa", "business":"Thrive Med Spa",                           "city":"Muncie, IN",      "url":""},
+    {"niche":"dental",  "business":"5D Smiles Dental Implant Center",          "city":"Los Angeles, CA", "url":""},
+    {"niche":"dental",  "business":"SmileBrite Dentistry",                     "city":"Anaheim, CA",     "url":"https://smilebritedentistry.com"},
+    {"niche":"legal",   "business":"Nicolet Law Office",                       "city":"USA",             "url":"https://nicoletlaw.com"},
+    {"niche":"legal",   "business":"DML Law USA",                              "city":"Kansas City, MO", "url":"https://dmlawusa.com"},
+]
+
+
+def slug(name):
+    return re.sub(r'[^a-z0-9]+', '_', name.lower()).strip('_')
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--niche")
+    ap.add_argument("--business")
+    ap.add_argument("--city", default="")
+    ap.add_argument("--url",  default="")
+    ap.add_argument("--out",  default="")
+    ap.add_argument("--all",  action="store_true")
+    ap.add_argument("--bdm",  action="store_true")
+    args = ap.parse_args()
+
+    if args.all or args.bdm:
+        out_base = HOME / "Downloads/DigiMinds_BDM" / DATE_DIR / "Audit_PDFs"
+        out_base.mkdir(parents=True, exist_ok=True)
+        flat_base = HOME / "Downloads/DigiMinds_BDM/Audit_PDFs"
+        flat_base.mkdir(parents=True, exist_ok=True)
+        for pr in PROSPECTS:
+            fname = f"audit_{pr['niche']}_{slug(pr['business'])}.pdf"
+            out_path = out_base / fname
+            flat_path = flat_base / fname
+            print(f"  Generating: {pr['business']} ...")
+            build_pdf(out_path, pr["business"], pr["city"], pr["niche"], pr.get("url",""))
+            import shutil; shutil.copy2(out_path, flat_path)
+            print(f"  ✓ {out_path}")
+        print(f"\nDone. {len(PROSPECTS)} PDFs in {out_base}")
+    elif args.business and args.niche:
+        out_path = Path(args.out) if args.out else (HOME / "Downloads/DigiMinds_BDM/Audit_PDFs" / f"audit_{args.niche}_{slug(args.business)}.pdf")
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        build_pdf(out_path, args.business, args.city, args.niche, args.url)
+        print(f"✓ {out_path}")
+    else:
+        ap.print_help()
+
+
+if __name__ == "__main__":
+    main()
