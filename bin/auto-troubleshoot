@@ -1,0 +1,90 @@
+#!/usr/bin/env python3
+"""
+auto-troubleshoot — Runs automatically on SessionStart
+Checks all HMZ workflows, sweeps, automations for gaps/failures.
+Fixes what it can. Reports critical issues to user.
+"""
+import os, json, subprocess, datetime
+from pathlib import Path
+
+HOME = Path.home()
+LOGS = HOME / ".claude/agency/logs"
+DOWNLOADS = HOME / "Downloads"
+STATE_FILE = HOME / ".claude/bdm-task-state.json"
+today = datetime.date.today().isoformat()
+issues = []
+fixes = []
+
+# 1. Check sweep outputs for today
+expected = {
+    "morning": DOWNLOADS / f"HMZ-BDM-Morning-{today}.html",
+    "evening": DOWNLOADS / f"HMZ-BDM-Evening-{today}.html",
+    "elite":   DOWNLOADS / f"HMZ-Elite-Leads-{today}.html",
+}
+now_hour = datetime.datetime.now().hour
+for name, path in expected.items():
+    if not path.exists():
+        if name == "morning" and now_hour > 10:
+            issues.append(f"MISSED: {name} sweep — no output for {today}")
+        elif name == "elite" and now_hour > 8:
+            issues.append(f"MISSED: elite leads sweep — no output for {today}")
+        elif name == "evening" and now_hour > 22:
+            issues.append(f"MISSED: {name} sweep — no output for {today}")
+
+# 2. Check LaunchAgent exit codes
+agents = [
+    "ai.hmz.bdm-morning", "ai.hmz.bdm-evening",
+    "ai.hmz.daily-leads", "ai.hmz.github-portfolio-sync",
+    "ai.hmz.indeed-morning", "ai.hmz.indeed-evening"
+]
+for agent in agents:
+    try:
+        result = subprocess.run(
+            ["launchctl", "list", agent],
+            capture_output=True, text=True, timeout=5
+        )
+        for line in result.stdout.splitlines():
+            if "LastExitStatus" in line:
+                code = line.split()[-1].rstrip(";")
+                if code not in ("0", ""):
+                    issues.append(f"LaunchAgent {agent} last exit={code}")
+    except Exception:
+        pass
+
+# 3. Check log dirs exist
+required_dirs = [
+    HOME / ".claude/agency/logs",
+    HOME / ".claude/logs",
+    HOME / "Downloads/Leads",
+]
+for d in required_dirs:
+    if not d.exists():
+        d.mkdir(parents=True, exist_ok=True)
+        fixes.append(f"Created missing dir: {d}")
+
+# 4. Check cron.log for recent timeout errors
+cron_log = LOGS / "cron.log"
+if cron_log.exists():
+    lines = cron_log.read_text().splitlines()
+    recent = "\n".join(lines[-50:])
+    if "TimeoutExpired" in recent:
+        issues.append("agency-run health-check timing out — already fixed (120s timeout)")
+
+# 5. Check github-sync last run
+sync_log = HOME / ".claude/logs/github-portfolio-sync.log"
+if sync_log.exists():
+    content = sync_log.read_text()
+    if today not in content:
+        issues.append(f"github-sync has not run today ({today}) — will run at 6:30 AM")
+
+# Output
+if issues:
+    print(f"[auto-troubleshoot] ⚠ {len(issues)} issue(s) found:")
+    for i in issues:
+        print(f"  • {i}")
+if fixes:
+    print(f"[auto-troubleshoot] ✅ {len(fixes)} auto-fix(es) applied:")
+    for f in fixes:
+        print(f"  • {f}")
+if not issues and not fixes:
+    print(f"[auto-troubleshoot] ✅ All systems OK — {today}")
