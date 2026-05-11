@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+# openclaw-computer-control — Online (Agent37) + Offline (local) computer control
+# Uses Claude Code MCP computer-use tools for local execution
+# Receives tasks from OpenClaw/Agent37 webhook or direct call
+
+set -e
+source ~/.claude/tier0.env 2>/dev/null
+export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
+
+TASK="${1:-}"
+MODE="${2:-auto}"  # auto|online|offline
+
+if [ -z "$TASK" ]; then
+  # Listen mode — poll for tasks from Agent37
+  echo "[computer-control] Listening for tasks from Agent37..."
+  AGENT37_URL="${AGENT37_GATEWAY_URL:-}"
+  if [ -n "$AGENT37_URL" ]; then
+    # Use openclaw to forward tasks
+    openclaw-bridge acp &
+    wait
+  else
+    echo "[computer-control] No Agent37 URL. Run: openclaw-bridge config-agent37 <url> <token>"
+  fi
+  exit 0
+fi
+
+echo "[computer-control] Task: $TASK"
+echo "[computer-control] Mode: $MODE"
+
+# Log task to queue for Claude Code to pick up
+echo "{\"task\":\"$TASK\",\"mode\":\"$MODE\",\"ts\":$(date +%s)}" \
+  >> ~/.claude/computer-task-queue.jsonl
+
+echo "[computer-control] ✓ Task queued → ~/.claude/computer-task-queue.jsonl"
+echo "  Claude Code will execute via computer-use MCP tools"
