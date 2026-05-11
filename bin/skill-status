@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# Show what's active vs archived.
+ACTIVE="$HOME/.claude/skills"
+ARCHIVE="$HOME/.claude/skills-archive"
+echo "Active ($(ls "$ACTIVE" 2>/dev/null | wc -l | tr -d ' ')):"
+ls "$ACTIVE" 2>/dev/null | sed 's/^/  /'
+echo ""
+echo "Archived: $(ls "$ARCHIVE" 2>/dev/null | wc -l | tr -d ' ')"
+echo "(use 'skill-search <kw>' to find one, 'skill-on <name>' to activate)"
