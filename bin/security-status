@@ -1,0 +1,72 @@
+#!/usr/bin/env bash
+# security-status — Quick security dashboard
+export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
+
+echo ""
+echo "╔══════════════════════════════════════════════════════╗"
+echo "║     Claude/OpenClaw Security Guardian v1.0           ║"
+echo "╚══════════════════════════════════════════════════════╝"
+
+# LaunchAgent status
+if launchctl list 2>/dev/null | grep -q "ai.claude.skill-guardian"; then
+    echo "  ✓ Guardian daemon: ACTIVE (hourly scans)"
+else
+    echo "  ✗ Guardian daemon: NOT LOADED"
+fi
+if launchctl list 2>/dev/null | grep -q "ai.claude.skill-watcher"; then
+    echo "  ✓ Watcher daemon:  ACTIVE (real-time fswatch)"
+else
+    echo "  ✗ Watcher daemon:  NOT LOADED"
+fi
+
+# Last scan
+LAST_REPORT=$(ls -t ~/.claude/security/reports/scan_report_*.json 2>/dev/null | head -1)
+if [ -n "$LAST_REPORT" ]; then
+    THREATS=$(python3 -c "import json; r=json.load(open('$LAST_REPORT')); print(r['total_threats'])" 2>/dev/null)
+    TS=$(python3 -c "import json; r=json.load(open('$LAST_REPORT')); print(r['timestamp'][:19])" 2>/dev/null)
+    echo "  ✓ Last scan: $TS — $THREATS threats"
+else
+    echo "  ✗ No scan reports yet"
+fi
+
+# Deleted threats
+D_COUNT=$(find ~/.claude/security/reports -name "deleted_*.json" 2>/dev/null | wc -l | tr -d ' ')
+echo "  🗑  Deleted threats: $D_COUNT (forensic reports kept)"
+
+# Signatures
+SIG_FILE=~/.claude/security/signatures/malware-patterns.json
+if [ -f "$SIG_FILE" ]; then
+    SIG_VERSION=$(python3 -c "import json; print(json.load(open('$SIG_FILE'))['version'])" 2>/dev/null)
+    echo "  ✓ Signatures: v$SIG_VERSION"
+fi
+
+# Hash cache
+CACHE=$(python3 -c "import json; print(len(json.load(open('/Users/mc/.claude/security/logs/clean-hashes.json'))))" 2>/dev/null || echo 0)
+echo "  ✓ Clean hash cache: $CACHE entries"
+
+# Alert
+if [ -f ~/.claude/security/logs/last-alert.txt ]; then
+    echo ""
+    echo "  ⚠ LAST ALERT:"
+    cat ~/.claude/security/logs/last-alert.txt | sed 's/^/    /'
+fi
+
+
+fi
+
+if launchctl list 2>/dev/null | grep -q "ai.claude.arch-optimizer"; then
+    LAST_OPT=$(tail -1 ~/.claude/security/logs/arch-optimizer.log 2>/dev/null | cut -d']' -f1-2 | tr -d '[')
+    echo "  ✓ Arch optimizer: SCHEDULED daily 3AM (last: ${LAST_OPT:-never})"
+else
+    echo "  ✗ Arch optimizer: NOT LOADED"
+fi
+
+echo ""
+echo "  Commands:"
+echo "    skill-scanner               # full scan now"
+echo "    skill-scanner --deep        # + LLM analysis"
+echo "    skill-scanner --status      # status only"
+echo "    skill-scanner --list-quarantine"
+echo "    skill-scanner --restore <hash>  # restore false positive"
+echo "    skill-scanner --no-quarantine   # report only"
+echo ""
