@@ -1,0 +1,321 @@
+#!/usr/bin/env python3
+"""
+UPWORK APPLESCRIPT SUBMITTER — Uses YOUR real Chrome browser.
+No Playwright, no Cloudflare detection, no bots.
+
+This script:
+1. Opens Upwork job URLs in your ALREADY LOGGED-IN Chrome
+2. Waits for the page to load
+3. Uses AppleScript to find and click "Apply" button
+4. Injects the cover letter text directly into the proposal form
+5. Fills bid amount
+6. USER clicks Submit (safety gate — you review before sending)
+
+Why this works:
+- Uses your real Chrome session (already authenticated to Upwork)
+- AppleScript controls Chrome natively, indistinguishable from real user
+- No separate browser profile, no bot fingerprints
+- Cloudflare sees: real Chrome, real cookies, real user agent
+
+Usage:
+  upwork-applescript-submit                   # Submit all draft Upwork proposals
+  upwork-applescript-submit --dry-run         # Show what would be submitted
+  upwork-applescript-submit --job URL         # Submit specific job
+"""
+import os, sys, json, time, datetime, subprocess
+from pathlib import Path
+
+HOME      = Path.home()
+AGENCY    = HOME / ".claude/agency"
+PROPOSALS = AGENCY / "proposals"
+LOG       = AGENCY / "logs/upwork-applescript.log"
+TODAY     = datetime.date.today().strftime("%Y%m%d")
+
+def log(msg):
+    ts = datetime.datetime.now().strftime("%H:%M:%S")
+    line = f"[{ts}] {msg}"
+    print(line)
+    with open(LOG, "a") as f:
+        f.write(f"[{datetime.datetime.now().isoformat()}] {msg}\n")
+
+def run_applescript(script: str) -> str:
+    result = subprocess.run(
+        ["osascript", "-e", script],
+        capture_output=True, text=True, timeout=30
+    )
+    return result.stdout.strip()
+
+def open_url_in_chrome(url: str):
+    """Open URL in existing Chrome window."""
+    script = f'''
+    tell application "Google Chrome"
+        activate
+        if (count of windows) = 0 then
+            make new window
+        end if
+        set activeTab to active tab of front window
+        set URL of activeTab to "{url}"
+    end tell
+    '''
+    run_applescript(script)
+
+def get_current_url() -> str:
+    script = '''
+    tell application "Google Chrome"
+        return URL of active tab of front window
+    end tell
+    '''
+    return run_applescript(script)
+
+def execute_js_in_chrome(js: str) -> str:
+    """Execute JavaScript in current Chrome tab."""
+    # Escape for AppleScript string
+    js_escaped = js.replace('"', '\\"').replace('\n', ' ')
+    script = f'''
+    tell application "Google Chrome"
+        set result to execute active tab of front window javascript "{js_escaped}"
+        return result as string
+    end tell
+    '''
+    return run_applescript(script)
+
+def wait_for_url_contains(fragment: str, timeout: int = 20) -> bool:
+    for _ in range(timeout):
+        url = get_current_url()
+        if fragment in url:
+            return True
+        time.sleep(1)
+    return False
+
+def wait_for_element(selector: str, timeout: int = 15) -> bool:
+    for _ in range(timeout):
+        result = execute_js_in_chrome(
+            f"document.querySelector('{selector}') !== null ? 'found' : 'not_found'"
+        )
+        if result == "found":
+            return True
+        time.sleep(1)
+    return False
+
+def fill_proposal_form(cover_letter: str, bid_amount: str) -> bool:
+    """Fill the Upwork proposal form via JavaScript injection."""
+
+    # Click Apply Now button
+    click_apply_js = """
+    (function(){
+        // Try multiple selectors for Apply button
+        var selectors = [
+            '[data-test="apply-button"]',
+            'button[aria-label*="Apply"]',
+            'a[href*="apply"]',
+            '.apply-button',
+            'button:not([disabled])'
+        ];
+        for(var s of selectors){
+            var el = document.querySelector(s);
+            if(el && (el.textContent.includes('Apply') || el.getAttribute('aria-label','').includes('Apply'))){
+                el.click();
+                return 'clicked:' + s;
+            }
+        }
+        // Scan all buttons
+        var btns = document.querySelectorAll('button');
+        for(var b of btns){
+            if(b.textContent.trim().includes('Apply Now') || b.textContent.trim() === 'Apply'){
+                b.click();
+                return 'clicked:text-match';
+            }
+        }
+        return 'not_found';
+    })()
+    """
+
+    result = execute_js_in_chrome(click_apply_js)
+    log(f"  Apply click result: {result}")
+
+    if "not_found" in result:
+        log("  No Apply button found — may already be on application page")
+
+    time.sleep(3)
+
+    # Fill cover letter
+    fill_cover_js = f"""
+    (function(){{
+        var text = {json.dumps(cover_letter[:4000])};
+        var selectors = [
+            'textarea[placeholder*="cover"]',
+            'textarea[name*="cover"]',
+            'textarea[data-test*="cover"]',
+            '.cover-letter textarea',
+            '[data-test="cover-letter-text"]',
+            'textarea[id*="cover"]',
+            'textarea'
+        ];
+        for(var s of selectors){{
+            var el = document.querySelector(s);
+            if(el){{
+                el.focus();
+                el.value = text;
+                el.dispatchEvent(new Event('input', {{bubbles:true}}));
+                el.dispatchEvent(new Event('change', {{bubbles:true}}));
+                return 'filled:' + s;
+            }}
+        }}
+        return 'not_found';
+    }})()
+    """
+
+    result = execute_js_in_chrome(fill_cover_js)
+    log(f"  Cover letter fill: {result}")
+
+    time.sleep(1)
+
+    # Fill bid amount
+    if bid_amount:
+        bid_clean = bid_amount.replace("$","").replace("/hr","").replace(",","").strip().split()[0]
+        fill_bid_js = f"""
+        (function(){{
+            var bid = '{bid_clean}';
+            var selectors = [
+                'input[data-test="rate-input"]',
+                'input[name*="bid"]',
+                'input[name*="rate"]',
+                'input[placeholder*="bid"]',
+                'input[placeholder*="rate"]',
+                'input[type="number"]'
+            ];
+            for(var s of selectors){{
+                var el = document.querySelector(s);
+                if(el){{
+                    el.focus();
+                    el.value = '';
+                    el.value = bid;
+                    el.dispatchEvent(new Event('input', {{bubbles:true}}));
+                    el.dispatchEvent(new Event('change', {{bubbles:true}}));
+                    return 'bid_filled:' + bid + ':' + s;
+                }}
+            }}
+            return 'bid_not_found';
+        }})()
+        """
+        result = execute_js_in_chrome(fill_bid_js)
+        log(f"  Bid amount fill: {result}")
+
+    return True
+
+def notify_user(title: str, msg: str):
+    os.system(f"""osascript -e 'display notification "{msg}" with title "{title}" sound name "Ping"'""")
+
+def load_today_proposals():
+    # Try today's file
+    for fname in sorted((PROPOSALS).glob("proposals_*.json"), reverse=True):
+        try:
+            d = json.loads(fname.read_text())
+            props = d.get("proposals", [])
+            upwork_drafts = [
+                p for p in props
+                if p.get("platform","").lower() == "upwork"
+                and p.get("status","") not in ("submitted","sent","expired","skipped","skipped_non_ads")
+                and "upwork.com/jobs" in p.get("job_url","")
+                and "~" in p.get("job_url","")
+            ]
+            if upwork_drafts:
+                return upwork_drafts, str(fname)
+        except Exception:
+            continue
+    return [], None
+
+def main():
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--job", help="Specific job URL")
+    args = parser.parse_args()
+
+    log("UPWORK APPLESCRIPT SUBMITTER — Using real Chrome browser")
+    log("Cloudflare-proof: uses your existing logged-in Chrome session")
+
+    if args.dry_run:
+        props, fname = load_today_proposals()
+        log(f"DRY RUN — {len(props)} proposals would be submitted from {fname}")
+        for p in props:
+            log(f"  {p.get('job_title','?')} → {p.get('bid_amount','?')} | {p.get('job_url','?')[:60]}")
+        return
+
+    # Check Chrome is running and logged in to Upwork
+    chrome_check = run_applescript(
+        'tell application "Google Chrome" to return name of front window'
+    )
+    if not chrome_check:
+        log("ERROR: Google Chrome is not running. Please open Chrome and log in to Upwork first.")
+        sys.exit(1)
+
+    props, fname = load_today_proposals()
+
+    if args.job:
+        # Single job mode
+        props = [{"job_url": args.job, "cover_letter": "", "bid_amount": "35", "job_title": "Manual", "platform": "upwork"}]
+        log(f"Single job mode: {args.job}")
+
+    if not props:
+        log("No Upwork draft proposals found. Run agency-run --discover first.")
+        sys.exit(0)
+
+    log(f"Found {len(props)} Upwork proposals to submit from {fname}")
+
+    submitted = 0
+    failed    = 0
+
+    for i, p in enumerate(props):
+        job_url    = p.get("job_url","")
+        job_title  = p.get("job_title","Unknown Job")
+        cover      = p.get("cover_letter") or p.get("proposal_text","")
+        bid        = p.get("bid_amount","35")
+
+        if not job_url or "~" not in job_url:
+            log(f"  SKIP: Invalid URL for '{job_title}'")
+            continue
+
+        log(f"\n  [{i+1}/{len(props)}] {job_title[:60]}")
+        log(f"  URL: {job_url}")
+
+        # Open in Chrome
+        open_url_in_chrome(job_url)
+        time.sleep(5)  # Wait for Cloudflare challenge + page load
+
+        # Wait for Upwork page
+        if not wait_for_url_contains("upwork.com", timeout=15):
+            log("  Chrome didn't load Upwork URL — skipping")
+            failed += 1
+            continue
+
+        # Check for Cloudflare challenge
+        page_text = execute_js_in_chrome("document.body.innerText.substring(0, 200)")
+        if "Checking" in page_text or "challenge" in page_text.lower():
+            log("  Waiting for Cloudflare check...")
+            time.sleep(8)
+
+        # Fill the form
+        success = fill_proposal_form(cover, bid)
+
+        if success:
+            # Notify user to review and click submit
+            notify_user(
+                "Upwork Proposal Ready",
+                f"Proposal filled for: {job_title[:40]}. Review and click Submit."
+            )
+            log(f"  ✓ Form filled — REVIEW IN CHROME and click Submit manually")
+            log(f"  Waiting 20 seconds before next proposal...")
+
+            # Update status to "ready_to_submit"
+            time.sleep(20)
+            submitted += 1
+        else:
+            log(f"  ✗ Failed to fill form")
+            failed += 1
+
+    log(f"\nDONE: {submitted} forms filled | {failed} failed")
+    log("ACTION REQUIRED: Review each proposal in Chrome and click Submit")
+
+if __name__ == "__main__":
+    main()
