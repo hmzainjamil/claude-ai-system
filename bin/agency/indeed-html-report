@@ -1,0 +1,276 @@
+#!/usr/bin/env python3
+"""
+Indeed Jobs HTML Report Generator
+Reads today's Indeed MCP job data → generates professional HTML dashboard
+Saves to ~/Downloads/Indeed-Jobs-Report-YYYYMMDD-HHMM.html
+Auto-opens in browser after generation.
+"""
+
+import json, datetime, os, subprocess
+from pathlib import Path
+
+HOME       = Path.home()
+DATA_DIR   = HOME / ".claude/agency/data"
+REPORT_DIR = HOME / "Downloads"
+TODAY      = datetime.date.today().strftime("%Y%m%d")
+NOW        = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+NOW_FILE   = datetime.datetime.now().strftime("%Y%m%d-%H%M")
+SWEEP      = "🌅 Morning" if datetime.datetime.now().hour < 14 else "🌙 Evening"
+
+# ── Load jobs ─────────────────────────────────────────────────────
+def load_jobs():
+    # Try indeed_mcp cache first
+    mcp_file = DATA_DIR / f"indeed_mcp_{TODAY}.json"
+    if mcp_file.exists():
+        data = json.loads(mcp_file.read_text())
+        jobs = data.get("jobs", data) if isinstance(data, dict) else data
+        if jobs:
+            return jobs, "Indeed MCP (Live API)"
+
+    # Fallback: BDM jobs file
+    jobs_file = DATA_DIR / f"jobs_{TODAY}.json"
+    if jobs_file.exists():
+        data = json.loads(jobs_file.read_text())
+        jobs = data.get("jobs", []) if isinstance(data, dict) else data
+        indeed_jobs = [j for j in jobs if "indeed" in j.get("platform","").lower()]
+        if indeed_jobs:
+            return indeed_jobs, "BDM Pipeline (cached)"
+        return jobs, "BDM Pipeline (all platforms)"
+
+    return [], "No data found"
+
+def pk_badge(status):
+    if status == "YES":
+        return '<span class="badge pk-yes">✅ PK SAFE</span>'
+    if status == "NO":
+        return '<span class="badge pk-no">❌ BLOCKED</span>'
+    return '<span class="badge pk-maybe">⚠️ VERIFY</span>'
+
+def salary_display(budget):
+    if not budget: return '<span class="no-data">—</span>'
+    return f'<span class="salary">{budget}</span>'
+
+def generate_html(jobs, source):
+    pk_yes   = [j for j in jobs if j.get("pk_compatible") == "YES"]
+    pk_maybe = [j for j in jobs if j.get("pk_compatible") == "MAYBE"]
+    pk_no    = [j for j in jobs if j.get("pk_compatible") == "NO"]
+    contracts= [j for j in jobs if "contract" in (j.get("job_type","") + j.get("description","") + str(j.get("client_info",""))).lower()]
+
+    # Sort: YES first, MAYBE second, NO last
+    sorted_jobs = pk_yes + pk_maybe + pk_no
+
+    job_rows = ""
+    for i, j in enumerate(sorted_jobs, 1):
+        title    = j.get("title","") or j.get("name","")
+        company  = j.get("client_info",{}).get("company","") if isinstance(j.get("client_info"),dict) else ""
+        location = j.get("client_info",{}).get("location","Remote") if isinstance(j.get("client_info"),dict) else "Remote"
+        posted   = j.get("client_info",{}).get("posted","") if isinstance(j.get("client_info"),dict) else j.get("posted_at","")
+        url      = j.get("url","") or j.get("apply_url","")
+        budget   = j.get("budget","")
+        source_p = j.get("source","indeed")
+        pk_status= j.get("pk_compatible","MAYBE")
+        pk_rsn   = j.get("pk_reason","") or j.get("safe_to_apply","")
+        country  = j.get("client_info",{}).get("country","") if isinstance(j.get("client_info"),dict) else ""
+
+        row_class = "row-yes" if pk_status=="YES" else ("row-no" if pk_status=="NO" else "row-maybe")
+        apply_btn = f'<a href="{url}" target="_blank" class="apply-btn">Apply →</a>' if url else '<span class="no-url">No link</span>'
+
+        job_rows += f"""
+        <tr class="{row_class}">
+            <td class="rank">#{i}</td>
+            <td class="title-cell">
+                <div class="job-title">{title}</div>
+                <div class="company">{company}</div>
+            </td>
+            <td>{location}<br><small>{country}</small></td>
+            <td>{salary_display(budget)}</td>
+            <td>{posted or "—"}</td>
+            <td>{pk_badge(pk_status)}<br><small class="pk-reason">{pk_rsn[:60] if pk_rsn else ""}</small></td>
+            <td>{apply_btn}</td>
+        </tr>"""
+
+    html = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>HMZ Indeed Jobs — {NOW}</title>
+<style>
+  :root {{
+    --bg: #0d1117; --surface: #161b22; --border: #30363d;
+    --green: #2ea043; --amber: #d29922; --red: #da3633;
+    --text: #c9d1d9; --muted: #8b949e; --accent: #58a6ff;
+    --green-bg: #0d2d1a; --amber-bg: #2d1f00; --red-bg: #2d0c0c;
+  }}
+  * {{ box-sizing: border-box; margin: 0; padding: 0; }}
+  body {{ background: var(--bg); color: var(--text); font-family: -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; }}
+
+  .header {{
+    background: linear-gradient(135deg, #0f3460 0%, #16213e 50%, #0d1117 100%);
+    padding: 32px 40px; border-bottom: 1px solid var(--border);
+  }}
+  .header-top {{ display:flex; justify-content:space-between; align-items:center; }}
+  .header h1 {{ font-size: 26px; font-weight: 700; color: #fff; }}
+  .header h1 span {{ color: var(--accent); }}
+  .sweep-badge {{ background: #1f6feb33; border: 1px solid #1f6feb; padding: 6px 14px; border-radius: 20px; font-size: 13px; }}
+  .meta {{ color: var(--muted); font-size: 13px; margin-top: 6px; }}
+  .source-tag {{ color: var(--accent); }}
+
+  .stats {{ display:grid; grid-template-columns: repeat(4,1fr); gap:16px; padding: 24px 40px; }}
+  .stat-card {{
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 10px; padding: 20px; text-align:center;
+  }}
+  .stat-card.green {{ border-color: var(--green); background: var(--green-bg); }}
+  .stat-card.amber {{ border-color: var(--amber); background: var(--amber-bg); }}
+  .stat-card.red   {{ border-color: var(--red);   background: var(--red-bg); }}
+  .stat-num {{ font-size: 36px; font-weight: 700; line-height:1; }}
+  .stat-card.green .stat-num {{ color: #3fb950; }}
+  .stat-card.amber .stat-num {{ color: #e3b341; }}
+  .stat-card.red   .stat-num {{ color: #f85149; }}
+  .stat-label {{ color: var(--muted); font-size: 12px; margin-top: 6px; text-transform: uppercase; letter-spacing: .5px; }}
+
+  .filter-bar {{ padding: 0 40px 16px; display:flex; gap:10px; flex-wrap:wrap; }}
+  .filter-btn {{ background: var(--surface); border: 1px solid var(--border); color: var(--text);
+    padding: 6px 16px; border-radius: 20px; cursor:pointer; font-size: 13px; transition:.2s; }}
+  .filter-btn:hover, .filter-btn.active {{ background: #1f6feb; border-color: #1f6feb; color:#fff; }}
+
+  .table-wrap {{ padding: 0 40px 40px; overflow-x:auto; }}
+  table {{ width:100%; border-collapse:collapse; font-size:14px; }}
+  thead tr {{ background: #0d1117; border-bottom: 2px solid var(--border); }}
+  thead th {{ padding: 12px 14px; text-align:left; color: var(--muted); font-weight:600;
+    font-size:11px; text-transform:uppercase; letter-spacing:.5px; }}
+  tbody tr {{ border-bottom: 1px solid var(--border); transition:.15s; }}
+  tbody tr:hover {{ background: #1c2128; }}
+
+  .row-yes  {{ background: #0a1f0f; }}
+  .row-maybe{{ background: #1a1400; }}
+  .row-no   {{ background: #1a0a0a; opacity:.6; }}
+
+  .rank {{ color: var(--muted); font-weight:600; width:40px; text-align:center; }}
+  .title-cell {{ min-width:260px; }}
+  .job-title {{ font-weight:600; color:#e6edf3; margin-bottom:3px; }}
+  .company {{ color: var(--accent); font-size:12px; }}
+
+  .badge {{ display:inline-block; padding: 3px 10px; border-radius: 12px; font-size:11px; font-weight:700; }}
+  .pk-yes   {{ background: #0d2d1a; color:#3fb950; border:1px solid #2ea043; }}
+  .pk-maybe {{ background: #2d1f00; color:#e3b341; border:1px solid #d29922; }}
+  .pk-no    {{ background: #2d0c0c; color:#f85149; border:1px solid #da3633; }}
+  .pk-reason {{ color: var(--muted); font-size:10px; display:block; margin-top:3px; max-width:160px; }}
+
+  .salary {{ color: #3fb950; font-weight:600; }}
+  .no-data {{ color: var(--muted); }}
+  .no-url  {{ color: var(--muted); font-size:12px; }}
+
+  .apply-btn {{
+    display:inline-block; background: #238636; color:#fff;
+    padding: 6px 16px; border-radius: 6px; text-decoration:none;
+    font-size:13px; font-weight:600; transition:.2s;
+  }}
+  .apply-btn:hover {{ background: #2ea043; }}
+
+  .footer {{ text-align:center; color: var(--muted); font-size:12px; padding: 20px; border-top: 1px solid var(--border); }}
+  small {{ color: var(--muted); font-size:11px; }}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="header-top">
+    <div>
+      <h1>HMZ <span>Indeed Jobs</span> Dashboard</h1>
+      <div class="meta">Generated: {NOW} PKT &nbsp;|&nbsp; <span class="source-tag">Source: {source}</span> &nbsp;|&nbsp; Remote Only &nbsp;|&nbsp; Google Ads + Meta Ads Specialist</div>
+    </div>
+    <div class="sweep-badge">{SWEEP} Sweep</div>
+  </div>
+</div>
+
+<div class="stats">
+  <div class="stat-card">
+    <div class="stat-num">{len(jobs)}</div>
+    <div class="stat-label">Total Jobs Found</div>
+  </div>
+  <div class="stat-card green">
+    <div class="stat-num">{len(pk_yes)}</div>
+    <div class="stat-label">✅ PK Safe (Apply Now)</div>
+  </div>
+  <div class="stat-card amber">
+    <div class="stat-num">{len(pk_maybe)}</div>
+    <div class="stat-label">⚠️ Verify Before Apply</div>
+  </div>
+  <div class="stat-card red">
+    <div class="stat-num">{len(pk_no)}</div>
+    <div class="stat-label">❌ Blocked (Auth Required)</div>
+  </div>
+</div>
+
+<div class="filter-bar">
+  <span style="color:var(--muted);font-size:13px;align-self:center;">Filter:</span>
+  <button class="filter-btn active" onclick="filterRows('all')">All Jobs</button>
+  <button class="filter-btn" onclick="filterRows('row-yes')">✅ PK Safe Only</button>
+  <button class="filter-btn" onclick="filterRows('row-maybe')">⚠️ Verify Only</button>
+</div>
+
+<div class="table-wrap">
+  <table id="jobTable">
+    <thead>
+      <tr>
+        <th>#</th>
+        <th>Job Title / Company</th>
+        <th>Location</th>
+        <th>Salary / Rate</th>
+        <th>Posted</th>
+        <th>PK Status</th>
+        <th>Action</th>
+      </tr>
+    </thead>
+    <tbody>
+      {job_rows}
+    </tbody>
+  </table>
+</div>
+
+<div class="footer">
+  HMZ BDM Pipeline · Auto-generated {NOW} · Runs twice daily (9 AM + 9 PM PKT) · hmzainjamil@gmail.com
+</div>
+
+<script>
+function filterRows(cls) {{
+  document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+  event.target.classList.add('active');
+  document.querySelectorAll('#jobTable tbody tr').forEach(row => {{
+    if (cls === 'all') {{ row.style.display = ''; return; }}
+    row.style.display = row.classList.contains(cls) ? '' : 'none';
+  }});
+}}
+</script>
+</body>
+</html>"""
+    return html
+
+def main():
+    jobs, source = load_jobs()
+    print(f"[indeed-html-report] {len(jobs)} jobs loaded from: {source}")
+
+    if not jobs:
+        # Create empty report with message
+        jobs = []
+
+    html = generate_html(jobs, source)
+
+    # Save to Downloads with timestamp
+    out_path = REPORT_DIR / f"Indeed-Jobs-{NOW_FILE}.html"
+    out_path.write_text(html, encoding="utf-8")
+    print(f"[indeed-html-report] ✅ Saved → {out_path}")
+
+    # Also save as "latest" for easy access
+    latest = REPORT_DIR / "Indeed-Jobs-LATEST.html"
+    latest.write_text(html, encoding="utf-8")
+
+    # Auto-open in browser
+    subprocess.run(["open", str(out_path)], check=False)
+    print(f"[indeed-html-report] Opened in browser")
+    return str(out_path)
+
+if __name__ == "__main__":
+    main()
