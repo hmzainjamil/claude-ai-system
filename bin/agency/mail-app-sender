@@ -1,0 +1,184 @@
+#!/usr/bin/env python3
+"""
+MAIL.APP SENDER — Plan B for actual email delivery
+Uses macOS Mail.app via osascript. No GMAIL_APP_PASSWORD needed.
+
+REQUIREMENT (one-time): Grant Automation permission
+  System Settings → Privacy & Security → Automation → Terminal → Mail (toggle ON)
+  OR the FIRST time this runs, macOS will pop up a permission dialog. Click "OK".
+
+Usage:
+  mail-app-sender --test                    # Send 1 test email (zulqarnain → zulqarnain)
+  mail-app-sender --send to subj body       # Send a specific email
+  mail-app-sender --queue queue.jsonl       # Send all queued emails
+  mail-app-sender --check                   # Check Mail.app account is configured
+"""
+import os, sys, json, subprocess, datetime, time
+from pathlib import Path
+
+HOME    = Path.home()
+AGENCY  = HOME / ".claude/agency"
+GMAIL_USER = "zulqarnain@digiminds.org"
+
+def osascript(script):
+    """Run an AppleScript and return result."""
+    result = subprocess.run(
+        ["osascript", "-e", script],
+        capture_output=True, text=True, timeout=30
+    )
+    return result.returncode == 0, (result.stdout.strip() if result.stdout else result.stderr.strip())
+
+def check_mail_setup():
+    """Verify Mail.app is configured with the right account."""
+    ok, out = osascript('tell application "Mail" to get name of every account')
+    if not ok:
+        if "1743" in out or "not auth" in out.lower():
+            return False, "Mail.app needs Automation permission. macOS will prompt on next attempt OR enable manually: System Settings → Privacy & Security → Automation → Terminal → Mail"
+        return False, f"Mail.app error: {out}"
+
+    if GMAIL_USER.split("@")[0] in out.lower() or "digiminds" in out.lower() or "zulqarnain" in out.lower():
+        return True, f"Account found: {out}"
+    return False, f"zulqarnain@digiminds.org NOT in Mail.app accounts. Found: {out}"
+
+def send_email(to, subject, body, sender=GMAIL_USER):
+    """Send via Mail.app — escape quotes, build new message, send it."""
+    # Escape quotes for AppleScript
+    body_esc = body.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n")
+    subj_esc = subject.replace('"', '\\"')
+
+    script = f'''
+tell application "Mail"
+    set newMessage to make new outgoing message with properties {{subject:"{subj_esc}", content:"{body_esc}", visible:false}}
+    tell newMessage
+        make new to recipient at end of to recipients with properties {{address:"{to}"}}
+        set sender to "{sender}"
+    end tell
+    send newMessage
+    return "sent"
+end tell
+'''
+    ok, out = osascript(script)
+    return ok, out
+
+def cmd_check():
+    ok, msg = check_mail_setup()
+    icon = "✓" if ok else "✗"
+    print(f"{icon} {msg}")
+    return 0 if ok else 1
+
+def cmd_test():
+    print("Sending test email zulqarnain@digiminds.org → zulqarnain@digiminds.org via Mail.app...")
+    ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    ok, out = send_email(
+        to=GMAIL_USER,
+        subject=f"DELIVERY TEST — Mail.app — {ts}",
+        body=f"This test email proves Mail.app SMTP works.\n\nSent from automated agency pipeline at {ts}.\n\nIf you see this in your Inbox AND Sent folder, real email delivery is operational."
+    )
+    if ok:
+        print(f"✓ Mail.app accepted the message: {out}")
+        print("→ Check your Sent folder in Gmail web UI in 30 seconds")
+        # Log it
+        log = AGENCY / "logs/mail.log"
+        log.parent.mkdir(parents=True, exist_ok=True)
+        with open(log, "a") as f:
+            f.write(f"[{ts}] TEST sent via Mail.app\n")
+        return 0
+    else:
+        print(f"✗ Mail.app failed: {out}")
+        if "1743" in out or "not auth" in out.lower():
+            print()
+            print("FIX (one-time, 10 seconds):")
+            print("  1. Open System Settings → Privacy & Security → Automation")
+            print("  2. Find 'Terminal' in the list, expand it")
+            print("  3. Toggle 'Mail' to ON")
+            print("  4. Re-run: mail-app-sender --test")
+            print()
+            print("OR: macOS may have shown a permission dialog. Click 'OK' on it and re-run.")
+        return 1
+
+def cmd_send(to, subject, body):
+    ok, out = send_email(to, subject, body)
+    if ok:
+        print(f"✓ Sent to {to}")
+    else:
+        print(f"✗ Failed: {out}")
+    return 0 if ok else 1
+
+def cmd_queue(queue_file):
+    qf = Path(queue_file)
+    if not qf.exists():
+        print(f"Queue not found: {qf}")
+        return 1
+
+    sent = failed = 0
+    log = AGENCY / "logs/mail.log"
+    log.parent.mkdir(parents=True, exist_ok=True)
+    log_f = open(log, "a")
+
+    lines = [l for l in qf.read_text().strip().split("\n") if l.strip()]
+    print(f"Processing {len(lines)} queued emails...")
+
+    remaining = []
+    for i, line in enumerate(lines, 1):
+        try:
+            em = json.loads(line)
+            to = em.get("to", "")
+            subj = em.get("subject", "")
+            body = em.get("body", "")
+            if not to or not subj:
+                continue
+
+            ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            ok, out = send_email(to, subj, body)
+            if ok:
+                sent += 1
+                print(f"  ✓ [{i}/{len(lines)}] {to}")
+                log_f.write(f"[{ts}] SENT to={to} subj={subj[:50]}\n")
+            else:
+                failed += 1
+                em["last_error"] = out
+                em["last_attempt"] = ts
+                remaining.append(json.dumps(em))
+                print(f"  ✗ [{i}/{len(lines)}] {to}: {out[:80]}")
+                log_f.write(f"[{ts}] FAILED to={to} err={out[:100]}\n")
+
+            # Rate limit: 30s between sends to avoid Gmail rate limiting
+            if i < len(lines):
+                time.sleep(30)
+        except Exception as e:
+            failed += 1
+            print(f"  ✗ [{i}/{len(lines)}] parse error: {e}")
+
+    log_f.close()
+
+    # Re-write queue with only failed entries
+    if remaining:
+        qf.write_text("\n".join(remaining) + "\n")
+    else:
+        qf.write_text("")
+
+    print(f"\nDone: {sent} sent, {failed} failed")
+    return 0 if failed == 0 else 1
+
+def main():
+    args = sys.argv[1:]
+    if not args or "--help" in args:
+        print(__doc__)
+        return 0
+
+    if "--check" in args:
+        return cmd_check()
+    if "--test" in args:
+        return cmd_test()
+    if "--queue" in args:
+        idx = args.index("--queue")
+        return cmd_queue(args[idx+1] if idx+1 < len(args) else str(AGENCY/"data/email_queue.jsonl"))
+    if "--send" in args:
+        idx = args.index("--send")
+        return cmd_send(args[idx+1], args[idx+2], args[idx+3])
+
+    print("Unknown args. Use --test, --check, --send, --queue, or --help")
+    return 1
+
+if __name__ == "__main__":
+    sys.exit(main())
