@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+# run-scheduled-task <task-name>
+# Reads ~/.claude/scheduled-tasks/<task-name>/SKILL.md and fires it as a Claude headless task
+
+TASK="$1"
+SKILL_FILE="$HOME/.claude/scheduled-tasks/$TASK/SKILL.md"
+
+if [ ! -f "$SKILL_FILE" ]; then
+  echo "ERROR: $SKILL_FILE not found" >&2
+  exit 1
+fi
+
+LOG="$HOME/.claude/agency/logs/$TASK.log"
+mkdir -p "$(dirname "$LOG")"
+
+TS=$(date '+%Y-%m-%d %H:%M:%S')
+echo "[$TS] Starting $TASK" | tee -a "$LOG"
+
+# Read the SKILL.md prompt (strip frontmatter)
+PROMPT=$(awk '/^---/{p++; if(p==2){p=0; found=1; next}} found{print}' "$SKILL_FILE")
+
+# Source nvm + env
+export NVM_DIR="$HOME/.nvm"
+[ -s "$NVM_DIR/nvm.sh" ] && source "$NVM_DIR/nvm.sh"
+[ -f "$HOME/.zshrc" ] && source "$HOME/.zshrc" 2>/dev/null || true
+
+# Run via claude CLI (headless)
+echo "$PROMPT" | claude --print --no-streaming 2>>"$LOG" | tee -a "$LOG"
+
+echo "[$TS] $TASK complete" | tee -a "$LOG"
