@@ -1,0 +1,158 @@
+#!/usr/bin/env python3
+"""
+GPT4All Model Downloader — Smart Selection
+Downloads the best models for DigiMinds agency work.
+
+SELECTION CRITERIA:
+  Speed tiers:
+    FAST  (< 2GB) — DeepSeek 1.5B, Llama 3.2 1B/3B  → quick tasks, scoring
+    MID   (2-5GB) — Phi-3, Mistral 7B, Llama 3.1 8B  → proposals, emails
+    SMART (4-5GB) — DeepSeek R1 7B, Nous Hermes 2     → reasoning, audits
+
+  Best for agency:
+    - Proposals/email copy    → Mistral 7B / Nous Hermes 2 (instruction-following)
+    - Reasoning/scoring       → DeepSeek R1 1.5B/7B
+    - Long context (audits)   → Llama 3.1 8B 128k
+    - Fast scoring            → Llama 3.2 3B
+    - Code/LPs                → Qwen2.5-Coder 7B
+
+SKIPPED: 13B+ (too slow on CPU), legacy MPT/Orca 3B, specialized (Starcoder, German)
+"""
+
+import os, sys, time
+from pathlib import Path
+
+MODELS_DIR = Path.home() / "Library/Application Support/nomic.ai/GPT4All"
+
+# Ordered by priority (most useful first)
+DOWNLOAD_QUEUE = [
+    # FAST tier — instant responses, daily scoring
+    {
+        "filename": "DeepSeek-R1-Distill-Qwen-1.5B-Q4_0.gguf",
+        "name": "DeepSeek R1 Distill 1.5B",
+        "size_gb": 1.0,
+        "tier": "FAST",
+        "best_for": "Quick scoring, BDM relevance check, short tasks",
+        "priority": 1,
+    },
+    {
+        "filename": "Llama-3.2-3B-Instruct-Q4_0.gguf",
+        "name": "Llama 3.2 3B Instruct",
+        "size_gb": 1.8,
+        "tier": "FAST",
+        "best_for": "Fast email subjects, quick summaries",
+        "priority": 2,
+    },
+    # MID tier — balanced quality/speed
+    {
+        "filename": "Phi-3-mini-4k-instruct.Q4_0.gguf",
+        "name": "Phi-3 Mini Instruct",
+        "size_gb": 2.1,
+        "tier": "MID",
+        "best_for": "Email body, short proposals, FB comments",
+        "priority": 3,
+    },
+    {
+        "filename": "mistral-7b-instruct-v0.1.Q4_0.gguf",
+        "name": "Mistral 7B Instruct",
+        "size_gb": 3.9,
+        "tier": "MID",
+        "best_for": "Proposals, email sequences, persuasive copy",
+        "priority": 4,
+    },
+    # SMART tier — highest quality offline
+    {
+        "filename": "Nous-Hermes-2-Mistral-7B-DPO.Q4_0.gguf",
+        "name": "Nous Hermes 2 Mistral DPO",
+        "size_gb": 3.9,
+        "tier": "SMART",
+        "best_for": "Following complex instructions, audit generation, BDM scoring",
+        "priority": 5,
+    },
+    {
+        "filename": "DeepSeek-R1-Distill-Qwen-7B-Q4_0.gguf",
+        "name": "DeepSeek R1 Distill 7B",
+        "size_gb": 4.2,
+        "tier": "SMART",
+        "best_for": "Chain-of-thought reasoning, pain point analysis",
+        "priority": 6,
+    },
+    {
+        "filename": "Meta-Llama-3.1-8B-Instruct-128k-Q4_0.gguf",
+        "name": "Llama 3.1 8B Instruct 128k",
+        "size_gb": 4.4,
+        "tier": "SMART",
+        "best_for": "Long-form audits, full proposal context, 128k window",
+        "priority": 7,
+    },
+    {
+        "filename": "qwen2.5-coder-7b-instruct-q4_0.gguf",
+        "name": "Qwen2.5 Coder 7B",
+        "size_gb": 4.2,
+        "tier": "SMART",
+        "best_for": "Landing page analysis, structured data extraction",
+        "priority": 8,
+    },
+    # EMBED tier — for semantic search (tiny, always useful)
+    {
+        "filename": "nomic-embed-text-v1.5.f16.gguf",
+        "name": "Nomic Embed Text v1.5",
+        "size_gb": 0.26,
+        "tier": "EMBED",
+        "best_for": "Semantic similarity, lead scoring, dedup",
+        "priority": 9,
+    },
+]
+
+
+def get_downloaded():
+    return {f.name for f in MODELS_DIR.glob("*.gguf")}
+
+
+def main():
+    import warnings
+    warnings.filterwarnings("ignore")
+    from gpt4all import GPT4All
+
+    downloaded = get_downloaded()
+    pending = [m for m in DOWNLOAD_QUEUE if m["filename"] not in downloaded]
+    already = [m for m in DOWNLOAD_QUEUE if m["filename"] in downloaded]
+
+    total_gb = sum(m["size_gb"] for m in pending)
+
+    print(f"\n{'='*60}")
+    print(f"  GPT4ALL MODEL INSTALLER — DigiMinds Agency")
+    print(f"{'='*60}")
+    print(f"\n✓ Already downloaded ({len(already)}):")
+    for m in already:
+        print(f"  [{m['tier']:5}] {m['name']}")
+
+    print(f"\n⬇ To download ({len(pending)}) — {total_gb:.1f}GB total:")
+    for m in pending:
+        print(f"  [{m['tier']:5}] {m['name']} ({m['size_gb']}GB) — {m['best_for']}")
+
+    if not pending:
+        print("\n✓ All models already downloaded!")
+        return
+
+    print(f"\nStarting downloads...\n")
+
+    for i, model in enumerate(pending, 1):
+        fname = model["filename"]
+        print(f"[{i}/{len(pending)}] Downloading: {model['name']} ({model['size_gb']}GB)...")
+        start = time.time()
+        try:
+            GPT4All(fname)  # downloads if not present
+            elapsed = time.time() - start
+            size = (MODELS_DIR / fname).stat().st_size // 1024 // 1024
+            print(f"  ✓ Done in {elapsed:.0f}s — {size}MB saved to {MODELS_DIR}")
+        except Exception as e:
+            print(f"  ✗ Failed: {e}")
+
+    print(f"\n{'='*60}")
+    print(f"  Download complete. Run: agency-llm-status to verify.")
+    print(f"{'='*60}\n")
+
+
+if __name__ == "__main__":
+    main()
