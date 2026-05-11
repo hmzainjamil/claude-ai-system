@@ -1,0 +1,201 @@
+#!/usr/bin/env python3
+"""
+AGENCY CRM — Pipeline Dashboard + Reply Processor
+Reads Gmail inbox for replies → auto-advances CRM stages.
+Prints full pipeline summary with revenue forecast.
+
+GoHighLevel-equivalent pipeline view in terminal.
+"""
+
+import os, sys, json, datetime
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent))
+from crm import (
+    get_pipeline_summary, get_leads_for_outreach, advance_stage,
+    record_reply, record_bounce, record_unsubscribe, log, _load_db, CRM_DIR
+)
+
+HOME       = Path.home()
+AGENCY_DIR = HOME / ".claude/agency"
+
+# Pipeline stage display config
+STAGE_CONFIG = {
+    "COLD":           {"icon": "❄️ ", "color": "\033[94m",  "group": "cold"},
+    "OUTREACH_1":     {"icon": "📤", "color": "\033[96m",  "group": "cold"},
+    "OUTREACH_2":     {"icon": "📤", "color": "\033[96m",  "group": "cold"},
+    "OUTREACH_3":     {"icon": "📤", "color": "\033[96m",  "group": "cold"},
+    "OUTREACH_4":     {"icon": "💀", "color": "\033[90m",  "group": "cold"},
+    "RESPONDED":      {"icon": "💬", "color": "\033[93m",  "group": "warm"},
+    "QUALIFIED":      {"icon": "⭐", "color": "\033[93m",  "group": "warm"},
+    "AUDIT_SENT":     {"icon": "📊", "color": "\033[93m",  "group": "warm"},
+    "PROPOSAL_SENT":  {"icon": "📋", "color": "\033[95m",  "group": "hot"},
+    "NEGOTIATING":    {"icon": "🤝", "color": "\033[95m",  "group": "hot"},
+    "CLOSED_WON":     {"icon": "💰", "color": "\033[92m",  "group": "closed"},
+    "CLOSED_LOST":    {"icon": "❌", "color": "\033[91m",  "group": "closed"},
+    "UNSUBSCRIBED":   {"icon": "🚫", "color": "\033[90m",  "group": "dead"},
+    "BOUNCED":        {"icon": "⛔", "color": "\033[90m",  "group": "dead"},
+}
+RESET = "\033[0m"
+
+
+def print_pipeline():
+    summary = get_pipeline_summary()
+    db = _load_db()
+    today = datetime.date.today().strftime("%B %d, %Y")
+
+    print(f"\n{'═'*65}")
+    print(f"  DIGIMINDS AGENCY — CRM PIPELINE  |  {today}")
+    print(f"{'═'*65}")
+
+    # Group display
+    groups = {
+        "cold":   ("COLD OUTREACH",   []),
+        "warm":   ("WARM / ENGAGED",  []),
+        "hot":    ("HOT / CLOSING",   []),
+        "closed": ("CLOSED",          []),
+        "dead":   ("INACTIVE",        []),
+    }
+
+    for stage, cfg in STAGE_CONFIG.items():
+        count = summary["by_stage"].get(stage, 0)
+        groups[cfg["group"]][1].append((stage, count, cfg))
+
+    for gkey, (gname, items) in groups.items():
+        total = sum(c for _, c, _ in items)
+        if total == 0 and gkey in ("dead",):
+            continue
+        print(f"\n  ── {gname} ({'%d leads'%total}) {'─'*(40-len(gname))}")
+        for stage, count, cfg in items:
+            bar = "█" * min(count, 20)
+            color = cfg["color"]
+            icon = cfg["icon"]
+            print(f"  {color}{icon} {stage:<18} {count:>4}  {bar}{RESET}")
+
+    # Revenue summary
+    print(f"\n{'─'*65}")
+    active = summary["in_active_pipeline"]
+    rev    = summary["projected_revenue"]
+    won    = summary["by_stage"].get("CLOSED_WON", 0)
+    print(f"  Active Pipeline:    {active} leads")
+    print(f"  Projected Revenue:  ${rev:,.0f}  (30% close × $2,500 avg)")
+    print(f"  Won This Cycle:     {won} clients")
+
+    # Benchmarks vs actuals
+    print(f"\n  DELIVERABILITY BENCHMARKS:")
+    sent_total = sum(len(l.get("emails_sent",[])) for l in db["leads"].values())
+    replied    = sum(1 for l in db["leads"].values() if l.get("replies"))
+    qualified  = summary["by_stage"].get("QUALIFIED",0) + summary["by_stage"].get("PROPOSAL_SENT",0)
+    if sent_total > 0:
+        reply_rate = replied / sent_total
+        print(f"  Reply Rate:         {reply_rate:.1%}  (target > 3.5%)")
+    if replied > 0:
+        sql_rate = qualified / replied if replied else 0
+        print(f"  SQL Rate:           {sql_rate:.0%}  (target > 25%)")
+    print(f"  Total Contacted:    {sent_total}")
+    print(f"  Total Replied:      {replied}")
+    print()
+
+
+def process_inbox_replies():
+    """
+    Check Gmail inbox for replies to outreach.
+    This prints MCP commands that Claude Code executes via Gmail MCP.
+    In production: Gmail MCP search_threads + get_thread for reply detection.
+    """
+    print("\n=== INBOX REPLY PROCESSING ===")
+    print("Search Gmail for replies to cold outreach:")
+    print("  → Use Gmail MCP: search_threads query='from:* to:zulqarnain@digiminds.org is:unread'")
+    print("  → For each reply: run crm-dashboard --mark-replied <email> <reply_text>")
+    print()
+
+
+def mark_replied(email, reply_text="", is_positive=True):
+    """Mark a lead as having replied — called from CLI."""
+    record_reply(email, reply_text, is_positive)
+    log(f"Reply recorded: {email} | positive={is_positive}")
+    print(f"✓ {email} → RESPONDED (stage advanced)")
+
+
+def mark_unsubscribed(email):
+    record_unsubscribe(email)
+    print(f"✓ {email} → UNSUBSCRIBED")
+
+
+def mark_qualified(email, deal_value=0, notes=""):
+    advance_stage(email, "QUALIFIED", notes)
+    if deal_value:
+        from crm import _load_db, _save_db, lead_id
+        db = _load_db()
+        lid = lead_id(email)
+        if lid in db["leads"]:
+            db["leads"][lid]["deal_value"] = deal_value
+            _save_db(db)
+    print(f"✓ {email} → QUALIFIED (deal: ${deal_value})")
+
+
+def mark_closed_won(email, deal_value=0):
+    advance_stage(email, "CLOSED_WON", f"Deal closed: ${deal_value}")
+    from crm import _load_db, _save_db, lead_id
+    db = _load_db()
+    lid = lead_id(email)
+    if lid in db["leads"]:
+        db["leads"][lid]["deal_value"] = deal_value
+        _save_db(db)
+    print(f"🎉 CLOSED WON: {email} | ${deal_value}")
+
+
+def list_hot_leads():
+    """Print leads requiring immediate attention."""
+    db = _load_db()
+    hot_stages = {"RESPONDED", "QUALIFIED", "NEGOTIATING"}
+    hot = [l for l in db["leads"].values() if l.get("stage") in hot_stages]
+    hot.sort(key=lambda x: x.get("score",0), reverse=True)
+
+    print(f"\n🔥 HOT LEADS REQUIRING ATTENTION ({len(hot)}):")
+    for lead in hot[:10]:
+        print(f"  {lead['stage']:<18} {lead.get('email',''):<35} {lead.get('company','')[:25]:<25} score={lead.get('score',0)}")
+    print()
+
+
+def main():
+    args = sys.argv[1:]
+
+    if "--mark-replied" in args:
+        idx = args.index("--mark-replied")
+        email = args[idx+1] if len(args) > idx+1 else ""
+        reply = args[idx+2] if len(args) > idx+2 else ""
+        mark_replied(email, reply)
+        return
+
+    if "--mark-qualified" in args:
+        idx = args.index("--mark-qualified")
+        email = args[idx+1] if len(args) > idx+1 else ""
+        value = int(args[idx+2]) if len(args) > idx+2 else 0
+        mark_qualified(email, value)
+        return
+
+    if "--mark-won" in args:
+        idx = args.index("--mark-won")
+        email = args[idx+1] if len(args) > idx+1 else ""
+        value = int(args[idx+2]) if len(args) > idx+2 else 2500
+        mark_closed_won(email, value)
+        return
+
+    if "--unsubscribe" in args:
+        idx = args.index("--unsubscribe")
+        email = args[idx+1] if len(args) > idx+1 else ""
+        mark_unsubscribed(email)
+        return
+
+    if "--hot" in args:
+        list_hot_leads()
+        return
+
+    # Default: full dashboard
+    print_pipeline()
+    list_hot_leads()
+    process_inbox_replies()
+
+
+if __name__ == "__main__":
+    main()
