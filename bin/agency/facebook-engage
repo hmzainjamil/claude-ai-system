@@ -1,0 +1,223 @@
+#!/usr/bin/env python3
+"""
+AGENCY ORCHESTRATOR — Phase 0.5: Facebook Group Engagement
+Visits joined Facebook groups, finds posts with ads/marketing problems,
+posts short humanized expert comments to build visibility.
+
+STRATEGY:
+- NOT promotional. Never mention DigiMinds directly in comments.
+- Short, crisp, genuinely helpful answers (3-5 sentences max)
+- Goal: client sees expertise, checks profile, finds DigiMinds link
+- Tracks commented posts to avoid re-commenting (looks spammy)
+
+Uses: OpenClaw → Brave browser (already logged into Facebook)
+LLM:  G0DM0D3 / Groq (zero Claude tokens)
+"""
+
+import os, sys, json, datetime, requests, time, re
+from pathlib import Path
+
+# ── SECURITY LOCK — Facebook access disabled 2026-04-30 ──────────
+# User disabled all Facebook account access to prevent hacking risk.
+# OpenClaw will NOT be used to access Facebook.
+# To re-enable: remove the sys.exit() line below.
+print("[facebook-engage] ⛔ DISABLED — Facebook account access locked for security.")
+print("[facebook-engage] BDM pipeline continues without Facebook. Reddit + LinkedIn active.")
+sys.exit(0)
+# ──────────────────────────────────────────────────────────────────
+
+HOME      = Path.home()
+AGENCY_DIR = HOME / ".claude/agency"
+LOG_FILE  = AGENCY_DIR / "logs/facebook_engage.log"
+DATA_DIR  = AGENCY_DIR / "data"
+SEEN_FILE = DATA_DIR / "fb_seen_posts.json"   # prevents re-commenting
+
+OPENCLAW_API  = "http://127.0.0.1:18789"
+GROQ_API_KEY  = os.environ.get("GROQ_API_KEY", "")
+GROQ_URL      = "https://api.groq.com/openai/v1/chat/completions"
+GROQ_MODEL    = "llama-3.1-8b-instant"
+G0DM0DE_BASE  = os.environ.get("G0DM0D3_API", "http://localhost:7860")
+G0DM0DE_URL   = f"{G0DM0DE_BASE}/v1/ultraplinian/completions"
+G0DM0DE_KEY   = os.environ.get("G0DM0D3_KEY", "")
+
+# ── CONFIG ────────────────────────────────────────────────────────────────────
+MAX_COMMENTS_PER_RUN = 5     # max comments posted per daily run
+MAX_COMMENTS_PER_GROUP = 2   # per group (avoid looking like a bot)
+COMMENT_DELAY_SECONDS = 45   # human-like pause between comments
+
+# Facebook groups/pages you've already joined — add your own group URLs here
+FB_GROUPS = [
+    # Add your group URLs. Examples:
+    # "https://www.facebook.com/groups/facebookadsmastery",
+    # "https://www.facebook.com/groups/digitalmarketingquestions",
+    # "https://www.facebook.com/groups/ppcchat",
+    # "https://www.facebook.com/groups/metaadsexperts",
+]
+
+# Problem keywords that signal someone needs help (worth commenting on)
+PROBLEM_KEYWORDS = [
+    "roas", "cpa", "not converting", "no results", "wasting money",
+    "ads not working", "low roas", "high cpa", "campaign failing",
+    "facebook ads", "meta ads", "google ads not", "help with ads",
+    "struggling with", "anyone know why", "what am i doing wrong",
+    "should i", "how do i fix", "my ads are", "burning budget",
+    "cost per lead", "cost per click", "quality score", "ad rejected",
+    "disapproved", "account disabled", "pixel not", "tracking broken",
+    "attribution", "no sales", "leads but no", "traffic but no"
+]
+
+def log(msg):
+    ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    line = f"[{ts}] {msg}"
+    print(line)
+    LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
+    with open(LOG_FILE, "a") as f:
+        f.write(line + "\n")
+
+def load_seen():
+    if SEEN_FILE.exists():
+        return set(json.loads(SEEN_FILE.read_text()))
+    return set()
+
+def save_seen(seen):
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    SEEN_FILE.write_text(json.dumps(list(seen)))
+
+def openclaw_task(action, payload, timeout=60):
+    """Send task to OpenClaw/Agent37 (controls Brave browser)."""
+    try:
+        r = requests.post(
+            f"{OPENCLAW_API}/v1/task",
+            json={"action": action, "payload": payload},
+            timeout=timeout
+        )
+        return r.json() if r.status_code == 200 else {"error": r.text}
+    except Exception as e:
+        return {"error": str(e)}
+
+
+def is_worth_commenting(post_text):
+    """Returns True if post has a genuine problem worth answering."""
+    text_lower = post_text.lower()
+    return any(kw in text_lower for kw in PROBLEM_KEYWORDS)
+
+def generate_comment(post_text):
+    """Generate a short, human, non-salesy expert comment."""
+    prompt = f"""You are Hafiz, a Meta Ads + Google Ads expert with 5+ years experience.
+Someone in a Facebook marketing group posted this:
+
+\"\"\"{post_text[:600]}\"\"\"
+
+Write a SHORT helpful comment (3-5 sentences MAX). Rules:
+- Sound like a real person, not a consultant
+- Give ONE specific actionable insight or diagnosis
+- No fluff, no "great question!", no "I'd love to help!"
+- Do NOT mention your agency or promote yourself
+- Do NOT say "feel free to DM me" or "check my profile"
+- Just be genuinely useful — expertise speaks for itself
+- Conversational tone, like replying to a friend
+
+Write ONLY the comment text:"""
+
+    return call_llm(prompt, max_tokens=150)
+
+def get_group_posts(group_url):
+    """
+    Use OpenClaw to navigate to Facebook group and extract recent posts.
+    Returns list of {post_id, text, url, author}
+    """
+    result = openclaw_task("facebook_get_posts", {
+        "url": group_url,
+        "max_posts": 20,
+        "filter_keywords": PROBLEM_KEYWORDS
+    }, timeout=90)
+
+    if result.get("error"):
+        log(f"  FB get_posts FAILED for {group_url}: {result['error']}")
+        return []
+
+    return result.get("posts", [])
+
+def post_comment(post_url, comment_text):
+    """Use OpenClaw to post a comment on a Facebook post."""
+    result = openclaw_task("facebook_comment", {
+        "post_url": post_url,
+        "comment": comment_text
+    }, timeout=60)
+
+    if result.get("error"):
+        log(f"  FB comment FAILED: {result['error']}")
+        return False
+    return True
+
+def main():
+    log("=== FACEBOOK ENGAGEMENT PHASE ===")
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+
+    if not FB_GROUPS:
+        log("No Facebook groups configured. Add group URLs to FB_GROUPS list.")
+        log("Edit: ~/.claude/bin/agency/facebook-engage → FB_GROUPS array")
+        return []
+
+    seen = load_seen()
+    total_commented = 0
+    results = []
+
+    for group_url in FB_GROUPS:
+        if total_commented >= MAX_COMMENTS_PER_RUN:
+            log(f"  STOP: Daily comment cap ({MAX_COMMENTS_PER_RUN}) reached")
+            break
+
+        log(f"Visiting: {group_url}")
+        posts = get_group_posts(group_url)
+        log(f"  Found {len(posts)} posts")
+
+        group_comments = 0
+        for post in posts:
+            if total_commented >= MAX_COMMENTS_PER_RUN:
+                break
+            if group_comments >= MAX_COMMENTS_PER_GROUP:
+                break
+
+            post_id = post.get("post_id", post.get("url", ""))
+            if post_id in seen:
+                continue
+
+            post_text = post.get("text", "")
+            if not post_text or not is_worth_commenting(post_text):
+                continue
+
+            log(f"  Generating comment for: {post_text[:80]}...")
+            comment = generate_comment(post_text)
+            if not comment:
+                log(f"  LLM failed — skipping")
+                continue
+
+            log(f"  Comment: {comment[:100]}...")
+            success = post_comment(post.get("url", group_url), comment)
+
+            if success:
+                seen.add(post_id)
+                group_comments += 1
+                total_commented += 1
+                results.append({
+                    "group": group_url,
+                    "post_text": post_text[:200],
+                    "comment": comment,
+                    "posted_at": datetime.datetime.now().isoformat()
+                })
+                log(f"  ✓ Commented [{total_commented}/{MAX_COMMENTS_PER_RUN}]")
+                time.sleep(COMMENT_DELAY_SECONDS)
+
+    save_seen(seen)
+    log(f"=== Facebook engagement done: {total_commented} comments posted ===")
+
+    # Save today's engagement log
+    if results:
+        log_file = DATA_DIR / f"fb_engage_{datetime.date.today().strftime('%Y%m%d')}.json"
+        log_file.write_text(json.dumps(results, indent=2))
+
+    return results
+
+if __name__ == "__main__":
+    main()
