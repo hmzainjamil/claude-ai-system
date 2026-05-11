@@ -1,0 +1,101 @@
+#!/usr/bin/env python3
+"""
+LOGIN MONITOR — watches cookie DB for successful logins, runs submissions when ready.
+Run this while you're logging into platforms.
+Auto-starts platform-submit as each platform logs in.
+"""
+import sqlite3, time, json, subprocess, sys
+from pathlib import Path
+
+HOME     = Path.home()
+COOKIE_DB = HOME / ".claude/agency/browser-profile/Default/Cookies"
+LOG      = HOME / ".claude/agency/logs/login-monitor.log"
+BIN      = HOME / ".claude/bin/agency"
+
+AUTH_COOKIES = {
+    "upwork":        ["ubsid", "oauth2_global_js_token", "master_access_token", "visitor_uid"],
+    "linkedin":      ["li_at", "liap"],
+    "reddit":        ["reddit_session", "token_v2", "loid"],
+    "freelancer":    ["PHPSESSID", "user_id", "auth"],
+    "guru":          ["PHPSESSID", "gurucookie", "auth"],
+    "peopleperhour": ["session", "auth", "phpsessid"],
+    "bark":          ["session", "auth_token"],
+}
+
+# Any cookie containing these strings counts as "logged in"
+AUTH_SUBSTR = ["session", "auth", "token", "sid", "logged", "user_id", "li_at",
+               "ubsid", "jwt", "remember", "login", "account"]
+
+def log(msg):
+    ts = time.strftime("%H:%M:%S")
+    line = f"[{ts}] {msg}"
+    print(line, flush=True)
+    with open(LOG, "a") as f:
+        f.write(line + "\n")
+
+def get_logged_in():
+    """Read cookie DB and return set of logged-in platforms."""
+    logged = set()
+    try:
+        conn = sqlite3.connect(f"file:{COOKIE_DB}?mode=ro&immutable=1", uri=True)
+        cur = conn.cursor()
+        for platform, auth_cookies in AUTH_COOKIES.items():
+            # Check for specific auth cookies
+            for ac in auth_cookies:
+                cur.execute(
+                    "SELECT COUNT(*) FROM cookies WHERE host_key LIKE ? AND name LIKE ?",
+                    (f'%{platform.replace("peopleperhour","peopleperhour")}%', f'%{ac}%')
+                )
+                if cur.fetchone()[0] > 0:
+                    logged.add(platform)
+                    break
+            # Also check by substring
+            if platform not in logged:
+                cur.execute(
+                    "SELECT name FROM cookies WHERE host_key LIKE ?",
+                    (f'%{platform.split(".")[0]}%',)
+                )
+                rows = [r[0].lower() for r in cur.fetchall()]
+                if any(any(a in r for a in AUTH_SUBSTR) for r in rows):
+                    logged.add(platform)
+
+        conn.close()
+    except Exception as e:
+        pass
+    return logged
+
+def main():
+    LOG.parent.mkdir(parents=True, exist_ok=True)
+    log("LOGIN MONITOR STARTED")
+    log("Watching for Upwork, LinkedIn, Reddit, Freelancer, Guru, PPH, Bark...")
+    log("Log into each platform in the browser. This script will detect when ready.")
+    log()
+
+    previously_logged = get_logged_in()
+    submitted = set()
+
+    if previously_logged:
+        log(f"Already logged in: {', '.join(previously_logged)}")
+
+    deadline = time.time() + 600  # 10 min timeout
+
+    while time.time() < deadline:
+        time.sleep(5)
+        current = get_logged_in()
+        new_logins = current - previously_logged
+
+        for platform in new_logins:
+            log(f"✓ DETECTED LOGIN: {platform.upper()}")
+
+        if new_logins:
+            previously_logged = current
+
+        # Print current status every 30s
+        if int(time.time()) % 30 == 0:
+            total = len(current)
+            log(f"Status: {total}/7 platforms logged in: {', '.join(sorted(current)) or 'none'}")
+
+    log("Monitor timeout. Run: python3 platform-submit --run")
+
+if __name__ == "__main__":
+    main()
