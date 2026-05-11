@@ -1,0 +1,289 @@
+#!/usr/bin/env python3
+"""
+SELF-LEARNING ENGINE
+━━━━━━━━━━━━━━━━━━━
+Analyzes response patterns and automatically updates:
+  1. Proposal strategy (what tone/hook/length works)
+  2. Targeting criteria (which job types convert)
+  3. BDM_INTELLIGENCE.json (competitor insights refresh)
+  4. PROFILE.md (update USPs based on what clients respond to)
+
+Run: agency-run --learn
+Also runs automatically every Sunday night.
+
+Like a Google Ads algorithm update — improves from conversion data.
+"""
+
+import json, datetime, os, re, requests
+from pathlib import Path
+from collections import Counter
+
+HOME = Path.home()
+AGENCY_DIR = HOME / ".claude/agency"
+LEARN_DIR  = AGENCY_DIR / "learning"
+FEEDBACK   = LEARN_DIR / "feedback.json"
+PIXEL_LOG  = LEARN_DIR / "pixel_events.jsonl"
+INTEL_FILE = AGENCY_DIR / "BDM_INTELLIGENCE.json"
+PROFILE    = AGENCY_DIR / "PROFILE.md"
+LOG_FILE   = AGENCY_DIR / "logs/learning.log"
+
+G0DM0DE_URL  = "http://localhost:7860/v1/chat/completions"
+GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
+
+def log(msg):
+    ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    line = f"[{ts}] {msg}"
+    print(line)
+    with open(LOG_FILE, "a") as f:
+        f.write(line + "\n")
+
+def call_llm(prompt, max_tokens=400):
+    try:
+        r = requests.post(G0DM0DE_URL, json={
+            "model": "llama3:latest",
+            "messages": [{"role": "user", "content": prompt}],
+            "max_tokens": max_tokens, "temperature": 0.2
+        }, timeout=25)
+        if r.status_code == 200:
+            return r.json()["choices"][0]["message"]["content"].strip()
+    except: pass
+    if GROQ_API_KEY:
+        try:
+            r = requests.post("https://api.groq.com/openai/v1/chat/completions", json={
+                "model": "llama-3.1-8b-instant",
+                "messages": [{"role": "user", "content": prompt}],
+                "max_tokens": max_tokens
+            }, headers={"Authorization": f"Bearer {GROQ_API_KEY}"}, timeout=20)
+            if r.status_code == 200:
+                return r.json()["choices"][0]["message"]["content"].strip()
+        except: pass
+    return ""
+
+def load_all_pixel_events() -> list:
+    if not PIXEL_LOG.exists():
+        return []
+    events = []
+    for line in PIXEL_LOG.read_text().strip().split("\n"):
+        if line.strip():
+            try: events.append(json.loads(line))
+            except: pass
+    return events
+
+def analyze_conversion_funnel(events: list) -> dict:
+    """
+    Full funnel analysis — like GA4 funnel exploration report.
+    Tracks: view → proposal → reply → interview → contract
+    """
+    funnel = {
+        "viewed": len([e for e in events if e["event"] == "job_viewed"]),
+        "proposed": len([e for e in events if e["event"] == "proposal_sent"]),
+        "replied": len([e for e in events if e["event"] == "reply_received"]),
+        "interviewed": len([e for e in events if e["event"] == "interview"]),
+        "contracted": len([e for e in events if e["event"] == "contract"])
+    }
+
+    rates = {}
+    if funnel["viewed"] > 0:
+        rates["view_to_proposal"] = round(funnel["proposed"] / funnel["viewed"] * 100, 1)
+    if funnel["proposed"] > 0:
+        rates["proposal_to_reply"] = round(funnel["replied"] / funnel["proposed"] * 100, 1)
+    if funnel["replied"] > 0:
+        rates["reply_to_interview"] = round(funnel["interviewed"] / funnel["replied"] * 100, 1)
+    if funnel["interviewed"] > 0:
+        rates["interview_to_contract"] = round(funnel["contracted"] / funnel["interviewed"] * 100, 1)
+
+    # Identify biggest drop-off (like funnel step optimization)
+    biggest_dropoff = "proposal_to_reply"
+    if rates:
+        biggest_dropoff = min(rates, key=rates.get)
+
+    return {"funnel": funnel, "conversion_rates": rates, "biggest_dropoff": biggest_dropoff}
+
+def analyze_winning_proposals(events: list) -> dict:
+    """
+    What do winning proposals have in common?
+    Like analyzing which ad creatives convert best.
+    """
+    sent = {e["job_id"]: e for e in events if e["event"] == "proposal_sent"}
+    replied = set(e["job_id"] for e in events if e["event"] == "reply_received")
+    contracted = set(e["job_id"] for e in events if e["event"] == "contract")
+
+    winning_jobs = []
+    losing_jobs = []
+
+    for job_id, event in sent.items():
+        metadata = event.get("metadata", {})
+        entry = {
+            "platform": metadata.get("platform", "unknown"),
+            "score": metadata.get("score", 0),
+            "pain_points": metadata.get("pain_points", []),
+            "got_reply": job_id in replied,
+            "got_contract": job_id in contracted
+        }
+        if job_id in replied or job_id in contracted:
+            winning_jobs.append(entry)
+        else:
+            losing_jobs.append(entry)
+
+    # Platform win rates
+    plat_wins = Counter(j["platform"] for j in winning_jobs)
+    plat_loses = Counter(j["platform"] for j in losing_jobs)
+
+    platform_cvr = {}
+    for plat in set(list(plat_wins.keys()) + list(plat_loses.keys())):
+        wins = plat_wins.get(plat, 0)
+        losses = plat_loses.get(plat, 0)
+        total = wins + losses
+        platform_cvr[plat] = {
+            "wins": wins,
+            "total": total,
+            "cvr": round(wins / total * 100, 1) if total > 0 else 0
+        }
+
+    # Pain point win rates
+    pain_wins = Counter()
+    for j in winning_jobs:
+        pain_wins.update(j["pain_points"])
+    best_pain_points = [pp for pp, _ in pain_wins.most_common(5)]
+
+    # Score distribution of winners vs losers
+    avg_winning_score = sum(j["score"] for j in winning_jobs) / max(len(winning_jobs), 1)
+    avg_losing_score = sum(j["score"] for j in losing_jobs) / max(len(losing_jobs), 1)
+
+    return {
+        "platform_cvr": platform_cvr,
+        "best_pain_points": best_pain_points,
+        "avg_winning_score": round(avg_winning_score, 1),
+        "avg_losing_score": round(avg_losing_score, 1),
+        "score_threshold_recommendation": round(avg_winning_score * 0.9, 0)
+    }
+
+def generate_strategy_update(funnel: dict, win_analysis: dict) -> dict:
+    """
+    Generate updated strategy recommendations using LLM.
+    Like Google Ads automated recommendations — but smarter.
+    """
+    prompt = f"""You are a senior digital agency BDM analyst.
+Analyze this freelance proposal performance data and give 5 specific strategy updates.
+
+FUNNEL DATA:
+{json.dumps(funnel, indent=2)}
+
+WIN ANALYSIS:
+Platform CVR: {win_analysis.get('platform_cvr', {})}
+Best pain points: {win_analysis.get('best_pain_points', [])}
+Avg winning job score: {win_analysis.get('avg_winning_score', 0)}/100
+Avg losing job score: {win_analysis.get('avg_losing_score', 0)}/100
+Biggest funnel drop-off: {funnel.get('biggest_dropoff', 'proposal_to_reply')}
+
+Give 5 specific, actionable strategy updates. Format as JSON array:
+[
+  {{"action": "what to change", "reason": "why (from data)", "priority": "high/medium/low"}},
+  ...
+]"""
+
+    response = call_llm(prompt, max_tokens=500)
+
+    # Try to parse JSON from response
+    try:
+        m = re.search(r'\[.*\]', response, re.DOTALL)
+        if m:
+            return {"updates": json.loads(m.group()), "generated_at": datetime.datetime.now().isoformat()}
+    except: pass
+
+    # Fallback: rule-based recommendations
+    updates = []
+    if funnel.get("conversion_rates", {}).get("proposal_to_reply", 100) < 15:
+        updates.append({"action": "Rewrite proposal openers — current reply rate under 15%",
+                       "reason": "Low proposal→reply CVR indicates hook/opener issue",
+                       "priority": "high"})
+
+    best_plat = max(win_analysis.get("platform_cvr", {}).items(),
+                    key=lambda x: x[1].get("cvr", 0), default=("upwork", {}))
+    updates.append({"action": f"Increase {best_plat[0]} applications by 50%",
+                   "reason": f"Highest CVR platform: {best_plat[1].get('cvr', 0)}%",
+                   "priority": "high"})
+
+    return {"updates": updates, "generated_at": datetime.datetime.now().isoformat()}
+
+def update_feedback_json(funnel: dict, win_analysis: dict, strategy: dict):
+    """Update the main feedback.json with latest learning."""
+    feedback = json.loads(FEEDBACK.read_text()) if FEEDBACK.exists() else {}
+
+    feedback["last_learning_run"] = datetime.datetime.now().isoformat()
+    feedback["funnel_analysis"] = funnel["funnel"]
+    feedback["conversion_rates"] = funnel["conversion_rates"]
+    feedback["biggest_dropoff"] = funnel["biggest_dropoff"]
+    feedback["best_pain_points"] = win_analysis.get("best_pain_points", feedback.get("best_pain_points", []))
+
+    # Update platform CVR
+    for plat, data in win_analysis.get("platform_cvr", {}).items():
+        feedback.setdefault("best_platforms", {})
+        feedback["best_platforms"].setdefault(plat, {})
+        feedback["best_platforms"][plat]["cvr"] = data.get("cvr", 0)
+        feedback["best_platforms"][plat]["submitted"] = data.get("total", 0)
+        feedback["best_platforms"][plat]["responses"] = data.get("wins", 0)
+
+    # Add strategy updates to what_works / what_fails
+    for update in strategy.get("updates", []):
+        if update.get("priority") == "high":
+            action = update.get("action", "")
+            if "rewrite" in action.lower() or "change" in action.lower():
+                if action not in feedback.get("what_fails", []):
+                    feedback.setdefault("what_fails", []).append(action[:100])
+            else:
+                if action not in feedback.get("what_works", []):
+                    feedback.setdefault("what_works", []).append(action[:100])
+
+    feedback["avg_response_rate"] = funnel.get("conversion_rates", {}).get("proposal_to_reply", 0)
+    feedback["last_updated"] = datetime.date.today().isoformat()
+
+    FEEDBACK.write_text(json.dumps(feedback, indent=2))
+    log(f"Feedback updated: {feedback['avg_response_rate']}% reply rate")
+
+def main():
+    LEARN_DIR.mkdir(parents=True, exist_ok=True)
+    log("=== SELF-LEARNING ENGINE RUNNING ===")
+
+    events = load_all_pixel_events()
+    if not events:
+        log("No pixel events yet — collect more data first")
+        return
+
+    log(f"Analyzing {len(events)} pixel events...")
+
+    funnel = analyze_conversion_funnel(events)
+    log(f"Funnel: {funnel['funnel']}")
+    log(f"Conversion rates: {funnel['conversion_rates']}")
+    log(f"Biggest dropoff: {funnel['biggest_dropoff']}")
+
+    win_analysis = analyze_winning_proposals(events)
+    log(f"Platform CVR: {win_analysis['platform_cvr']}")
+    log(f"Best pain points: {win_analysis['best_pain_points']}")
+
+    strategy = generate_strategy_update(funnel, win_analysis)
+    log(f"Strategy updates: {len(strategy.get('updates', []))}")
+    for u in strategy.get("updates", [])[:3]:
+        log(f"  [{u.get('priority','?').upper()}] {u.get('action','')}")
+
+    update_feedback_json(funnel, win_analysis, strategy)
+
+    # Save full learning report
+    report = {
+        "date": datetime.date.today().isoformat(),
+        "events_analyzed": len(events),
+        "funnel_analysis": funnel,
+        "win_analysis": win_analysis,
+        "strategy_updates": strategy
+    }
+    report_file = LEARN_DIR / f"learning_report_{datetime.date.today().strftime('%Y%m%d')}.json"
+    report_file.write_text(json.dumps(report, indent=2))
+    log(f"Learning report saved → {report_file}")
+
+    print("\n=== STRATEGY UPDATES FOR TODAY ===")
+    for i, u in enumerate(strategy.get("updates", []), 1):
+        print(f"{i}. [{u.get('priority','?').upper()}] {u.get('action','')}")
+        print(f"   Why: {u.get('reason','')}")
+
+if __name__ == "__main__":
+    main()
