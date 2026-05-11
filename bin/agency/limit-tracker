@@ -1,0 +1,157 @@
+#!/usr/bin/env python3
+"""
+AGENCY — API Limit Tracker
+Tracks daily/monthly usage for all APIs. Auto-scales batch sizes to stay within limits.
+Usage:
+  limit-tracker log <api> <type> <count>   # log usage
+  limit-tracker check <api>               # check if OK to proceed
+  limit-tracker status                    # print all limits
+  limit-tracker reset-daily               # reset daily counters (called by health-check at midnight)
+"""
+import os, sys, json, datetime
+from pathlib import Path
+
+HOME        = Path.home()
+AGENCY_DIR  = HOME / ".claude/agency"
+LIMITS_DIR  = AGENCY_DIR / "limits"
+CONFIG_FILE = LIMITS_DIR / "limits_config.json"
+USAGE_FILE  = LIMITS_DIR / "usage.json"
+
+TODAY   = datetime.date.today().isoformat()
+MONTH   = datetime.date.today().strftime("%Y-%m")
+
+def load_config():
+    return json.loads(CONFIG_FILE.read_text()) if CONFIG_FILE.exists() else {}
+
+def load_usage():
+    if USAGE_FILE.exists():
+        return json.loads(USAGE_FILE.read_text())
+    return {"daily": {}, "monthly": {}, "last_reset": TODAY}
+
+def save_usage(u):
+    USAGE_FILE.write_text(json.dumps(u, indent=2))
+
+def ensure_keys(usage, api):
+    usage["daily"].setdefault(TODAY, {})
+    usage["daily"][TODAY].setdefault(api, {"requests": 0, "tokens": 0, "usd": 0.0})
+    usage["monthly"].setdefault(MONTH, {})
+    usage["monthly"][MONTH].setdefault(api, {"requests": 0, "tokens": 0, "usd": 0.0})
+    return usage
+
+def log_usage(api, utype, count):
+    usage = load_usage()
+    usage = ensure_keys(usage, api)
+    if utype == "requests":
+        usage["daily"][TODAY][api]["requests"] += count
+        usage["monthly"][MONTH][api]["requests"] += count
+    elif utype == "tokens":
+        usage["daily"][TODAY][api]["tokens"] += count
+        usage["monthly"][MONTH][api]["tokens"] += count
+    elif utype == "usd":
+        usage["daily"][TODAY][api]["usd"] += count
+        usage["monthly"][MONTH][api]["usd"] += count
+    save_usage(usage)
+
+def check_limit(api):
+    """Returns: (ok: bool, reason: str, suggested_batch_size: int)"""
+    config = load_config()
+    usage  = load_usage()
+    cfg    = config.get(api, {})
+    today_usage = usage.get("daily", {}).get(TODAY, {}).get(api, {"requests": 0, "tokens": 0, "usd": 0.0})
+
+    if api == "groq":
+        req_used  = today_usage.get("requests", 0)
+        tok_used  = today_usage.get("tokens", 0)
+        req_safe  = cfg.get("safe_daily_requests", 12000)
+        tok_safe  = cfg.get("safe_daily_tokens", 400000)
+        req_limit = cfg.get("daily_requests", 14400)
+        tok_limit = cfg.get("daily_tokens", 500000)
+
+        if req_used >= req_limit or tok_used >= tok_limit:
+            return False, f"groq LIMIT HIT: {req_used}/{req_limit} req, {tok_used}/{tok_limit} tok", 0
+        if req_used >= req_safe or tok_used >= tok_safe:
+            # Reduce batch to 50%
+            remaining_req = req_limit - req_used
+            batch = max(5, min(50, remaining_req // 3))
+            return True, f"groq near limit ({req_used}/{req_safe} safe) — reduced batch to {batch}", batch
+        remaining = req_limit - req_used
+        return True, f"groq OK: {req_used}/{req_limit} req used", min(110, remaining // 3)
+
+    elif api == "apify_rag":
+        req_used = usage.get("daily", {}).get(TODAY, {}).get(api, {}).get("requests", 0)
+        safe     = cfg.get("safe_daily_requests", 40)
+        max_d    = cfg.get("max_daily_requests", 50)
+        if req_used >= max_d:
+            return False, f"apify LIMIT: {req_used}/{max_d} daily requests", 0
+        if req_used >= safe:
+            return True, f"apify near limit ({req_used}/{safe})", max_d - req_used
+        return True, f"apify OK: {req_used}/{safe} safe req used", safe - req_used
+
+    elif api == "reddit":
+        req_used = today_usage.get("requests", 0)
+        safe     = cfg.get("safe_posts_per_day", 8)
+        max_d    = cfg.get("posts_per_day", 10)
+        if req_used >= max_d:
+            return False, f"reddit POST LIMIT: {req_used}/{max_d}", 0
+        return True, f"reddit OK: {req_used}/{max_d} posts", max_d - req_used
+
+    elif api == "glm":
+        req_used = today_usage.get("requests", 0)
+        safe     = cfg.get("safe_daily_requests", 800)
+        max_d    = cfg.get("daily_requests", 1000)
+        if req_used >= max_d:
+            return False, f"glm LIMIT: {req_used}/{max_d}", 0
+        if req_used >= safe:
+            return True, f"glm near limit ({req_used}/{safe})", max(5, (max_d - req_used) // 2)
+        return True, f"glm OK: {req_used}/{safe}", min(50, max_d - req_used)
+
+    return True, f"{api}: no limit config, proceeding", 999
+
+def get_status():
+    config  = load_config()
+    usage   = load_usage()
+    lines   = [f"{'='*55}", f"API LIMIT STATUS — {TODAY}", f"{'='*55}"]
+    for api in ["groq","glm","apify_rag","openrouter","reddit","gmail","ollama"]:
+        cfg  = config.get(api, {})
+        tu   = usage.get("daily",{}).get(TODAY,{}).get(api,{"requests":0,"tokens":0,"usd":0.0})
+        mu   = usage.get("monthly",{}).get(MONTH,{}).get(api,{"requests":0,"tokens":0,"usd":0.0})
+        ok, reason, batch = check_limit(api)
+        status = "✓ OK" if ok else "✗ LIMIT"
+        plan = cfg.get("plan","unknown")
+        lines.append(f"\n{api.upper()} [{plan}] {status}")
+        if tu.get("requests"):
+            daily_lim = cfg.get("safe_daily_requests", cfg.get("daily_requests","∞"))
+            lines.append(f"  Today  : {tu['requests']:,} req / {tu.get('tokens',0):,} tok / ${tu.get('usd',0):.4f}")
+            lines.append(f"  Month  : {mu.get('requests',0):,} req / {mu.get('tokens',0):,} tok / ${mu.get('usd',0):.4f}")
+            lines.append(f"  Limit  : {daily_lim} safe/day")
+        else:
+            lines.append(f"  No usage logged today")
+        lines.append(f"  Note   : {reason}")
+    lines.append(f"\n{'='*55}")
+    return "\n".join(lines)
+
+def reset_daily():
+    """Called at start of day to clean old daily entries (keep 7 days)."""
+    usage = load_usage()
+    cutoff = (datetime.date.today() - datetime.timedelta(days=7)).isoformat()
+    daily = {k: v for k, v in usage.get("daily", {}).items() if k >= cutoff}
+    usage["daily"] = daily
+    usage["last_reset"] = TODAY
+    save_usage(usage)
+    print(f"Daily usage reset — kept last 7 days")
+
+if __name__ == "__main__":
+    args = sys.argv[1:]
+    if not args or args[0] == "status":
+        print(get_status())
+    elif args[0] == "log" and len(args) >= 4:
+        log_usage(args[1], args[2], float(args[3]))
+        print(f"Logged: {args[1]} +{args[3]} {args[2]}")
+    elif args[0] == "check" and len(args) >= 2:
+        ok, reason, batch = check_limit(args[1])
+        print(json.dumps({"ok": ok, "reason": reason, "batch_size": batch}))
+        sys.exit(0 if ok else 1)
+    elif args[0] == "reset-daily":
+        reset_daily()
+    else:
+        print("Usage: limit-tracker [status|log <api> <type> <count>|check <api>|reset-daily]")
