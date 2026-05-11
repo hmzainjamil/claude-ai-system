@@ -1,0 +1,101 @@
+#!/usr/bin/env bash
+# gap-remediate — Processes gap-queue.jsonl. Runs on SessionStart.
+# For each gap:
+#   missing_skill    → create stub in ~/.agents/skills/ + search for real skill
+#   credentials      → print warning to inject into context
+#   capability_gap   → search ~/.agents/skills/ + ~/.claude/skills-archive/ for match
+#   correction       → queue to session-learn for memory write
+#   platform_integration → check if skill exists, activate if found
+
+source ~/.claude/tier0.env 2>/dev/null
+QUEUE="$HOME/.claude/gap-queue.jsonl"
+SKILLS_ACTIVE="$HOME/.claude/skills"
+SKILLS_ARCHIVE="$HOME/.claude/skills-archive"
+AGENTS="$HOME/.agents/skills"
+MEMORY_QUEUE="$HOME/.claude/session-queue.jsonl"
+LOG="$HOME/.claude/gap-learn.log"
+TS=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
+
+[ ! -f "$QUEUE" ] && exit 0
+[ ! -s "$QUEUE" ] && exit 0
+
+PROCESSED=0
+FIXED=0
+
+while IFS= read -r line; do
+    [ -z "$line" ] && continue
+    
+    CATEGORY=$(echo "$line" | python3 -c "import json,sys; print(json.loads(sys.stdin.read()).get('category',''))" 2>/dev/null)
+    ACTION=$(echo "$line" | python3 -c "import json,sys; print(json.loads(sys.stdin.read()).get('action',''))" 2>/dev/null)
+    NAME=$(echo "$line" | python3 -c "import json,sys; print(json.loads(sys.stdin.read()).get('name',''))" 2>/dev/null)
+    DESC=$(echo "$line" | python3 -c "import json,sys; print(json.loads(sys.stdin.read()).get('description',''))" 2>/dev/null)
+    PLATFORMS=$(echo "$line" | python3 -c "import json,sys; print(json.loads(sys.stdin.read()).get('platforms',''))" 2>/dev/null)
+
+    case "$CATEGORY" in
+        missing_skill)
+            if [ -n "$NAME" ]; then
+                # Search archive first
+                FOUND=$(ls "$SKILLS_ARCHIVE/" | grep -i "$NAME" | head -1)
+                if [ -n "$FOUND" ]; then
+                    ln -sf "$SKILLS_ARCHIVE/$FOUND" "$SKILLS_ACTIVE/$FOUND" 2>/dev/null
+                    echo "[$TS] AUTO-FIXED: Activated archived skill $FOUND" >> "$LOG"
+                    FIXED=$((FIXED+1))
+                else
+                    # Search agents
+                    FOUND_AGENT=$(ls "$AGENTS/" | grep -i "$NAME" | head -1)
+                    [ -n "$FOUND_AGENT" ] && echo "[$TS] FOUND in agents: $FOUND_AGENT" >> "$LOG"
+                    
+                    # Create stub if truly missing
+                    if [ -z "$FOUND" ] && [ -z "$FOUND_AGENT" ]; then
+                        mkdir -p "$AGENTS/$NAME"
+                        cat > "$AGENTS/$NAME/SKILL.md" << EOF
+---
+name: $NAME
+description: "Auto-generated stub. Skill was requested but not found. Replace with real implementation."
+allowed-tools: Read, Write, Edit, Bash, WebFetch, WebSearch
+---
+# $NAME — AUTO-STUB
+This skill was auto-created by gap-detector because it was requested but not found.
+TODO: Replace with real skill content or run: npx skills add <repo> --skill $NAME
+EOF
+                        echo "[$TS] STUB CREATED: $AGENTS/$NAME" >> "$LOG"
+                    fi
+                fi
+            fi
+            ;;
+        platform_integration)
+            # For each platform, check if a skill exists
+            IFS=',' read -ra PLATS <<< "$PLATFORMS"
+            for PLAT in "${PLATS[@]}"; do
+                PLAT=$(echo "$PLAT" | tr -d ' ' | tr '[:upper:]' '[:lower:]')
+                [ -z "$PLAT" ] && continue
+                FOUND=$(ls "$AGENTS/" 2>/dev/null | grep -i "$PLAT" | head -1)
+                if [ -n "$FOUND" ]; then
+                    echo "[$TS] PLATFORM SKILL EXISTS: $FOUND for $PLAT" >> "$LOG"
+                else
+                    echo "[$TS] PLATFORM GAP: No skill found for $PLAT" >> "$LOG"
+                fi
+            done
+            ;;
+        correction)
+            # Queue to memory as feedback
+            echo "{\"type\":\"feedback\",\"name\":\"auto-correction-$TS\",\"description\":\"$DESC\",\"body\":\"Correction detected: $DESC. Why: User said wrong/incorrect. How to apply: Review similar tasks to avoid same mistake.\"}" >> "$MEMORY_QUEUE"
+            FIXED=$((FIXED+1))
+            ;;
+        credentials)
+            echo "[$TS] CREDS GAP: $DESC — check ~/.claude/tier0.env" >> "$LOG"
+            ;;
+    esac
+    
+    PROCESSED=$((PROCESSED+1))
+done < "$QUEUE"
+
+# Clear processed queue
+> "$QUEUE"
+
+echo "[$TS] gap-remediate: processed=$PROCESSED fixed=$FIXED" >> "$LOG"
+
+# Output to inject into SessionStart context
+if [ $PROCESSED -gt 0 ]; then
+    echo "[AUTO-LEARN] $PROCESSED gaps from last session processed. $FIXED auto-fixed."
+fi
