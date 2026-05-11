@@ -1,0 +1,57 @@
+#!/usr/bin/env bash
+# smart-session-start — Safe M1-aware session initializer
+# Runs at SessionStart. Starts only what the system can handle.
+# Never starts local inference if RAM < 4GB free.
+
+source ~/.claude/tier0.env 2>/dev/null
+
+# ── RAM check ────────────────────────────────────────────────────
+RAM_FREE_GB=$(python3 -c "
+import subprocess, re
+out = subprocess.check_output(['vm_stat']).decode()
+free  = int(re.search(r'Pages free:\s+(\d+)',     out).group(1))
+inact = int(re.search(r'Pages inactive:\s+(\d+)', out).group(1))
+print(f'{(free + inact) * 4096 / 1024**3:.1f}')
+" 2>/dev/null || echo "2.0")
+
+echo "🧠 RAM available: ${RAM_FREE_GB}GB"
+
+# ── Ollama — permanent LaunchAgent, always on ────────────────────
+if curl -s http://localhost:11434/api/tags --max-time 3 &>/dev/null; then
+  echo "✓ Ollama    — RUNNING  (llama3:latest on GPU, LaunchAgent: permanent)"
+else
+  # LaunchAgent should restart it — force start as fallback
+  /usr/local/bin/ollama serve &>/tmp/ollama.log &
+  sleep 2
+  echo "⟳ Ollama    — RESTARTED (was down, LaunchAgent will keep it alive)"
+fi
+
+# ── GPT4All — NEVER auto-start (too heavy, causes freezing) ──────
+echo "ℹ GPT4All: on-demand only (use --models gpt4all-phi3 etc.)"
+
+# ── G0DM0D3 — skip, OpenRouter credits required ──────────────────
+echo "⚠ G0DM0D3: disabled (OpenRouter account needs credits at openrouter.ai/credits)"
+
+# ── Cloud models — always available ──────────────────────────────
+echo "✓ Cloud burst: Groq + OpenRouter:free (gpt-oss-120b, gpt-oss-20b, nemotron)"
+if (( $(echo "$RAM_FREE_GB > 4.0" | bc -l) )); then
+  echo "✓ Ollama: included in burst (RAM ok)"
+else
+  echo "⏭ Ollama: skipped in burst (low RAM)"
+fi
+
+echo ""
+echo "💡 Run llm-burst 'prompt' — cloud-first, safe, no freeze"
+echo "💡 Run llm-burst --models gpt4all-phi3 'prompt' — local only (needs 4GB free)"
+
+# ── Open Design — check status (never auto-start, on-demand only) ─
+OD_DIR="$HOME/open-design"
+if [[ -d "$OD_DIR" ]]; then
+  OD_STATUS=$(cd "$OD_DIR" && source ~/.zshrc 2>/dev/null && nvm use 24 &>/dev/null && pnpm tools-dev status 2>/dev/null)
+  if echo "$OD_STATUS" | grep -q "web: running"; then
+    WEB_URL=$(echo "$OD_STATUS" | grep "web: running" | grep -oE 'http://[^ ]+')
+    echo "✓ Open Design — RUNNING  ($WEB_URL)"
+  else
+    echo "ℹ Open Design: installed, idle (run ~/.claude/bin/open-design-start to launch)"
+  fi
+fi
