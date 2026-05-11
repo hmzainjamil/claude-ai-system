@@ -1,0 +1,491 @@
+#!/usr/bin/env python3
+"""
+AGENCY — Social Engagement Engine v1.0
+Thought-leadership commenting to attract Meta/Google Ads clients.
+
+PLATFORMS:
+  Reddit    → AUTO-POST via API (if creds set)
+  LinkedIn  → generates expert comments → saves to manual file
+  Facebook  → generates expert comments → saves to manual file  
+  Instagram → generates caption posts → saves to manual file
+
+STRATEGY: Genuine expert help first. DigiMinds mention only when natural (1 in 5).
+This builds reputation, people DM for services.
+"""
+import os, sys, json, re, datetime, requests, time, random, urllib.parse
+from pathlib import Path
+
+HOME       = Path.home()
+AGENCY_DIR = HOME / ".claude/agency"
+SOC_DIR    = AGENCY_DIR / "social"
+LOG_FILE   = AGENCY_DIR / "logs/social.log"
+TODAY      = datetime.date.today().strftime("%Y%m%d")
+TODAY_NICE = datetime.date.today().strftime("%B %d, %Y")
+
+GROQ_KEY  = os.environ.get("GROQ_API_KEY","")
+GLM_KEY   = os.environ.get("GLM_API_KEY","")
+APIFY_TOK = os.environ.get("APIFY_API_TOKEN","")
+G0DM0D3_KEY = os.environ.get("G0DM0D3_KEY","")
+
+REDDIT_CLIENT_ID     = os.environ.get("REDDIT_CLIENT_ID","")
+REDDIT_CLIENT_SECRET = os.environ.get("REDDIT_CLIENT_SECRET","")
+REDDIT_USERNAME      = os.environ.get("REDDIT_USERNAME","")
+REDDIT_PASSWORD      = os.environ.get("REDDIT_PASSWORD","")
+
+GROQ_URL  = "https://api.groq.com/openai/v1/chat/completions"
+GROQ_MODEL= "llama-3.1-8b-instant"
+G0DM0D3_URL = "http://localhost:7860/v1/ultraplinian/completions"
+
+SOC_DIR.mkdir(parents=True, exist_ok=True)
+
+def log(msg):
+    ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    line = f"[{ts}] {msg}"
+    print(line)
+    with open(LOG_FILE,"a") as f: f.write(line+"\n")
+
+# ── LLM ───────────────────────────────────────────────────────────────────────
+def call_llm(prompt, max_tokens=350):
+    # Plan A: G0DM0D3 Ultraplinian (55 models race)
+    if G0DM0D3_KEY:
+        try:
+            r = requests.post(G0DM0D3_URL,
+                json={"messages":[{"role":"user","content":prompt}],"max_tokens":max_tokens},
+                headers={"Authorization":f"Bearer {G0DM0D3_KEY}"},
+                timeout=30, stream=False)
+            # Ultraplinian returns SSE — collect best_answer
+            full = r.text
+            for line in full.split('\n'):
+                if '"best_answer"' in line or '"content"' in line:
+                    try:
+                        chunk = json.loads(line.replace('data: ',''))
+                        ans = chunk.get('best_answer') or chunk.get('choices',[{}])[0].get('delta',{}).get('content','')
+                        if ans and len(ans) > 30:
+                            return ans.strip()
+                    except Exception: pass
+        except Exception as e:
+            pass
+
+    # Plan B: Groq
+    if GROQ_KEY:
+        for attempt in range(3):
+            try:
+                r = requests.post(GROQ_URL,
+                    json={"model":GROQ_MODEL,"messages":[{"role":"user","content":prompt}],
+                          "max_tokens":max_tokens,"temperature":0.8},
+                    headers={"Authorization":f"Bearer {GROQ_KEY}"},timeout=25)
+                if r.status_code == 200:
+                    return r.json()["choices"][0]["message"]["content"].strip()
+                if r.status_code == 429:
+                    wait = int(r.headers.get("retry-after","15"))
+                    time.sleep(wait)
+            except Exception as e:
+                time.sleep(3)
+
+    # Plan C: Ollama local
+    try:
+        r = requests.post("http://localhost:11434/api/generate",
+            json={"model":"llama3:latest","prompt":prompt,"stream":False,"options":{"num_predict":max_tokens}},
+            timeout=60)
+        if r.status_code == 200:
+            return r.json().get("response","").strip()
+    except Exception: pass
+    return ""
+
+# ── RAG Search ────────────────────────────────────────────────────────────────
+def rag_search(query, max_results=5):
+    if not APIFY_TOK: return []
+    url = f"https://rag-web-browser.apify.actor/search?token={APIFY_TOK}&query={urllib.parse.quote(query)}&maxResults={max_results}&scrapingTool=raw-http"
+    try:
+        r = requests.get(url, timeout=40)
+        if r.status_code == 200:
+            items = r.json() if isinstance(r.json(), list) else []
+            return [{"title": i.get("searchResult",{}).get("title",""),
+                     "url":   i.get("searchResult",{}).get("url",""),
+                     "desc":  i.get("searchResult",{}).get("description",""),
+                     "text":  (i.get("markdown","") or i.get("text",""))[:800]} for i in items]
+    except Exception as e:
+        log(f"RAG error: {e}")
+    return []
+
+# ── Reddit ────────────────────────────────────────────────────────────────────
+def get_reddit_token():
+    if not all([REDDIT_CLIENT_ID,REDDIT_CLIENT_SECRET,REDDIT_USERNAME,REDDIT_PASSWORD]):
+        return None
+    try:
+        r = requests.post("https://www.reddit.com/api/v1/access_token",
+            auth=(REDDIT_CLIENT_ID, REDDIT_CLIENT_SECRET),
+            data={"grant_type":"password","username":REDDIT_USERNAME,"password":REDDIT_PASSWORD},
+            headers={"User-Agent":"DigiMinds-Expert/1.0"},timeout=15)
+        if r.status_code == 200:
+            return r.json().get("access_token")
+    except Exception as e:
+        log(f"Reddit auth error: {e}")
+    return None
+
+def get_hot_posts(token, subreddit, limit=10):
+    headers = {"Authorization":f"bearer {token}","User-Agent":"DigiMinds-Expert/1.0"} if token else {"User-Agent":"DigiMinds-Expert/1.0"}
+    endpoint = f"https://oauth.reddit.com/r/{subreddit}/new.json?limit={limit}" if token else f"https://www.reddit.com/r/{subreddit}/new.json?limit={limit}"
+    try:
+        r = requests.get(endpoint, headers=headers, timeout=15)
+        if r.status_code == 200:
+            posts = r.json()["data"]["children"]
+            return [{"id": p["data"]["id"], "title": p["data"]["title"],
+                     "text": p["data"]["selftext"][:600], "url": p["data"]["url"],
+                     "score": p["data"]["score"], "num_comments": p["data"]["num_comments"],
+                     "thing_id": f"t3_{p['data']['id']}", "subreddit": subreddit,
+                     "created": p["data"]["created_utc"]} for p in posts]
+    except Exception as e:
+        log(f"Reddit fetch {subreddit}: {e}")
+    return []
+
+def should_comment(post):
+    """Only comment on posts where we can genuinely help."""
+    text = (post["title"] + " " + post["text"]).lower()
+    # Must be a question or problem post
+    question_signals = ["help", "how to", "what is", "struggling", "issue", "problem",
+                        "advice", "recommend", "should i", "need", "looking for",
+                        "anyone", "question", "confused", "failing", "not working",
+                        "hired", "hiring", "[hiring]", "for hire"]
+    ads_signals = ["meta ads", "facebook ads", "google ads", "ppc", "roas", "paid ads",
+                   "ad campaign", "ads manager", "facebook advertising", "instagram ads",
+                   "google adwords", "performance marketing", "ad specialist"]
+    
+    has_question = any(s in text for s in question_signals)
+    has_ads = any(s in text for s in ads_signals)
+    # Skip posts where someone is already selling (for_hire posts)
+    is_for_hire_post = "[for hire]" in text and not "[hiring]" in text
+    
+    return has_question and has_ads and not is_for_hire_post
+
+def generate_reddit_comment(post, mention_digiminds=False):
+    """Generate genuine expert reply. Not salesy."""
+    title = post["title"]
+    text  = post["text"][:500]
+    sub   = post.get("subreddit","")
+    
+    dm_note = ""
+    if mention_digiminds:
+        dm_note = "\nAt the very end, add 1 casual line: 'Happy to help further — I run a small ads agency (digiminds.org) if you ever want a more hands-on look.'"
+
+    prompt = f"""You are Hafiz, a Meta Ads + Google Ads expert with 5+ years experience and strong ROAS results.
+
+A Reddit user posted in r/{sub}:
+Title: {title}
+Post: {text}
+
+Write a GENUINE EXPERT reply (not salesy, not promotional).
+- Address their EXACT situation
+- Give 2-3 specific, actionable insights they can implement TODAY
+- Use practical examples or metrics when relevant
+- Sound like a knowledgeable peer helping a fellow marketer
+- 100-160 words max
+- Conversational Reddit tone (not corporate)
+- NO hollow phrases like "Great question!" or "As an expert I..."
+{dm_note}
+
+Write ONLY the reply:"""
+
+    return call_llm(prompt, 280)
+
+def post_reddit_comment(token, thing_id, text):
+    try:
+        r = requests.post("https://oauth.reddit.com/api/comment",
+            headers={"Authorization":f"bearer {token}","User-Agent":"DigiMinds-Expert/1.0"},
+            data={"thing_id": thing_id, "text": text}, timeout=20)
+        return r.status_code == 200
+    except Exception as e:
+        log(f"Reddit post error: {e}")
+        return False
+
+def run_reddit(token):
+    log("Reddit engagement...")
+    subreddits = ["PPC","DigitalMarketing","forhire","Entrepreneur",
+                  "FacebookAds","googleads","marketing","smallbusiness",
+                  "startups","ecommerce"]
+    
+    all_posts = []
+    for sub in subreddits:
+        posts = get_hot_posts(token, sub, limit=15)
+        all_posts.extend(posts)
+        time.sleep(1)
+    
+    # Filter to actionable posts
+    targets = [p for p in all_posts if should_comment(p)]
+    log(f"Reddit: {len(all_posts)} posts scanned, {len(targets)} targets")
+    
+    posted = []
+    manual = []
+    comment_count = 0
+    
+    for i, post in enumerate(targets[:20]):  # max 20 per day
+        comment = generate_reddit_comment(post, mention_digiminds=(i % 5 == 4))
+        if not comment or len(comment) < 40:
+            continue
+        
+        if token and comment_count < 10:  # Reddit rate: max 10 comments/day safe
+            # Only comment on posts from last 24 hours
+            age_hours = (time.time() - post.get("created", 0)) / 3600
+            if age_hours < 24:
+                success = post_reddit_comment(token, post["thing_id"], comment)
+                if success:
+                    posted.append({"url": post["url"], "title": post["title"][:60], "comment": comment})
+                    log(f"  Reddit ✓ posted: r/{post['subreddit']} — {post['title'][:50]}")
+                    comment_count += 1
+                    time.sleep(12)  # Rate limit safe
+                    continue
+        
+        manual.append({"platform":"reddit","url":post["url"],"title":post["title"],
+                       "subreddit":post["subreddit"],"comment":comment,"score":post.get("score",0)})
+    
+    return posted, manual
+
+# ── LinkedIn ──────────────────────────────────────────────────────────────────
+def run_linkedin():
+    log("LinkedIn: finding posts to engage...")
+    queries = [
+        '"google ads" OR "meta ads" struggling help advice linkedin 2025 2026',
+        '"facebook ads" not working OR underperforming OR wasting money linkedin',
+        '"ppc" OR "paid ads" questions help looking for specialist linkedin',
+        'meta ads google ads "can anyone" OR "anyone recommend" specialist',
+    ]
+    posts = []
+    for q in queries:
+        results = rag_search(q, max_results=4)
+        for r in results:
+            if "linkedin.com" in r.get("url",""):
+                posts.append(r)
+    
+    log(f"LinkedIn: {len(posts)} posts found")
+    comments = []
+    for i, post in enumerate(posts[:10]):
+        prompt = f"""You are Hafiz, Meta Ads + Google Ads expert at DigiMinds.
+
+LinkedIn post:
+Title: {post['title']}
+Content: {post['desc'][:400]}
+
+Write a VALUABLE LinkedIn expert comment (80-120 words):
+- Acknowledge their specific point
+- Add 1-2 genuine expert insights they haven't thought of
+- Professional but human tone
+- {"Mention: 'Happy to connect — I help businesses with paid ads at digiminds.org'" if i % 4 == 3 else "No self-promotion"}
+- Don't say 'Great post!' or 'Thanks for sharing'
+
+Write ONLY the comment:"""
+        comment = call_llm(prompt, 200)
+        if comment and len(comment) > 40:
+            comments.append({"url": post["url"], "title": post["title"][:70],
+                             "comment": comment})
+            time.sleep(2)
+    
+    return comments
+
+# ── Facebook ──────────────────────────────────────────────────────────────────
+def run_facebook():
+    log("Facebook: finding group posts...")
+    queries = [
+        'site:facebook.com "google ads" OR "meta ads" help question struggling group',
+        'facebook groups "facebook ads" problem help advice 2025 2026',
+        '"digital marketing" facebook group "need help" OR "struggling" ads',
+    ]
+    posts = []
+    for q in queries:
+        results = rag_search(q, max_results=4)
+        posts.extend(results)
+    
+    log(f"Facebook: {len(posts)} posts found")
+    comments = []
+    for i, post in enumerate(posts[:8]):
+        prompt = f"""You are Hafiz, Meta Ads + Google Ads expert.
+
+Facebook group post:
+{post['title']}
+{post['desc'][:300]}
+
+Write a helpful Facebook group comment (70-100 words):
+- Give specific advice for their situation
+- Sound like a helpful community member
+- Casual, warm tone
+- {"Add: 'Feel free to DM me or check digiminds.org if you want hands-on help'" if i % 4 == 2 else "No promotion"}
+- Don't be generic
+
+Write ONLY the comment:"""
+        comment = call_llm(prompt, 180)
+        if comment and len(comment) > 30:
+            comments.append({"url":post.get("url",""), "title":post["title"][:70], "comment":comment})
+            time.sleep(1.5)
+    
+    return comments
+
+# ── Instagram Content ─────────────────────────────────────────────────────────
+def run_instagram():
+    log("Instagram: generating expert content posts...")
+    topics = [
+        "Why 90% of Facebook Ads campaigns fail in first 30 days (and how to fix it)",
+        "3 Meta Ads targeting mistakes that kill ROAS",
+        "Google Ads vs Meta Ads: when to use which for your business",
+        "How to audit your Google Ads account in 15 minutes",
+        "The exact bid strategy that doubled our client's ROAS last month",
+    ]
+    
+    today_topic = topics[datetime.date.today().weekday() % len(topics)]
+    
+    prompt = f"""You are Hafiz, Meta Ads + Google Ads expert at DigiMinds (digiminds.org).
+
+Write an Instagram carousel post about: {today_topic}
+
+Format:
+SLIDE 1 (hook - max 8 words, shocking/intriguing):
+...
+
+SLIDE 2-5 (value - each 20-40 words):
+...
+
+SLIDE 6 (CTA):
+Follow for more. DM 'AUDIT' for a free ads review. digiminds.org
+
+Caption (200 chars): Hook line + 3-4 hashtags: #MetaAds #GoogleAds #DigitalMarketing #PPC
+
+Write the full Instagram carousel:"""
+    
+    post = call_llm(prompt, 500)
+    return [{"topic": today_topic, "content": post, "platform": "instagram"}] if post else []
+
+# ── LinkedIn Thought Leadership Post ─────────────────────────────────────────
+def generate_linkedin_post():
+    log("LinkedIn: generating daily thought-leadership post...")
+    angles = [
+        "controversial truth about Meta Ads that agencies won't tell you",
+        "case study: how we fixed a client's broken Google Ads in 48 hours",  
+        "what your Google Ads data is telling you (that you're ignoring)",
+        "why most Meta Ads agencies are actually hurting your business",
+        "the 1 metric that predicts if your paid ads will succeed",
+    ]
+    angle = angles[datetime.date.today().weekday() % len(angles)]
+    
+    prompt = f"""Write a LinkedIn post as Hafiz Muhammad Zulqarnain, Meta/Google Ads expert at DigiMinds.
+
+Topic angle: {angle}
+
+Format:
+- Hook (line 1): Bold statement or surprising stat
+- Body (150-200 words): Expert insight, specific example, practical takeaway
+- CTA: Soft invitation to connect or DM
+- End with: "Hafiz | DigiMinds | digiminds.org"
+- No hashtags in body (LinkedIn penalizes it)
+
+Make it genuinely valuable — not a sales pitch. Share real expertise.
+Write the complete post:"""
+    
+    post = call_llm(prompt, 400)
+    return post
+
+# ── Write all manual-ready files ──────────────────────────────────────────────
+def write_social_files(reddit_manual, linkedin_comments, fb_comments, ig_posts, li_post):
+    files = {}
+    
+    # Reddit manual file
+    if reddit_manual:
+        f = SOC_DIR / f"{TODAY}_reddit_engage.txt"
+        with open(f,"w") as fp:
+            fp.write(f"REDDIT EXPERT COMMENTS — {TODAY_NICE}\n{'='*55}\n\n")
+            for p in reddit_manual:
+                fp.write(f"Subreddit: r/{p.get('subreddit','')}\n")
+                fp.write(f"Post: {p['title']}\n")
+                fp.write(f"URL: {p['url']}\n\n")
+                fp.write(f"COMMENT:\n{p['comment']}\n\n{'─'*50}\n\n")
+        files["reddit"] = str(f)
+    
+    # LinkedIn comments file
+    if linkedin_comments:
+        f = SOC_DIR / f"{TODAY}_linkedin_engage.txt"
+        with open(f,"w") as fp:
+            fp.write(f"LINKEDIN EXPERT COMMENTS — {TODAY_NICE}\n{'='*55}\n\n")
+            for p in linkedin_comments:
+                fp.write(f"Post: {p['title']}\n")
+                fp.write(f"URL: {p['url']}\n\n")
+                fp.write(f"COMMENT:\n{p['comment']}\n\n{'─'*50}\n\n")
+        files["linkedin_comments"] = str(f)
+    
+    # LinkedIn thought-leadership post
+    if li_post:
+        f = SOC_DIR / f"{TODAY}_linkedin_post.txt"
+        f.write_text(f"LINKEDIN POST — {TODAY_NICE}\n{'='*55}\n\n{li_post}\n")
+        files["linkedin_post"] = str(f)
+    
+    # Facebook file
+    if fb_comments:
+        f = SOC_DIR / f"{TODAY}_facebook_engage.txt"
+        with open(f,"w") as fp:
+            fp.write(f"FACEBOOK EXPERT COMMENTS — {TODAY_NICE}\n{'='*55}\n\n")
+            for p in fb_comments:
+                fp.write(f"Post: {p['title']}\n")
+                fp.write(f"URL: {p.get('url','')}\n\n")
+                fp.write(f"COMMENT:\n{p['comment']}\n\n{'─'*50}\n\n")
+        files["facebook"] = str(f)
+    
+    # Instagram post
+    if ig_posts:
+        f = SOC_DIR / f"{TODAY}_instagram_post.txt"
+        with open(f,"w") as fp:
+            fp.write(f"INSTAGRAM CAROUSEL — {TODAY_NICE}\n{'='*55}\n\n")
+            for p in ig_posts:
+                fp.write(f"Topic: {p['topic']}\n\n{p['content']}\n")
+        files["instagram"] = str(f)
+    
+    return files
+
+# ── Main ──────────────────────────────────────────────────────────────────────
+def main():
+    log(f"=== SOCIAL ENGAGEMENT ENGINE v1.0 — {TODAY_NICE} ===")
+    
+    # Reddit
+    token = get_reddit_token()
+    if token:
+        log("Reddit: OAuth token obtained ✓")
+    else:
+        log("Reddit: No credentials — using read-only mode, saving for manual")
+    
+    reddit_posted, reddit_manual = run_reddit(token)
+    
+    # LinkedIn
+    li_comments = run_linkedin()
+    li_post     = generate_linkedin_post()
+    
+    # Facebook — DISABLED for account security (user request 2026-04-30)
+    # Facebook access removed to prevent unauthorized account activity
+    fb_comments = []
+    log("Facebook: DISABLED — account access removed for security")
+    
+    # Instagram
+    ig_posts = run_instagram()
+    
+    # Write all files
+    files = write_social_files(reddit_manual, li_comments, fb_comments, ig_posts, li_post)
+    
+    # Save daily summary
+    summary = {
+        "date": TODAY,
+        "reddit_auto_posted": len(reddit_posted),
+        "reddit_manual": len(reddit_manual),
+        "linkedin_comments": len(li_comments),
+        "facebook_comments": len(fb_comments),
+        "instagram_posts": len(ig_posts),
+        "files": files,
+        "posted": reddit_posted
+    }
+    (SOC_DIR / f"summary_{TODAY}.json").write_text(json.dumps(summary, indent=2))
+    
+    log(f"=== DONE ===")
+    log(f"Reddit auto-posted: {len(reddit_posted)}")
+    log(f"Reddit manual:      {len(reddit_manual)}")
+    log(f"LinkedIn comments:  {len(li_comments)}")
+    log(f"Facebook comments:  {len(fb_comments)}")
+    log(f"Instagram posts:    {len(ig_posts)}")
+    log(f"Files: {list(files.values())}")
+    
+    return json.dumps(summary)
+
+if __name__ == "__main__":
+    print(main())
