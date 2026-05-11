@@ -1,214 +1,145 @@
 # claude-ai-system
-the behavioral OS that runs before every prompt
+The complete Claude Code infrastructure — hooks, skills, bin scripts, LaunchAgents, and config that power HMZ's autonomous AI agency stack.
 
-![Claude Code](https://img.shields.io/badge/Claude_Code-System_Config-8E44AD?style=flat&labelColor=000) ![CLAUDE.md](https://img.shields.io/badge/CLAUDE.md-behavioral_mandates-blue?style=flat&labelColor=555) ![Hooks](https://img.shields.io/badge/hooks-4_events-orange?style=flat&labelColor=555) ![Skills](https://img.shields.io/badge/skills-200%2B_gated-green?style=flat&labelColor=555) ![Bin](https://img.shields.io/badge/bin-45_production_scripts-red?style=flat&labelColor=555)
+![updated](https://img.shields.io/badge/synced_daily-6%3A30AM-white?style=flat&labelColor=555) [![scripts](https://img.shields.io/badge/bin_scripts-45-blue?style=flat&labelColor=555)](automations/bin/) [![skills](https://img.shields.io/badge/skills-13_core-green?style=flat&labelColor=555)](skills-active/) [![hooks](https://img.shields.io/badge/hooks-4_events-orange?style=flat&labelColor=555)](.claude/settings.json) [![company](https://img.shields.io/badge/DigiMinds-agency-red?style=flat&labelColor=555)](https://digiminds.org)
 
-HMZ Claude Code system — the behavioral OS layer governing every session. CLAUDE.md mandates, hook scripts, model routing rules, skill gating blockchain, session lifecycle automation, and 45 production scripts. Every prompt passes through this before Claude sees it.
+[Concepts](#-concepts) · [Hot](#-hot) · [Architecture](#️-architecture) · [Tips](#-tips-and-tricks-28) · [Replaced](#️-startups--businesses) · [Stars](#star-history)
 
-[CLAUDE.md Mandates](#mandates) · [Hook Architecture](#hooks) · [Skill Gating](#skills) · [Bin Scripts](#bin) · [Settings](#settings) · [Gotchas](#gotchas)
+---
 
 ## 🧠 CONCEPTS
 
 | Feature | Location | Description |
-|---|---|---|
-| **Global CLAUDE.md** | `~/.claude/CLAUDE.md` | Universal behavioral rules — all projects, all sessions, cannot be overridden by prompt |
-| **Project CLAUDE.md** | `~/CLAUDE.md` | Repo-specific additions, inherits global |
-| **Hooks** | `~/.claude/settings.json` → hooks | Shell scripts auto-run on session events — UserPromptSubmit, Stop, compact |
-| **Skill Manifest** | `~/.claude/skills/` | Active skill files loaded into context — gated via blockchain manifest |
-| **Skills Archive** | `~/.claude/skills-archive/` | 9,565 dormant skills — activated on keyword match only |
-| **Bin Scripts** | `~/.claude/bin/` | 45 production utility scripts — model routing, skill management, LaunchAgent ops |
-| **Memory Index** | `~/.claude/projects/*/memory/MEMORY.md` | Cross-session persistent memory, loaded at session start |
-| **Tier 0 Cache** | `~/.claude/tier0-cache.json` | Dedup cache for repeated prompts across Tier 0 providers |
-| **Metrics Log** | `~/.claude/metrics.log` | Per-prompt skill activation log — track what fires most |
-| **Session Queue** | `~/.claude/session-queue.jsonl` | Memory write queue — flushed by Stop hook into memory files |
+|---------|----------|-------------|
+| [**CLAUDE.md Mandates**](CLAUDE.md) | `CLAUDE.md` | G0DM0D3 model routing · L99 performance mode · OODA decision loop · Skill gating protocol — hardcoded for every session |
+| [**Bin Scripts (45)**](automations/bin/) | `automations/bin/` | `github-sync` `skill-on/off/search/status/reset` `llm-burst` `tier0-prompt-inject` `skill-auto-activate` `openclaw-bridge` `auto-troubleshoot` `paperclip-*` — full CLI automation layer |
+| [**Hook System**](.claude/settings.json) | `.claude/settings.json` | UserPromptSubmit → `skill-auto-activate` + `tier0-prompt-inject` · PostToolUse → `auto-github-push` + `memory-sync` · Stop → `session-queue-processor` |
+| [**Skills (Active)**](skills-active/) | `skills-active/` | 13 always-on core skills: `caveman` `compress` `context-compression` `compact-guard` `skill-router` `find-skills` `launch-optimized` `summarize` — zero overhead |
+| [**Skills Archive**](skills-archive/) | `skills-archive/` | 100+ domain skills dormant until needed: ads, geo, legal, agents, apify, startup, market — blockchain-gated |
+| [**LaunchAgents**](automations/launchagents/) | `automations/launchagents/` | `ai.hmz.github-portfolio-sync` (6:30AM) · `ai.openclaw.gateway` · `ai.hmz.paperclip` · 6 Paperclip scheduled engines |
+| [**Memory System**](memory/) | `~/.claude/projects/.../memory/` | Persistent cross-session memory: user · feedback · project · reference types — auto-loaded via system-reminder |
+| [**Config**](config/) | `config/` | `settings.json` · `keybindings.json` · `skills-lock.json` manifest |
+| [**Installed Repos**](installed-repos/) | `installed-repos/` | Mirror of 50+ third-party tool READMEs for quick local reference |
 
-<a id="mandates"></a>
-## ⚙️ CLAUDE.MD MANDATES
+### 🔥 Hot
 
-■ **Tier 0 Model Routing (Immutable — Priority 1)**
+| Feature | Location | Description |
+|---------|----------|-------------|
+| [**auto-github-push**](automations/bin/auto-github-push) | `automations/bin/auto-github-push` | PostToolUse hook — every file written to `~/.claude/bin/` or `skills/` auto-pushes to GitHub via API. No git, no merge conflicts |
+| [**skill-auto-activate**](automations/bin/skill-auto-activate) | `automations/bin/skill-auto-activate` | Fires on every UserPromptSubmit — keyword-matches prompt → auto-loads domain skills before Claude responds |
+| [**llm-burst**](automations/bin/llm-burst) | `automations/bin/llm-burst` | Blasts prompt to 8 models in parallel (Groq+Gemini+Ollama+DeepSeek+GPT-4o-mini+GLM+Gemma4) — judge picks best. Zero Claude tokens for sub-tasks |
+| [**tier0-prompt-inject**](automations/bin/tier0-prompt-inject) | `automations/bin/tier0-prompt-inject` | Injects G0DM0D3 routing rules into every session — enforces Tier 0 model use automatically |
 
-```
-Tier 0 (always first — 75-95% of all tasks):
-  Ollama (local GPU) → Groq (llama3-70b) → Gemini 2.0 Flash
-  → DeepSeek-V3 → Kimi K2.5 → GPT-4o-mini → Mistral → OpenRouter → GLM
+---
 
-Tier 1 (last resort — all Tier 0 exhausted):
-  Claude Haiku 4.5
-
-Tier 2 (final output layer only):
-  Claude Sonnet 4.6 / Opus 4.6 — only when user sees the result
-```
-
-■ **L99 Performance Mode (Immutable)**
-- Full capability on every response — no hedging, no "it depends", no half-measures
-- Every task treated as maximum stakes
-
-■ **OODA Loop (Every task)**
-- Observe → Orient → Decide → Act. No flip-flopping after Decide.
-
-■ **Skill Gating (Every session)**
-- Default active: 12 core skills only
-- Everything else: dormant until keyword fires `~/.claude/bin/skill-auto-activate`
-- After task: `~/.claude/bin/skill-off` — non-core skills deactivated immediately
-
-■ **Permanent Behavioral Rules**
-- All generated files → `~/Downloads/` (never Desktop)
-- No thermal automation (MFC popup issue)
-- No Upwork/Freelancer/PPH in any BDM pipelines
-- Paperclip API checked every session: `http://127.0.0.1:3100`
-- All READMEs use flat badges (`style=flat`), never `for-the-badge`
-- Expert README standard: 300+ lines, feature tables, tips tables, competitive context
-
-<a id="hooks"></a>
-## 💡 HOOK ARCHITECTURE
-
-| Hook Event | Scripts | Timing | Purpose |
-|---|---|---|---|
-| `UserPromptSubmit` | `tier0-prompt-inject` | Before every response | Injects L99+OODA, fires Tier 0 blast |
-| `UserPromptSubmit` | `skill-auto-activate` | Before every response | Keyword match → activates needed skills |
-| `UserPromptSubmit` | `auto-troubleshoot` | Before every response | Checks LaunchAgent health, reports issues |
-| `UserPromptSubmit` | `paperclip-ceo-check` | Before every response | Pings Paperclip API at 127.0.0.1:3100 |
-| `Stop` | `session-queue-processor` | After every response | Flushes session-queue.jsonl → memory files |
-| `Stop` | `skill-cleanup` | After every response | Deactivates all non-core skills |
-| `compact` | `context-guard` | At compaction | Warns when approaching context limit |
-
-**Hook config in `~/.claude/settings.json`:**
-```json
-{
-  "hooks": {
-    "UserPromptSubmit": [
-      {"type": "command", "command": "~/.claude/bin/tier0-prompt-inject"},
-      {"type": "command", "command": "~/.claude/bin/skill-auto-activate"},
-      {"type": "command", "command": "~/.claude/bin/auto-troubleshoot"}
-    ],
-    "Stop": [
-      {"type": "command", "command": "~/.claude/bin/session-learn"},
-      {"type": "command", "command": "~/.claude/bin/skill-reset"}
-    ]
-  }
-}
-```
-
-<a id="skills"></a>
-## 🔧 SKILL GATING SYSTEM
-
-**Default active (always loaded, cost ~10K tokens):**
-```
-caveman              compact-guard        compress
-context-compression  context-window-management
-find-skills          launch-optimized     optimize-commands
-optimize-dgm-command skill-router         summarize
-token-turbo          auto-learn
-```
-
-**Auto-activation map (fires on keyword match):**
-
-| Prompt Keywords | Skills Activated | Script |
-|---|---|---|
-| `ads, ppc, meta, google, campaign, roas` | `ads-strategy, ads-copy, ads-creative, ads-keywords` | `skill-auto-activate` |
-| `seo, geo, ranking, schema, crawl` | `geo, geo-technical, geo-content, geo-schema` | `skill-auto-activate` |
-| `legal, contract, nda, compliance` | `legal, legal-review` | `skill-auto-activate` |
-| `marketing, brand, email, funnel` | `market, market-brand, market-copy` | `skill-auto-activate` |
-| `pdf, report, audit, reportlab` | `reportlab-pdf-master` | `skill-auto-activate` |
-| `agent, multi-agent, orchestrate` | `all-agents` | `skill-auto-activate` |
-
-<a id="bin"></a>
-## 🛠 BIN SCRIPTS (45 production scripts)
-
-■ **Model Routing**
-| Script | Purpose |
-|---|---|
-| `tier0-prompt-inject` | Injects L99+OODA + fires Tier 0 blast before every prompt |
-| `tier0-blast` | Fires all Tier 0 models synchronously |
-| `tier0-blast-async` | Fires Tier 0 in background (non-blocking) |
-| `tier0-burst` | Smart burst: checks RAM, routes to best available |
-| `tier0-cache-inject` | Cache-aware inference — dedup repeated prompts |
-| `tier0-check` | Pings all Tier 0 providers, logs availability |
-| `llm-burst` | CLI wrapper: `llm-burst 'prompt'` → auto-routes |
-| `llm-burst-run` | Internal executor called by llm-burst |
-
-■ **Skill Management**
-| Script | Purpose |
-|---|---|
-| `skill-auto-activate` | UserPromptSubmit hook — keyword match → activation |
-| `skill-on` | Manual skill activation |
-| `skill-off` | Deactivate one skill |
-| `skill-reset` | Deactivate all non-core (called by Stop hook) |
-| `skill-search` | Find skills by keyword across archive |
-| `skill-status` | Show currently active skills |
-| `skill-load` | Load skill file into context |
-| `skill-guardian` | Audit: detect skill drift, unused activations |
-| `skill-scanner` | Scan archive for keyword triggers |
-| `skill-watcher` | File watcher: auto-reload skills on change |
-| `skill-metrics` | Report skill activation frequency |
-
-■ **Agency / BDM**
-| Script | Purpose |
-|---|---|
-| `agency` | DigiMinds agency runner |
-| `agency-run` | Execute agency workflow |
-| `agency-runner.sh` | Shell wrapper for agency |
-| `agency-email-pickup` | Process incoming client emails |
-| `hmz-bdm-catchup` | Catch up on missed BDM sweep tasks |
-| `hmz-bdm-state-update` | Update BDM pipeline state |
-
-■ **Infrastructure**
-| Script | Purpose |
-|---|---|
-| `github-sync` | Sync entire system to GitHub portfolio repos |
-| `github-portfolio-init` | Initialize new portfolio repo |
-| `git-auto-init` | Auto-init + push any local dir to GitHub |
-| `openclaw-bridge` | Bridge LaunchAgent status check |
-| `openclaw-computer-control` | Queue computer control tasks |
-| `openclaw-skill-add` | Add new skill to OpenClaw gateway |
-| `memory-sync` | Sync memory files to GitHub |
-| `session-learn` | Stop hook: process session queue → memory |
-| `auto-troubleshoot` | Health check all LaunchAgents |
-| `security-status` | Audit exposed ports, running processes |
-| `smart-session-start` | Enhanced session startup with health checks |
-| `workflow-dag` | Visualize workflow dependency graph |
-
-<a id="settings"></a>
-## 📋 SETTINGS
-
-**`~/.claude/settings.json` key fields:**
-```json
-{
-  "model": "claude-sonnet-4-6",
-  "autoApprove": ["Read", "Glob", "Grep", "Bash", "Write", "Edit"],
-  "permissions": {
-    "allow": ["Bash(~/.claude/bin/*)", "Edit(~/**)", "Write(~/Downloads/*)"]
-  },
-  "statusLine": "RAM:{ram_free} | Context:{context_pct}% | Model:{model}",
-  "theme": "dark",
-  "compactThreshold": 0.85
-}
-```
-
-<a id="gotchas"></a>
-## ☠️ GOTCHAS
-
-| Gotcha | Fix |
-|---|---|
-| `CLAUDE.md` instructions ignored if file > 200 lines — Claude stops reading | Keep global CLAUDE.md < 200 lines, use @imports for overflow |
-| Skill activation adds 2-5K tokens per skill — over-activation bloats context | Never activate > 5 skills simultaneously |
-| Stop hook `session-learn` fails silently if `jq` not installed | `brew install jq` |
-| `tier0-prompt-inject` fires even on trivial prompts ("yes", "ok") — adds latency | Add prompt length check: skip if < 10 chars |
-| `skill-auto-activate` can activate conflicting skills (ads + seo simultaneously) | skills have `conflicts: []` field — check before loading |
-| GitHub sync uploads settings.json which may contain sensitive API key references | settings.json uses `$ENV_VAR` references, not literal keys |
-| `auto-troubleshoot` reports false positives when LaunchAgent just restarted | Add 30s grace period: check if PID exists, not just exit code |
-
-## 📁 REPO STRUCTURE
+## ⚙️ ARCHITECTURE
 
 ```
-claude-ai-system/
-├── config/
-│   ├── CLAUDE.md              ← global behavioral mandates
-│   ├── settings.json          ← Claude Code settings template
-│   ├── AGENCY_MANIFEST.md     ← DigiMinds agency skill/agent manifest
-│   └── TIER0-SETUP.md         ← Tier 0 model setup guide
-├── bin/                       ← 45 production scripts (all executable)
-├── skills-active/             ← 13 active default skill files
-├── hooks/                     ← hook scripts by event type
-└── README.md
+~/.claude/
+├── bin/                  ← 45 automation scripts
+│   ├── skill-on/off      ← skill activation CLI
+│   ├── llm-burst         ← 8-model parallel inference
+│   ├── github-sync       ← daily portfolio sync
+│   └── auto-github-push  ← instant PostToolUse push
+├── skills/               ← 13 always-active core skills
+├── skills-archive/       ← 100+ dormant domain skills
+├── agents/               ← agent definitions
+├── settings.json         ← hook config (4 event types)
+└── skills-lock.json      ← blockchain manifest
+
+~/Library/LaunchAgents/
+├── ai.hmz.github-portfolio-sync.plist   ← daily 6:30AM
+├── ai.openclaw.gateway.plist            ← always-on
+└── ai.hmz.paperclip.plist               ← CEO loop
 ```
+
+| Layer | Component | Trigger |
+|-------|-----------|---------|
+| Prompt hooks | `skill-auto-activate` + `tier0-prompt-inject` | Every UserPromptSubmit |
+| File hooks | `auto-github-push` + `memory-sync` | Every Write/Edit |
+| Session hooks | `session-queue-processor` | Session Stop |
+| Daemons | 8 LaunchAgents | Scheduled + always-on |
+| Models | 8 Tier-0 burst | Every sub-task |
+
+---
+
+## 💡 TIPS AND TRICKS (28)
+
+[Hooks](#tips-hooks) · [Skills](#tips-skills) · [Scripts](#tips-scripts) · [Routing](#tips-routing) · [Git](#tips-git) · [Debugging](#tips-debugging)
+
+<a id="tips-hooks"></a>■ **Hooks (5)**
+
+| Tip | Source |
+|-----|--------|
+| Hook order matters: `skill-auto-activate` must run before `tier0-prompt-inject` in UserPromptSubmit | [HMZ System SOP](https://github.com/hmzainjamil/claude-ai-system) |
+| PostToolUse `Write\|Edit` now auto-pushes to GitHub — never manually push bin scripts again | [auto-github-push](automations/bin/auto-github-push) |
+| Stop hook runs `session-queue-processor` — saves learnings to memory between sessions | [memory system](https://github.com/hmzainjamil/hmz-claude-mem-main) |
+| Test any hook: simulate trigger by running the script directly from CLI | [settings.json](config/) |
+| Hook failures are silent — always check `~/.claude/logs/` after unexpected behavior | [Ops rule](automations/bin/) |
+
+<a id="tips-skills"></a>■ **Skills (7)**
+
+| Tip | Source |
+|-----|--------|
+| Core skills cost near-zero tokens — domain skills load context space, deactivate after task | [Skill gating](skills-active/) |
+| `skill-auto-activate` handles 80% of cases — `skill-on` only for edge cases | [skill-auto-activate](automations/bin/skill-auto-activate) |
+| Never leave domain skills active — `skill-off <name>` is mandatory after every task | [Gating protocol](CLAUDE.md) |
+| `skill-status` shows exact manifest with timestamps — check before complex multi-skill tasks | [skill-status](automations/bin/) |
+| Skills in wrong folder break everything — active → `~/.claude/skills/`, dormant → `skills-archive/` | [Architecture](skills-active/) |
+| Symlink skills fail on GitHub checkout — upload as flat `{name}.md` files instead | [GitHub workaround](automations/bin/github-sync) |
+| `skill-reset` rebuilds manifest from filesystem — use when lock file drifts from reality | [skill-reset](automations/bin/) |
+
+<a id="tips-scripts"></a>■ **Scripts (6)**
+
+| Tip | Source |
+|-----|--------|
+| `llm-burst "prompt"` → 8 parallel models → judge picks best — never use Claude for sub-tasks | [llm-burst](automations/bin/llm-burst) |
+| `github-sync` runs at 6:30AM — scrubs tokens from LaunchAgent plists before committing | [github-sync](automations/bin/github-sync) |
+| `auto-troubleshoot` proactively checks all LaunchAgents every session — never wait to be asked | [auto-troubleshoot](automations/bin/auto-troubleshoot) |
+| `openclaw-bridge` bridges Composio + MCP + Paperclip through one persistent gateway | [openclaw-bridge](automations/bin/openclaw-bridge) |
+| All new scripts go in `~/.claude/bin/` — auto-pushed to GitHub via PostToolUse hook | [auto-github-push](automations/bin/auto-github-push) |
+| `chmod +x` every new script immediately — GitHub push fails on non-executable scripts | [Ops rule](automations/bin/) |
+
+<a id="tips-routing"></a>■ **Routing (5)**
+
+| Tip | Source |
+|-----|--------|
+| `llm-burst` default: Groq+Gemini+Ollama+DeepSeek+GPT-4o-mini+GLM+Gemma4 — 8 models in parallel | [G0DM0D3](https://github.com/hmzainjamil/hmz-g0dm0d3) |
+| Research → Groq (fastest) · Code → DeepSeek/Ollama · Analysis → Gemini · Final → Claude | [Tier 0 routing](CLAUDE.md) |
+| Gemini 2.0 Flash = 1,500 free calls/day — use for all analysis and summarization | [API limits](automations/bin/llm-burst) |
+| `tier0-prompt-inject` is hardcoded via CLAUDE.md — cannot be overridden per-prompt | [Design](CLAUDE.md) |
+| Claude Haiku = Tier 1 (absolute last resort), Claude Sonnet = Tier 2 (final output only) | [Routing hierarchy](CLAUDE.md) |
+
+<a id="tips-git"></a>■ **Git (2)**
+
+| Tip | Source |
+|-----|--------|
+| Never use `git push` for claude-ai-system — use GitHub Contents API to avoid symlink conflicts | [Lesson learned](automations/bin/github-sync) |
+| SHA mismatch on API push = another process updated the file — re-fetch SHA and retry | [API gotcha](automations/bin/auto-github-push) |
+
+<a id="tips-debugging"></a>■ **Debugging (3)**
+
+| Tip | Source |
+|-----|--------|
+| LaunchAgent exit=256 = script returned exit 1 — check `~/.claude/logs/*-error.log` | [Debug SOP](automations/bin/auto-troubleshoot) |
+| `launchctl list \| grep ai.hmz` — verify all daemons running at session start | [Startup check](automations/bin/auto-troubleshoot) |
+| `~/.claude/logs/auto-github-push.log` — tracks every auto-push with timestamp | [Log location](automations/bin/auto-github-push) |
+
+---
+
+## ☠️ STARTUPS / BUSINESSES
+
+| Feature | Replaced |
+|-|-|
+| **Skill gating + auto-activate** | [Continue.dev](https://continue.dev), [Cursor Rules](https://cursor.sh), [Windsurf](https://codeium.com/windsurf) — static rules, no gating |
+| **llm-burst (8-model parallel)** | [LiteLLM](https://litellm.ai), [OpenRouter](https://openrouter.ai) — passive routing only, no parallel judge |
+| **LaunchAgent daemons** | [n8n](https://n8n.io), [Zapier](https://zapier.com) — cloud-only, not local-first |
+| **auto-github-push hook** | Manual git push, [GitHub Desktop](https://desktop.github.com) — zero automation |
+| **GitHub Contents API sync** | Raw `git push` — fails on macOS symlinks, diverges on concurrent pushes |
+| **Persistent memory system** | [MemGPT](https://memgpt.ai), [Zep](https://getzep.com) — separate service, not native |
+
+---
+
+## Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=hmzainjamil/claude-ai-system&type=Date)](https://star-history.com/#hmzainjamil/claude-ai-system&Date)
