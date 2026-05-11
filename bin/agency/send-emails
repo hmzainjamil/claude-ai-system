@@ -1,0 +1,198 @@
+#!/usr/bin/env python3
+"""
+AGENCY — Phase 2.9: Email Sender v2.0
+Sends queued emails via:
+  Plan A: Gmail SMTP (smtplib — works in background, needs GMAIL_APP_PASSWORD)
+  Plan B: Logs MCP commands for Claude session pickup
+
+From: zulqarnain@digiminds.org
+Queue: ~/.claude/agency/data/email_queue.jsonl
+"""
+import os, sys, json, datetime, smtplib
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+from email.mime.base import MIMEBase
+from email import encoders
+from pathlib import Path
+
+HOME        = Path.home()
+AGENCY_DIR  = HOME / ".claude/agency"
+QUEUE_FILE  = AGENCY_DIR / "data/email_queue.jsonl"
+SENT_LOG    = AGENCY_DIR / "data/email_sent.jsonl"
+MCP_PENDING = AGENCY_DIR / "data/mcp_email_pending.jsonl"
+LOG_FILE    = AGENCY_DIR / "logs/email.log"
+
+GMAIL_FROM      = "zulqarnain@digiminds.org"
+GMAIL_APP_PASS  = os.environ.get("GMAIL_APP_PASSWORD","")
+SMTP_HOST       = "smtp.gmail.com"
+SMTP_PORT       = 587
+
+def log(msg):
+    ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    line = f"[{ts}] {msg}"
+    print(line)
+    with open(LOG_FILE,"a") as f: f.write(line+"\n")
+
+AUDIT_PDF_DIR = Path.home() / ".claude/agency/audits/pdf"
+
+NICHE_PDF_MAP = {
+    "med_spa":   "audit_med_spa_med_spa_client.pdf",
+    "dental":    "audit_dental_dental_implants_client.pdf",
+    "legal":     "audit_legal_personal_injury_firm.pdf",
+    "dtc_ecomm": "audit_dtc_ecomm_dtc_ecommerce_brand.pdf",
+    "dtc_food":  "audit_dtc_ecomm_dtc_ecommerce_brand.pdf",
+    "dtc_pets":  "audit_dtc_ecomm_dtc_ecommerce_brand.pdf",
+    "dtc_beauty":"audit_dtc_ecomm_dtc_ecommerce_brand.pdf",
+}
+
+def attach_pdf(msg, pdf_path: Path, filename: str = None):
+    """Attach a PDF file to email message."""
+    if not pdf_path.exists():
+        return False
+    filename = filename or pdf_path.name
+    with open(pdf_path, "rb") as f:
+        part = MIMEBase("application", "octet-stream")
+        part.set_payload(f.read())
+    encoders.encode_base64(part)
+    part.add_header("Content-Disposition", f'attachment; filename="{filename}"')
+    msg.attach(part)
+    return True
+
+def send_smtp(to, subject, html_body, pdf_path=None, pdf_filename=None):
+    """Send via Gmail SMTP with app password. Optionally attach PDF audit report."""
+    if not GMAIL_APP_PASS:
+        return False, "no app password"
+    try:
+        msg = MIMEMultipart("mixed")
+        msg["From"]    = GMAIL_FROM
+        msg["To"]      = to
+        msg["Subject"] = subject
+        msg["Reply-To"]= GMAIL_FROM
+
+        alt = MIMEMultipart("alternative")
+        alt.attach(MIMEText(html_body, "html", "utf-8"))
+        msg.attach(alt)
+
+        if pdf_path:
+            attached = attach_pdf(msg, pdf_path, pdf_filename or "DigiMinds_Audit_Report.pdf")
+            if not attached:
+                log(f"  Warning: PDF not found at {pdf_path}")
+
+        with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=30) as server:
+            server.starttls()
+            server.login(GMAIL_FROM, GMAIL_APP_PASS)
+            server.sendmail(GMAIL_FROM, [to], msg.as_string())
+        return True, "sent"
+    except Exception as e:
+        return False, str(e)
+
+def queue_for_mcp(email_data):
+    """Write to MCP pending file — Claude session will pick this up."""
+    with open(MCP_PENDING, "a") as f:
+        f.write(json.dumps(email_data) + "\n")
+
+def derive_url_from_email(email_addr: str) -> str:
+    """Derive prospect website URL from their email domain (info@xyz.com → https://xyz.com).
+    Skip generic providers — they have no useful brand palette."""
+    if not email_addr or "@" not in email_addr:
+        return ""
+    domain = email_addr.split("@")[1].lower().strip()
+    GENERIC = {"gmail.com","yahoo.com","outlook.com","hotmail.com","aol.com",
+               "icloud.com","protonmail.com","mail.com","msn.com","live.com"}
+    if domain in GENERIC:
+        return ""
+    return f"https://{domain}"
+
+def generate_custom_pdf(business: str, city: str, niche: str, url: str = "") -> Path:
+    """Generate a per-prospect customized audit PDF with their brand palette.
+    Returns path to the new PDF, or falls back to generic niche PDF on failure."""
+    import subprocess as _sp, re as _re
+    gen = Path.home() / ".claude/bin/agency/generate-audit-pdf"
+    if not gen.exists() or not niche:
+        return None
+    # Build custom output path with business slug
+    slug = _re.sub(r'[^a-z0-9]+','_', business.lower()).strip('_') or "prospect"
+    out_path = AUDIT_PDF_DIR / f"audit_{niche}_{slug}.pdf"
+    try:
+        cmd = ["python3", str(gen), "--niche", niche,
+               "--business", business or "Your Business",
+               "--city", city or "Your City",
+               "--out", str(out_path)]
+        if url:
+            cmd += ["--url", url]
+        r = _sp.run(cmd, capture_output=True, text=True, timeout=60)
+        if r.returncode == 0 and out_path.exists():
+            log(f"  ✓ Custom PDF for {business[:40]} ({slug})")
+            return out_path
+        else:
+            log(f"  ⚠ Custom PDF gen failed: {r.stderr[:150]}")
+    except Exception as e:
+        log(f"  ⚠ Custom PDF exception: {e}")
+    return None
+
+def main():
+    if not QUEUE_FILE.exists():
+        log("Email queue empty"); return
+
+    lines = [l.strip() for l in QUEUE_FILE.read_text().split("\n") if l.strip()]
+    emails = [json.loads(l) for l in lines]
+    if not emails:
+        log("Email queue empty"); return
+
+    log(f"Processing {len(emails)} queued emails (per-prospect customized PDFs)")
+    sent = 0
+    mcp_queued = 0
+
+    for em in emails:
+        to      = em.get("to","")
+        subject = em.get("subject","")
+        body    = em.get("html_body") or em.get("body","")
+        if not to or not subject: continue
+
+        # PER-PROSPECT CUSTOM PDF: business name on cover, client brand palette from URL
+        niche    = em.get("niche","")
+        business = em.get("business","") or to.split("@")[0]
+        city     = em.get("city","")
+        url      = em.get("url") or derive_url_from_email(to)
+
+        custom_pdf = generate_custom_pdf(business, city, niche, url)
+        if custom_pdf and custom_pdf.exists():
+            pdf_path = custom_pdf
+        else:
+            # Fallback to generic niche PDF
+            pdf_file = NICHE_PDF_MAP.get(niche)
+            pdf_path = (AUDIT_PDF_DIR / pdf_file) if pdf_file else None
+
+        # Personalized PDF filename — uses business name in download name
+        import re as _re2
+        biz_clean = _re2.sub(r'[^A-Za-z0-9 ]+','', business)[:60].strip().replace(' ','_') or "Client"
+        pdf_filename = f"{biz_clean}_360_Performance_Audit.pdf"
+
+        # Plan A: SMTP
+        if GMAIL_APP_PASS:
+            ok, reason = send_smtp(to, subject, body, pdf_path=pdf_path,
+                                   pdf_filename=pdf_filename)
+            if ok:
+                sent += 1
+                em["sent_at"] = datetime.datetime.now().isoformat()
+                em["method"]  = "smtp"
+                with open(SENT_LOG,"a") as f: f.write(json.dumps(em)+"\n")
+                log(f"  ✓ SMTP sent → {to} | {subject[:50]}")
+                continue
+            else:
+                log(f"  SMTP failed ({reason}) → queuing for MCP")
+
+        # Plan B: queue for MCP pickup
+        queue_for_mcp(em)
+        mcp_queued += 1
+        log(f"  → MCP pending: {to} | {subject[:50]}")
+
+    QUEUE_FILE.write_text("")  # clear queue
+    log(f"Done: {sent} sent via SMTP | {mcp_queued} queued for MCP session")
+
+    if mcp_queued:
+        log(f"MCP pickup file: {MCP_PENDING}")
+        log("Start Claude Code session to auto-send via Gmail MCP")
+
+if __name__ == "__main__":
+    main()
