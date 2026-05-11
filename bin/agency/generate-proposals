@@ -1,0 +1,403 @@
+#!/usr/bin/env python3
+"""
+AGENCY ORCHESTRATOR — Phase 2: Proposal Generation v4.0
+LLM Chain: Groq → GLM-4.5-air → Ollama (local)
+NEW: Quality Review pass — each proposal reviewed + regenerated if score < 75.
+All proposals humanized, platform-optimized, conversion-focused.
+"""
+import os, sys, json, datetime, requests, time, re
+from pathlib import Path
+
+HOME       = Path.home()
+AGENCY_DIR = HOME / ".claude/agency"
+DATA_DIR   = AGENCY_DIR / "data"
+PROP_DIR   = AGENCY_DIR / "proposals"
+LOG_FILE   = AGENCY_DIR / "logs/proposals.log"
+TODAY      = datetime.date.today().strftime("%Y%m%d")
+JOBS_FILE  = DATA_DIR / f"jobs_{TODAY}.json"
+OUTPUT     = PROP_DIR / f"proposals_{TODAY}.json"
+PROFILE    = AGENCY_DIR / "PROFILE.md"
+LEARNING   = AGENCY_DIR / "learning/feedback.json"
+
+GROQ_KEY  = os.environ.get("GROQ_API_KEY","")
+GLM_KEY   = os.environ.get("GLM_API_KEY", os.environ.get("ZHIPU_API_KEY",""))
+OLLAMA_URL= "http://localhost:11434/api/generate"
+GROQ_URL  = "https://api.groq.com/openai/v1/chat/completions"
+GROQ_MODEL= "llama-3.1-8b-instant"
+GLM_URL   = "https://open.bigmodel.cn/api/paas/v4/chat/completions"
+GLM_MODEL = "glm-4.5-air"
+
+BANNED_OPENERS = [
+    "i hope", "i am writing", "i saw your post", "i came across", "i am interested",
+    "i would like to", "greetings", "dear client", "hello there", "hi there",
+    "i am excited", "i am reaching out", "my name is", "i noticed your"
+]
+
+def log(msg):
+    ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    line = f"[{ts}] {msg}"
+    print(line)
+    with open(LOG_FILE,"a") as f: f.write(line+"\n")
+
+def call_groq(prompt, max_tokens=500):
+    if not GROQ_KEY: return ""
+    for attempt in range(3):
+        try:
+            r = requests.post(GROQ_URL,
+                json={"model":GROQ_MODEL,
+                      "messages":[{"role":"user","content":prompt}],
+                      "max_tokens":max_tokens,"temperature":0.8},
+                headers={"Authorization":f"Bearer {GROQ_KEY}"},
+                timeout=25)
+            if r.status_code == 200:
+                text = r.json()["choices"][0]["message"]["content"].strip()
+                # Log usage
+                try:
+                    import subprocess as _sp
+                    _sp.Popen([sys.executable, str(HOME/".claude/bin/agency/limit-tracker"),
+                               "log","groq","requests","1"], stdout=_sp.DEVNULL, stderr=_sp.DEVNULL)
+                    _sp.Popen([sys.executable, str(HOME/".claude/bin/agency/limit-tracker"),
+                               "log","groq","tokens", str(max_tokens)], stdout=_sp.DEVNULL, stderr=_sp.DEVNULL)
+                except: pass
+                return text
+            if r.status_code == 429:
+                wait = int(r.headers.get("retry-after","15"))
+                log(f"  Groq rate limit — waiting {wait}s")
+                time.sleep(wait)
+                continue
+        except Exception as e:
+            log(f"  Groq error: {e}")
+            time.sleep(3)
+    return ""
+
+def call_glm(prompt, max_tokens=500):
+    if not GLM_KEY: return ""
+    for attempt in range(2):
+        try:
+            r = requests.post(GLM_URL,
+                json={"model":GLM_MODEL,
+                      "messages":[{"role":"user","content":prompt}],
+                      "max_tokens":max_tokens,"temperature":0.8},
+                headers={"Authorization":f"Bearer {GLM_KEY}"},
+                timeout=30)
+            if r.status_code == 200:
+                return r.json()["choices"][0]["message"]["content"].strip()
+            if r.status_code == 429:
+                time.sleep(10); continue
+        except Exception as e:
+            log(f"  GLM error: {e}")
+    return ""
+
+def call_ollama(prompt):
+    try:
+        r = requests.post(OLLAMA_URL,
+            json={"model":"llama3:latest","prompt":prompt,"stream":False,"options":{"num_predict":450}},
+            timeout=60)
+        if r.status_code == 200:
+            return r.json().get("response","").strip()
+    except Exception as e:
+        log(f"  Ollama error: {e}")
+    return ""
+
+def call_llm(prompt, max_tokens=500):
+    text = call_groq(prompt, max_tokens)
+    if text and len(text) > 50:
+        return text
+    text = call_glm(prompt, max_tokens)
+    if text and len(text) > 50:
+        return text
+    text = call_ollama(prompt)
+    if text and len(text) > 50:
+        return text
+    return ""
+
+def load_profile():
+    return PROFILE.read_text() if PROFILE.exists() else (
+        "Hafiz Muhammad Zulqarnain, Meta Ads + Google Ads expert. "
+        "DigiMinds agency. 90-day ROI guarantee. "
+        "Portfolio: hafiz-muhammad-z-3n01vli.gamma.site | digiminds.org"
+    )
+
+def load_learning():
+    if LEARNING.exists():
+        return json.loads(LEARNING.read_text())
+    return {"what_works":[],"what_fails":[],"avg_response_rate":0}
+
+def get_word_count(text):
+    return len(text.split())
+
+def check_banned_opener(text):
+    first_line = text.lower().strip().split('\n')[0][:80]
+    for ban in BANNED_OPENERS:
+        if first_line.startswith(ban):
+            return ban
+    return None
+
+def quick_score(text, job):
+    """Fast rule-based quality score — no LLM needed."""
+    score = 100
+    issues = []
+    wc = get_word_count(text)
+    platform = job.get("platform","upwork")
+
+    # Word count check
+    limits = {
+        "upwork": (100, 170), "reddit": (80, 130), "linkedin": (65, 110),
+        "twitter": (50, 90), "freelancer": (110, 160), "guru": (110, 160),
+        "peopleperhour": (110, 160), "indeed": (100, 160),
+        "naukri": (100, 160), "bark": (80, 140)
+    }
+    lo, hi = limits.get(platform, (80, 170))
+    if wc < lo:
+        score -= 20; issues.append(f"too short ({wc} words, need {lo}+)")
+    elif wc > hi:
+        score -= 15; issues.append(f"too long ({wc} words, max {hi})")
+
+    # Banned opener
+    banned = check_banned_opener(text)
+    if banned:
+        score -= 30; issues.append(f"banned opener: '{banned}'")
+
+    # Must mention digiminds or ROI guarantee
+    tl = text.lower()
+    if "digiminds" not in tl and "90-day" not in tl:
+        score -= 10; issues.append("missing DigiMinds/guarantee mention")
+
+    # Must have a question or CTA
+    has_cta = "?" in text or any(w in tl for w in ["schedule","call","chat","discuss","reply","reach out","connect"])
+    if not has_cta:
+        score -= 15; issues.append("missing CTA or question")
+
+    # Pain point reference check
+    pain = job.get("pain_points",[])
+    desc_words = job.get("description","")[:200].lower().split()
+    # At least 2 words from job description should appear
+    matches = sum(1 for w in desc_words if len(w)>5 and w in tl)
+    if matches < 2:
+        score -= 10; issues.append("not specific enough to job description")
+
+    # Generic filler phrases
+    fillers = ["extensive experience","proven track record","passionate about","dedicated professional"]
+    for f in fillers:
+        if f in tl:
+            score -= 5; issues.append(f"generic filler: '{f}'")
+
+    return max(0, score), issues
+
+def build_prompt(job, profile_text, learning, fix_notes=""):
+    platform = job.get("platform","upwork")
+    title    = job.get("title","")
+    desc     = job.get("description","")[:600]
+    budget   = job.get("budget","")
+    pain     = job.get("pain_points",[])
+    ht       = job.get("is_high_ticket",False)
+    tips     = ""
+    ww = learning.get("what_works",[])[:2]
+    if ww: tips = f"\nWinning pattern: {'; '.join(ww)}"
+    ht_note  = "\n(HIGH TICKET — extra professional, data-driven, mention ROI numbers)" if ht else ""
+    fix_note = f"\n\nFIX REQUIRED: {fix_notes}" if fix_notes else ""
+
+    limits = {
+        "upwork": "120-150 words",
+        "reddit": "90-120 words",
+        "linkedin": "75-100 words",
+        "twitter": "55-75 words",
+        "freelancer": "130-155 words",
+        "guru": "130-155 words",
+        "peopleperhour": "130-155 words",
+        "indeed": "110-150 words",
+        "naukri": "110-150 words",
+        "bark": "90-130 words",
+    }
+    wc_target = limits.get(platform, "120-150 words")
+
+    if platform == "upwork":
+        fmt = (f"UPWORK PROPOSAL — {wc_target}.\n"
+               "Line 1: Open with THEIR specific problem (not 'I saw your post').\n"
+               "Lines 2-4: Exactly what you'd do for them (be specific to their description).\n"
+               "Line 5: DigiMinds 90-day ROI guarantee + 1 real stat (e.g. 'avg 3.2x ROAS').\n"
+               "Line 6: One smart, specific question about their business.\n"
+               "Sign: Hafiz | DigiMinds | digiminds.org")
+    elif platform == "reddit":
+        fmt = (f"REDDIT REPLY — {wc_target}.\n"
+               "Conversational, expert but NOT salesy. Acknowledge their situation.\n"
+               "Give 2-3 actionable tips. Soft offer to help. NO corporate speak.\n"
+               "Sign: Hafiz (Meta+Google Ads — DigiMinds)")
+    elif platform == "linkedin":
+        fmt = (f"LINKEDIN MESSAGE — {wc_target}.\n"
+               "Professional observation about their need → what you'd bring specifically → "
+               "1 result stat → soft CTA.\nSign: Hafiz | DigiMinds")
+    elif platform == "twitter":
+        fmt = (f"TWITTER REPLY — {wc_target}. Direct, casual, no hashtags.\n"
+               "Address their pain → what you'd do → DigiMinds mention.\nSign: Hafiz")
+    elif platform in ("freelancer","guru","peopleperhour"):
+        fmt = (f"FREELANCE PROPOSAL — {wc_target}.\n"
+               "Pain point → specific approach → DigiMinds 90-day guarantee → "
+               "1 brief case study result → clear CTA.\nSign: Hafiz | DigiMinds")
+    elif platform in ("indeed","naukri"):
+        fmt = (f"JOB APPLICATION MESSAGE — {wc_target}.\n"
+               "Open with their specific need → your targeted approach → DigiMinds ROI "
+               "guarantee → free audit offer → CTA.\nSign: Hafiz | DigiMinds | digiminds.org")
+    else:
+        fmt = (f"EMAIL BODY — {wc_target}.\n"
+               "Subject: [Specific Result] for [Company Type]\n"
+               "Pain → targeted approach → DigiMinds 90-day guarantee → free audit → CTA.\n"
+               "P.S.: complimentary audit attached.\nSign: Hafiz | DigiMinds")
+
+    return f"""You are Hafiz Muhammad Zulqarnain — Meta Ads + Google Ads specialist at DigiMinds agency.
+Agency: digiminds.org | 90-day ROI guarantee | Portfolio: hafiz-muhammad-z-3n01vli.gamma.site
+
+JOB: [{platform.upper()}] {title}
+Description: {desc[:450]}
+Budget: {budget} | Pain points: {', '.join(pain) if pain else 'not specified'}{ht_note}{tips}
+
+FORMAT: {fmt}
+
+STRICT RULES:
+1. NEVER start with: "I hope/I am writing/I saw your post/I am interested/Greetings/Dear Client"
+2. First sentence = THEIR situation, not yours
+3. Sound like a real human expert, not an AI
+4. Include 1 detail pulled directly from their description (shows you read it)
+5. Mention digiminds.org naturally (not forced)
+6. End with exactly 1 question OR clear CTA{fix_note}
+
+Write ONLY the proposal text (no subject line unless email format):"""
+
+def review_and_improve(text, job, attempt=1):
+    """Score the proposal. If < 75, regenerate with fix notes."""
+    score, issues = quick_score(text, job)
+    if score >= 75 or attempt >= 2:
+        return text, score, issues
+    # Regenerate with fix notes
+    fix_notes = "; ".join(issues)
+    profile  = load_profile()
+    learning = load_learning()
+    new_prompt = build_prompt(job, profile, learning, fix_notes=fix_notes)
+    new_text = call_llm(new_prompt)
+    if not new_text or len(new_text) < 50:
+        return text, score, issues  # keep original if regen failed
+    new_score, new_issues = quick_score(new_text, job)
+    if new_score >= score:
+        return new_text, new_score, new_issues
+    return text, score, issues  # keep original if regen was worse
+
+def main():
+    PROP_DIR.mkdir(parents=True, exist_ok=True)
+    if not JOBS_FILE.exists():
+        log(f"ERROR: No jobs file: {JOBS_FILE}"); sys.exit(1)
+
+    jobs_data = json.loads(JOBS_FILE.read_text())
+    jobs      = jobs_data.get("jobs",[])
+
+    # ── DEDUP: skip already-submitted jobs ─────────────────────────────────
+    try:
+        import importlib.util as _ilu
+        _spec = _ilu.spec_from_file_location("dedup", str(Path(__file__).parent/"dedup"))
+        _dm   = _ilu.load_module_from_spec(_spec)
+        _spec.loader.exec_module(_dm)
+        jobs, _skipped = _dm.get_new_jobs_only(jobs)
+        if _skipped:
+            log(f"  DEDUP: {len(_skipped)} already-submitted jobs skipped")
+    except Exception as _ex:
+        log(f"  dedup not available ({_ex}) — processing all jobs")
+
+    log(f"=== PROPOSAL GENERATION v4.0: {len(jobs)} jobs ===")
+    log(f"LLM chain: Groq → GLM-4.5-air → Ollama | QR: score≥75 required")
+
+    profile  = load_profile()
+    learning = load_learning()
+    proposals = []
+    quality_pass = 0
+    quality_regen = 0
+    quality_fail = 0
+
+    for i, job in enumerate(jobs):
+        label = f"[{i+1}/{len(jobs)}]"
+
+        # Generate
+        prompt = build_prompt(job, profile, learning)
+        text   = call_llm(prompt)
+
+        if not text or len(text) < 50:
+            log(f"  {label} ✗ generation failed — {job['platform']} | {job['title'][:40]}")
+            quality_fail += 1
+            continue
+
+        # Quality Review
+        score, issues = quick_score(text, job)
+        if score < 75 and issues:
+            # Attempt improvement
+            fix_notes = "; ".join(issues)
+            new_prompt = build_prompt(job, profile, learning, fix_notes=fix_notes)
+            new_text = call_llm(new_prompt)
+            if new_text and len(new_text) > 50:
+                new_score, new_issues = quick_score(new_text, job)
+                if new_score >= score:
+                    text, score, issues = new_text, new_score, new_issues
+                    quality_regen += 1
+                    log(f"  {label} ↑ QR improved {score-new_score+new_score}→{score}: {job['title'][:35]}")
+                else:
+                    quality_pass += 1
+            else:
+                quality_pass += 1
+        else:
+            quality_pass += 1
+
+        proposals.append({
+            "job_id":          f"{job['platform']}_{i}_{TODAY}",
+            "platform":        job["platform"],
+            "job_title":       job["title"],
+            "job_url":         job.get("url",""),
+            "client_info":     job.get("client_info",{}),
+            "relevance_score": job.get("relevance_score",0),
+            "quality_score":   score,
+            "quality_issues":  issues,
+            "pain_points":     job.get("pain_points",[]),
+            "is_high_ticket":  job.get("is_high_ticket",False),
+            "proposal_text":   text,
+            "word_count":      get_word_count(text),
+            "budget":          job.get("budget",""),
+            "status":          "draft",
+            "generated_at":    datetime.datetime.now().isoformat(),
+            "submitted_at":    None,
+            "response_received": False,
+            "response_text":   None
+        })
+        status_icon = "✓" if score >= 75 else "⚠"
+        log(f"  {label} {status_icon} QR:{score} {job['platform'].upper()}: {job['title'][:45]}")
+
+        # Record in dedup tracker so it's never re-generated tomorrow
+        try:
+            _dm.mark_job_submitted(job.get("url",""), job["platform"], job["title"][:80], score)
+        except Exception:
+            pass
+
+        time.sleep(1.5)
+
+    breakdown = {}
+    for p in ["upwork","linkedin","indeed","reddit","naukri","peopleperhour","guru","freelancer","bark","twitter"]:
+        n = len([x for x in proposals if x["platform"] == p])
+        if n: breakdown[p] = n
+
+    avg_quality = int(sum(p["quality_score"] for p in proposals) / len(proposals)) if proposals else 0
+
+    out = {
+        "date": TODAY,
+        "total_proposals": len(proposals),
+        "high_ticket_proposals": len([p for p in proposals if p.get("is_high_ticket")]),
+        "avg_quality_score": avg_quality,
+        "quality_stats": {
+            "passed_first_review": quality_pass,
+            "improved_by_regen": quality_regen,
+            "failed": quality_fail
+        },
+        "platform_breakdown": breakdown,
+        "proposals": proposals
+    }
+    OUTPUT.write_text(json.dumps(out, indent=2))
+    log(f"Generated {len(proposals)}/{len(jobs)} proposals | Avg QR: {avg_quality}/100 | "
+        f"Pass:{quality_pass} Regen:{quality_regen} Fail:{quality_fail} → {OUTPUT}")
+    return str(OUTPUT)
+
+if __name__ == "__main__":
+    print(main())
