@@ -1,0 +1,61 @@
+#!/usr/bin/env bash
+# open-design-start — ensure Open Design daemon+web are running
+# Called by launch-optimized and smart-session-start when design prompts detected.
+# Uses Node 24 + pnpm via nvm.
+
+OD_DIR="$HOME/open-design"
+OD_STATUS_URL=""
+
+# ── Helper: get current URL from tools-dev status ─────────────────
+_od_status() {
+  cd "$OD_DIR" 2>/dev/null || return 1
+  source ~/.zshrc 2>/dev/null
+  nvm use 24 &>/dev/null
+  pnpm tools-dev status 2>/dev/null
+}
+
+# ── Check if already running ──────────────────────────────────────
+STATUS=$(_od_status 2>/dev/null)
+if echo "$STATUS" | grep -q "web: running"; then
+  WEB_URL=$(echo "$STATUS" | grep "web: running" | grep -oE 'http://[^ ]+')
+  echo "✓ Open Design — RUNNING  ($WEB_URL)"
+  echo "  → Open: $WEB_URL"
+  exit 0
+fi
+
+# ── Repo exists? ──────────────────────────────────────────────────
+if [[ ! -d "$OD_DIR" ]]; then
+  echo "✗ Open Design — NOT INSTALLED (run: git clone https://github.com/nexu-io/open-design ~/open-design)"
+  exit 1
+fi
+
+# ── node_modules installed? ───────────────────────────────────────
+if [[ ! -d "$OD_DIR/node_modules" ]]; then
+  echo "⟳ Open Design — installing dependencies..."
+  cd "$OD_DIR" && source ~/.zshrc 2>/dev/null && nvm use 24 &>/dev/null && corepack enable && pnpm install 2>&1 | tail -5
+fi
+
+# ── daemon CLI built? ─────────────────────────────────────────────
+if [[ ! -f "$OD_DIR/apps/daemon/dist/cli.js" ]]; then
+  echo "⟳ Open Design — building daemon CLI..."
+  cd "$OD_DIR" && source ~/.zshrc 2>/dev/null && nvm use 24 &>/dev/null && pnpm --filter @open-design/daemon build 2>&1 | tail -3
+fi
+
+# ── Start ─────────────────────────────────────────────────────────
+echo "⟳ Open Design — starting daemon + web..."
+cd "$OD_DIR" && source ~/.zshrc 2>/dev/null && nvm use 24 &>/dev/null
+pnpm tools-dev start web &>/dev/null &
+sleep 8
+
+# ── Confirm ──────────────────────────────────────────────────────
+STATUS=$(_od_status 2>/dev/null)
+if echo "$STATUS" | grep -q "web: running"; then
+  WEB_URL=$(echo "$STATUS" | grep "web: running" | grep -oE 'http://[^ ]+')
+  echo "✓ Open Design — STARTED  ($WEB_URL)"
+  echo "  → Open: $WEB_URL"
+  # Open in default browser
+  open "$WEB_URL" 2>/dev/null || true
+else
+  echo "✗ Open Design — FAILED to start. Check: cd ~/open-design && pnpm tools-dev check"
+  exit 1
+fi
