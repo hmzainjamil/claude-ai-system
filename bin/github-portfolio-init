@@ -1,0 +1,213 @@
+#!/usr/bin/env bash
+# github-portfolio-init — One-time GitHub auth + repo creation + push
+# Usage: github-portfolio-init <GITHUB_TOKEN> [github-username]
+# After this runs once, github-sync handles all future updates automatically.
+
+set -e
+
+TOKEN="$1"
+USERNAME="${2:-}"
+GH="/opt/homebrew/bin/gh"
+REPO_DIR="/Users/mc/claude-ai-system"
+
+if [ -z "$TOKEN" ]; then
+  echo "Usage: github-portfolio-init <GITHUB_TOKEN> [github-username]"
+  echo ""
+  echo "Get token: https://github.com/settings/tokens"
+  echo "  → New classic token → check 'repo' scope → Generate → copy"
+  exit 1
+fi
+
+# ── 1. Auth ──────────────────────────────────────────────────────────────────
+echo "🔐 Authenticating with GitHub..."
+echo "$TOKEN" | "$GH" auth login --with-token
+echo "✓ GitHub auth OK"
+
+# ── 2. Get username if not provided ──────────────────────────────────────────
+if [ -z "$USERNAME" ]; then
+  USERNAME=$("$GH" api user --jq '.login')
+fi
+echo "👤 GitHub user: $USERNAME"
+
+# ── 3. Store token in .zshrc ─────────────────────────────────────────────────
+if ! grep -q "GITHUB_TOKEN" ~/.zshrc 2>/dev/null; then
+  echo "" >> ~/.zshrc
+  echo "# GitHub portfolio token" >> ~/.zshrc
+  echo "export GITHUB_TOKEN=\"$TOKEN\"" >> ~/.zshrc
+  echo "export GITHUB_USERNAME=\"$USERNAME\"" >> ~/.zshrc
+fi
+export GITHUB_TOKEN="$TOKEN"
+export GITHUB_USERNAME="$USERNAME"
+
+# ── 4. Create giant combined repo ─────────────────────────────────────────────
+echo "📦 Creating claude-ai-system repo..."
+cd "$REPO_DIR"
+
+# Add remote if not exists
+if ! git remote get-url origin 2>/dev/null; then
+  "$GH" repo create "claude-ai-system" \
+    --public \
+    --description "🤖 Complete Claude AI automation system — 45 skills, 210 agents, 8K+ n8n workflows, HMZ lead generation pipelines, website agency stack" \
+    --push \
+    --source="$REPO_DIR" \
+    --remote=origin || true
+else
+  git push -u origin main --force 2>&1 || true
+fi
+echo "✓ claude-ai-system pushed → https://github.com/$USERNAME/claude-ai-system"
+
+# ── 5. Create separate repos ───────────────────────────────────────────────────
+SUBREPOS=(
+  "claude-ai-skills:🧠 All 45 Claude AI skills — website builder, lead gen, ads strategy, SEO, agency pipeline"
+  "claude-ai-agents:🤖 All 210 Claude AI specialist agents — engineering, marketing, sales, design, finance"
+  "claude-ai-workflows:⚙️ All HMZ automated workflows — daily lead sweeps, BDM sweeps, Indeed MCP pipelines"
+  "claude-ai-automations:🔧 All automation scripts — github-sync, skill-auto-activate, run-scheduled-task, LaunchAgents"
+)
+
+declare -A SUBREPO_DIRS=(
+  ["claude-ai-skills"]="$REPO_DIR/skills"
+  ["claude-ai-agents"]="$REPO_DIR/agents"
+  ["claude-ai-workflows"]="$REPO_DIR/workflows"
+  ["claude-ai-automations"]="$REPO_DIR/automations"
+)
+
+for ENTRY in "${SUBREPOS[@]}"; do
+  SUBREPO_NAME="${ENTRY%%:*}"
+  SUBREPO_DESC="${ENTRY#*:}"
+  SUB_DIR="${SUBREPO_DIRS[$SUBREPO_NAME]}"
+  SUB_TMPDIR="/tmp/$SUBREPO_NAME"
+
+  echo "📦 Creating $SUBREPO_NAME..."
+  rm -rf "$SUB_TMPDIR"
+  mkdir -p "$SUB_TMPDIR"
+
+  # Copy relevant files
+  cp -r "$SUB_DIR/." "$SUB_TMPDIR/" 2>/dev/null || true
+
+  # Create README
+  cat > "$SUB_TMPDIR/README.md" <<SUBREADME
+# $SUBREPO_NAME
+
+Part of the [claude-ai-system](https://github.com/$USERNAME/claude-ai-system) portfolio.
+
+$SUBREPO_DESC
+
+## Contents
+$(ls "$SUB_TMPDIR" | grep -v README | head -30 | sed 's/^/- /')
+
+## Main Repository
+👉 See the full system: [claude-ai-system](https://github.com/$USERNAME/claude-ai-system)
+
+---
+*Auto-updated daily by github-sync*
+SUBREADME
+
+  cd "$SUB_TMPDIR"
+  git init -q
+  git add -A
+  git commit -q -m "feat: initial commit — $SUBREPO_NAME" 2>/dev/null || true
+
+  # Create GitHub repo
+  "$GH" repo create "$SUBREPO_NAME" \
+    --public \
+    --description "$SUBREPO_DESC" \
+    --push \
+    --source="$SUB_TMPDIR" \
+    --remote=origin 2>/dev/null || {
+    # Repo might exist already
+    git remote add origin "https://github.com/$USERNAME/$SUBREPO_NAME.git" 2>/dev/null || true
+    git push -u origin main --force 2>/dev/null || git push -u origin master --force 2>/dev/null || true
+  }
+
+  echo "✓ $SUBREPO_NAME → https://github.com/$USERNAME/$SUBREPO_NAME"
+  cd "$REPO_DIR"
+done
+
+# ── 6. Set up daily LaunchAgent for auto-sync ─────────────────────────────────
+PLIST="$HOME/Library/LaunchAgents/ai.hmz.github-portfolio-sync.plist"
+cat > "$PLIST" <<PLISTEOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>ai.hmz.github-portfolio-sync</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>/Users/mc/.claude/bin/github-sync</string>
+  </array>
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Hour</key>
+    <integer>6</integer>
+    <key>Minute</key>
+    <integer>30</integer>
+  </dict>
+  <key>StandardOutPath</key>
+  <string>/Users/mc/.claude/logs/github-portfolio-sync.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/mc/.claude/logs/github-portfolio-sync-error.log</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>HOME</key>
+    <string>/Users/mc</string>
+    <key>GITHUB_TOKEN</key>
+    <string>$TOKEN</string>
+    <key>GITHUB_USERNAME</key>
+    <string>$USERNAME</string>
+    <key>PATH</key>
+    <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+  </dict>
+  <key>RunAtLoad</key>
+  <false/>
+</dict>
+</plist>
+PLISTEOF
+
+launchctl unload "$PLIST" 2>/dev/null || true
+launchctl load "$PLIST"
+echo "✓ Daily sync LaunchAgent loaded (fires 6:30 AM daily)"
+
+# ── 7. Update github-sync to push sub-repos too ───────────────────────────────
+cat >> /Users/mc/.claude/bin/github-sync <<'APPENDEOF'
+
+# Push sub-repos
+for SUBREPO in claude-ai-skills claude-ai-agents claude-ai-workflows claude-ai-automations; do
+  SUB_TMPDIR="/tmp/${SUBREPO}-daily"
+  MAIN_DIR="/Users/mc/claude-ai-system"
+  SUBDIR_MAP_skills="skills"
+  SUBDIR_MAP_agents="agents"
+  SUBDIR_MAP_workflows="workflows"
+  SUBDIR_MAP_automations="automations"
+
+  SUBDIR_KEY="${SUBREPO#claude-ai-}"
+  SUBDIR_KEY="${SUBDIR_KEY//-/_}"
+  eval "SUBDIR=\$MAIN_DIR/\${SUBDIR_MAP_${SUBDIR_KEY}}"
+
+  rm -rf "$SUB_TMPDIR"
+  cp -r "$SUBDIR" "$SUB_TMPDIR" 2>/dev/null || continue
+  cd "$SUB_TMPDIR"
+  git init -q 2>/dev/null
+  git add -A 2>/dev/null
+  DATE=$(date '+%Y-%m-%d')
+  git commit -q -m "daily-sync: ${DATE}" 2>/dev/null || continue
+  UNAME="${GITHUB_USERNAME:-mc}"
+  git remote add origin "https://${GITHUB_TOKEN}@github.com/${UNAME}/${SUBREPO}.git" 2>/dev/null || true
+  git push origin HEAD:main --force 2>/dev/null || true
+  cd /Users/mc/claude-ai-system
+done
+APPENDEOF
+
+echo ""
+echo "════════════════════════════════════════════════════════════"
+echo "✅ PORTFOLIO LIVE ON GITHUB"
+echo ""
+echo "  🌐 Giant repo:  https://github.com/$USERNAME/claude-ai-system"
+echo "  🧠 Skills:      https://github.com/$USERNAME/claude-ai-skills"
+echo "  🤖 Agents:      https://github.com/$USERNAME/claude-ai-agents"
+echo "  ⚙️  Workflows:   https://github.com/$USERNAME/claude-ai-workflows"
+echo "  🔧 Automations: https://github.com/$USERNAME/claude-ai-automations"
+echo ""
+echo "  📅 Daily sync:  6:30 AM (LaunchAgent active)"
+echo "════════════════════════════════════════════════════════════"
