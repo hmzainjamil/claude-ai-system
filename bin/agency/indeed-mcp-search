@@ -1,0 +1,292 @@
+#!/usr/bin/env python3
+"""
+Indeed MCP Bridge — BDM Integration
+Uses Claude Code's connected Indeed MCP connector (real-time API).
+Called by discover-jobs as primary Indeed source.
+
+HMZ profile: Meta Ads + Google Ads specialist, Lahore, Pakistan
+Target: remote-only, English-speaking countries + PK
+"""
+
+import os, sys, json, subprocess, datetime, re
+from pathlib import Path
+
+HOME       = Path.home()
+DATA_DIR   = HOME / ".claude/agency/data"
+TODAY      = datetime.date.today().strftime("%Y%m%d")
+OUTPUT     = DATA_DIR / f"indeed_mcp_{TODAY}.json"
+LOG        = HOME / ".claude/agency/logs/indeed_mcp.log"
+
+DATA_DIR.mkdir(parents=True, exist_ok=True)
+LOG.parent.mkdir(parents=True, exist_ok=True)
+
+def log(msg):
+    ts = datetime.datetime.now().strftime("%H:%M:%S")
+    line = f"[{ts}] {msg}"
+    print(line)
+    with open(LOG, "a") as f:
+        f.write(line + "\n")
+
+# ── Search config — HMZ skill-matched queries ─────────────────────
+SEARCHES = [
+    # (search_query, country_code, job_type)
+    ("Google Ads Meta Ads PPC specialist remote",               "US", "contract"),
+    ("paid media performance marketing Google Ads remote",      "US", None),
+    ("Meta Ads Facebook Ads media buyer remote",                "US", None),
+    ("Google Ads manager remote digital marketing",             "US", "fulltime"),
+    ("PPC specialist paid advertising remote",                  "CA", None),
+    ("Meta Ads Google Ads specialist remote",                   "CA", None),
+    ("paid media manager performance marketing remote",         "GB", None),
+    ("Google Ads PPC specialist remote freelance",              "AU", None),
+    ("digital marketing manager Google Ads remote",             "AE", None),
+    ("Google Ads Meta Ads specialist remote Pakistan",          "PK", None),
+    ("performance marketing media buyer remote worldwide",      "US", None),
+    ("Facebook Ads Google Ads consultant remote contract",      "US", "contract"),
+]
+
+SKILL_KEYWORDS = [
+    "google ads", "meta ads", "facebook ads", "ppc", "paid media",
+    "paid ads", "performance marketing", "media buyer", "paid social",
+    "facebook advertising", "google adwords", "sem", "roas", "paid search"
+]
+
+BLACKLIST_COUNTRIES = {"IN", "BD", "PH", "IL"}  # geo blacklist from memory
+
+def is_skill_match(title: str, description: str = "") -> bool:
+    text = (title + " " + description).lower()
+    return any(kw in text for kw in SKILL_KEYWORDS)
+
+# ── Pakistani Candidate Compatibility Filter ──────────────────────
+# Prevents wasted applications on jobs that will auto-reject PK candidates
+
+# Hard blockers — job explicitly requires local residency/work auth
+PK_REJECT_PHRASES = [
+    "must be authorized to work in the us",
+    "must be authorized to work in the united states",
+    "must be authorized to work in the uk",
+    "must be authorized to work in the united kingdom",
+    "must be authorized to work in canada",
+    "must be authorized to work in australia",
+    "authorized to work in us",
+    "authorized to work in the us",
+    "us work authorization required",
+    "uk work authorization required",
+    "must reside in the us",
+    "must reside in the united states",
+    "must reside in the uk",
+    "must reside in canada",
+    "must reside in australia",
+    "must live in the us",
+    "must be based in the us",
+    "must be based in the united states",
+    "must be based in the uk",
+    "must be based in canada",
+    "must be based in australia",
+    "us citizens only",
+    "us citizen only",
+    "citizens only",
+    "w-2 employee",
+    "w2 employee",
+    "security clearance required",
+    "secret clearance",
+    "top secret clearance",
+    "local candidates only",
+    "must be physically located",
+    "no international applicants",
+    "sponsorship not available for this position",  # for H-1B etc.
+    "currently located in the us",
+    "currently located in the uk",
+    "currently located in canada",
+    "currently located in australia",
+    "only applicants in the us",
+    "only applicants in the uk",
+    "must have a valid us",
+    "must have a valid uk",
+    "ssa",  # US Social Security Number
+    "this position is only open to",  # usually followed by country
+]
+
+# Green signals — explicitly open to international/PK candidates
+PK_PASS_PHRASES = [
+    "worldwide remote",
+    "work from anywhere",
+    "open to international",
+    "global team",
+    "anywhere in the world",
+    "international applicants welcome",
+    "pakistan",
+    "lahore",
+    "karachi",
+    "remote worldwide",
+    "no location restrictions",
+    "available globally",
+    "open to candidates anywhere",
+    "international remote",
+    "globally distributed",
+    "contractor",       # freelance/contractor usually = no work auth needed
+    "freelance",
+    "independent contractor",
+    "1099",             # US freelance tax form = contractor, no visa needed
+]
+
+def pk_compatibility_check(title: str, description: str, location: str = "", country: str = "US") -> dict:
+    """
+    Returns:
+      status: "YES" / "NO" / "MAYBE"
+      reason: why
+      safe_to_apply: bool
+    """
+    text = (title + " " + description + " " + location).lower()
+
+    # Check hard blockers first
+    for phrase in PK_REJECT_PHRASES:
+        if phrase in text:
+            return {
+                "status": "NO",
+                "reason": f'Requires local work auth: "{phrase}"',
+                "safe_to_apply": False,
+            }
+
+    # Check green signals
+    for phrase in PK_PASS_PHRASES:
+        if phrase in text:
+            return {
+                "status": "YES",
+                "reason": f'PK-friendly signal: "{phrase}"',
+                "safe_to_apply": True,
+            }
+
+    # Pakistan Indeed listings = always compatible
+    if country == "PK":
+        return {"status": "YES", "reason": "Pakistan Indeed listing", "safe_to_apply": True}
+
+    # Contract/freelance with no blocker = usually safe
+    if any(w in text for w in ["contract", "freelance", "per project", "hourly"]):
+        return {"status": "MAYBE", "reason": "Contract role — likely open to international contractors", "safe_to_apply": True}
+
+    # Default for remote roles with no explicit restriction
+    if "remote" in text:
+        return {"status": "MAYBE", "reason": "Remote role — no explicit work auth requirement found. Verify before applying.", "safe_to_apply": True}
+
+    return {"status": "MAYBE", "reason": "No location data — verify manually", "safe_to_apply": False}
+
+def run_mcp_search(search: str, country_code: str, job_type: str = None) -> list:
+    """
+    Calls `claude --print` with a structured prompt to use the Indeed MCP.
+    Returns parsed job list.
+    """
+    jt_part = f', job_type="{job_type}"' if job_type else ""
+    prompt = f"""Use the Indeed MCP search_jobs tool with these exact parameters:
+search="{search}"
+location="remote"
+country_code="{country_code}"{jt_part}
+
+Return ONLY a JSON array of jobs found. Each job object must have:
+- title, company, location, salary, job_type, posted_date, apply_url, job_id
+- remote: true
+- country: "{country_code}"
+
+If no jobs found, return empty array [].
+Return ONLY the JSON array, no other text."""
+
+    try:
+        result = subprocess.run(
+            ["claude", "--print", "--no-color", prompt],
+            capture_output=True, text=True, timeout=60,
+            env={**os.environ, "HOME": str(HOME)}
+        )
+        output = result.stdout.strip()
+        # Extract JSON array from output
+        m = re.search(r'\[.*\]', output, re.DOTALL)
+        if m:
+            return json.loads(m.group())
+    except subprocess.TimeoutExpired:
+        log(f"  Timeout: {country_code} '{search[:40]}'")
+    except json.JSONDecodeError:
+        pass
+    except Exception as e:
+        log(f"  Error: {e}")
+    return []
+
+def normalize_job(j: dict, country: str) -> dict:
+    """Normalize MCP job dict to BDM standard format + PK compatibility check."""
+    title    = j.get("title","") or j.get("job_title","")
+    desc     = j.get("description","") or ""
+    location = j.get("location","Remote")
+    salary   = j.get("salary","") or j.get("compensation","")
+
+    pk = pk_compatibility_check(title, desc, location, country)
+
+    return {
+        "platform":      "indeed_mcp",
+        "title":         title,
+        "description":   desc[:800],
+        "url":           j.get("apply_url","") or j.get("url",""),
+        "budget":        salary,
+        "client_info": {
+            "company":  j.get("company",""),
+            "location": location,
+            "posted":   j.get("posted_date","") or j.get("date",""),
+            "country":  country,
+        },
+        "posted_at":     j.get("posted_date","") or j.get("date",""),
+        "remote":        True,
+        "source":        "indeed_mcp_live",
+        "pk_compatible": pk["status"],       # YES / NO / MAYBE
+        "pk_reason":     pk["reason"],       # why flagged
+        "safe_to_apply": pk["safe_to_apply"],
+    }
+
+def main():
+    log("=== Indeed MCP Bridge — BDM job discovery ===")
+
+    # Check cache — reuse today's results if fresh (save API calls)
+    if OUTPUT.exists():
+        cached = json.loads(OUTPUT.read_text())
+        if cached.get("date") == TODAY and len(cached.get("jobs",[])) > 0:
+            log(f"Cache hit: {len(cached['jobs'])} jobs from today — skipping re-fetch")
+            print(json.dumps(cached["jobs"]))
+            return
+
+    all_jobs = []
+    seen_urls = set()
+
+    for search, country, job_type in SEARCHES:
+        log(f"  Searching {country}: {search[:50]}...")
+        raw = run_mcp_search(search, country, job_type)
+        rejected_pk = 0
+        for j in raw:
+            url = j.get("apply_url","") or j.get("url","")
+            title = j.get("title","")
+            if not url or url in seen_urls: continue
+            if not is_skill_match(title): continue
+            seen_urls.add(url)
+
+            normalized = normalize_job(j, country)
+
+            # Hard block: PK incompatible — skip entirely
+            if normalized["pk_compatible"] == "NO":
+                rejected_pk += 1
+                log(f"    ❌ PK-BLOCKED: {title[:50]} — {normalized['pk_reason']}")
+                continue
+
+            all_jobs.append(normalized)
+        log(f"    → {len(raw)} found | PK-blocked: {rejected_pk} | accepted: {len(all_jobs)} total")
+
+    pk_yes   = len([j for j in all_jobs if j["pk_compatible"] == "YES"])
+    pk_maybe = len([j for j in all_jobs if j["pk_compatible"] == "MAYBE"])
+    log(f"\nTotal: {len(all_jobs)} PK-compatible jobs ({pk_yes} confirmed ✅ | {pk_maybe} unverified ⚠️)")
+
+    # Save cache
+    OUTPUT.write_text(json.dumps({
+        "date":  TODAY,
+        "count": len(all_jobs),
+        "jobs":  all_jobs
+    }, indent=2))
+    log(f"Saved → {OUTPUT}")
+
+    # Output for BDM pipeline to consume
+    print(json.dumps(all_jobs))
+
+if __name__ == "__main__":
+    main()
