@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+# Auto-init git on new project directories
+# Fires on PostToolUse(Bash) — checks if cwd needs git init
+# Safe: only acts when .git doesn't exist AND there are files present
+
+CWD="$(pwd)"
+
+# Skip system/home/claude dirs — only act on project dirs
+case "$CWD" in
+  /Users/mc/.claude*|/Users/mc/Library*|/tmp*|/private/tmp*|/Users/mc/Downloads/Leads*)
+    exit 0 ;;
+esac
+
+# Only init if: no .git, we're in a real project dir (has code files), not home root
+if [ "$CWD" = "/Users/mc" ]; then exit 0; fi
+if [ -d "$CWD/.git" ]; then exit 0; fi
+
+# Check if there are any code/project files
+FILE_COUNT=$(find "$CWD" -maxdepth 1 \( -name "*.py" -o -name "*.js" -o -name "*.ts" -o -name "*.sh" -o -name "*.json" -o -name "*.md" -o -name "*.html" -o -name "*.css" \) 2>/dev/null | wc -l | tr -d ' ')
+
+if [ "$FILE_COUNT" -gt 0 ]; then
+  git init "$CWD" -q 2>/dev/null
+  cd "$CWD" && git add . 2>/dev/null && git commit -q -m "init: auto-checkpoint by Claude Code" 2>/dev/null
+  echo "[git-auto-init] ✅ Git initialized in $CWD ($FILE_COUNT files committed)"
+fi
