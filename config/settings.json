@@ -1,0 +1,165 @@
+{
+  "model": "claude-haiku-4-5-20251001",
+  "permissions": {
+    "defaultMode": "bypassPermissions",
+    "allow": [
+      "Bash(*)",
+      "Edit(*)",
+      "Write(*)",
+      "Read(*)",
+      "Glob(*)",
+      "Grep(*)",
+      "WebFetch(*)",
+      "WebSearch(*)",
+      "mcp__*(*)"
+    ]
+  },
+  "mcpServers": {
+    "apify": {
+      "type": "http",
+      "url": "https://mcp.apify.com"
+    },
+    "stitch": {
+      "command": "/opt/homebrew/bin/npx",
+      "args": [
+        "-y",
+        "@_davideast/stitch-mcp",
+        "proxy"
+      ],
+      "env": {
+        "PATH": "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin",
+        "GOOGLE_CLOUD_PROJECT": "11931848220195880471"
+      }
+    },
+    "sequential-thinking": {
+      "command": "/opt/homebrew/bin/npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-sequential-thinking"
+      ],
+      "env": {
+        "PATH": "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"
+      }
+    }
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/Users/mc/Library/Python/3.13/bin/code-review-graph update --skip-flows",
+            "timeout": 30
+          }
+        ]
+      },
+      {
+        "matcher": "Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/Users/mc/.claude/bin/memory-sync",
+            "timeout": 10
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/Users/mc/.claude/bin/git-auto-init",
+            "timeout": 8
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/Users/mc/.claude/bin/session-learn",
+            "timeout": 15
+          },
+          {
+            "type": "command",
+            "command": "/Users/mc/.claude/bin/gap-detector",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/Users/mc/.claude/bin/skill-reset",
+            "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "/Users/mc/.claude/bin/tier0-check",
+            "timeout": 15
+          },
+          {
+            "type": "command",
+            "command": "/Users/mc/.claude/bin/gap-remediate",
+            "timeout": 15
+          },
+          {
+            "type": "command",
+            "command": "/Users/mc/.claude/bin/smart-session-start",
+            "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "/Users/mc/.claude/bin/openclaw-bridge start-gateway",
+            "timeout": 15
+          },
+          {
+            "type": "command",
+            "command": "/Users/mc/.claude/bin/agency-email-pickup",
+            "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "/Users/mc/.claude/bin/hmz-bdm-catchup",
+            "timeout": 10
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 /Users/mc/.claude/bin/auto-troubleshoot 2>/dev/null || true"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/Users/mc/.claude/bin/skill-auto-activate",
+            "timeout": 15
+          },
+          {
+            "type": "command",
+            "command": "/Users/mc/.claude/bin/tier0-prompt-inject",
+            "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "/Users/mc/.claude/bin/tier0-cache-inject",
+            "timeout": 3
+          }
+        ]
+      }
+    ]
+  }
+}
