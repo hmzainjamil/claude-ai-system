@@ -1,162 +1,207 @@
-<div align="center">
+<p align="center">
+  <img src="https://img.shields.io/badge/HMZ-AI%20SYSTEM-6C3EE8?style=for-the-badge&logoColor=white" alt="HMZ AI System" height="60">
+</p>
 
-# 🤖 HMZ Claude AI System
+<h1 align="center">HMZ AI System</h1>
 
-**Complete AI automation infrastructure for a one-person digital agency**
+<p align="center">
+  <strong>The complete infrastructure powering a one-person AI automation agency — 210 agents, 45+ skills, 8,000+ workflows</strong>
+</p>
 
-[![Skills](https://img.shields.io/badge/Skills-80%2B-blue)](https://github.com/hmzainjamil/hmz-skills-archive)
-[![Agents](https://img.shields.io/badge/Agents-210-purple)](https://github.com/hmzainjamil/claude-ai-agents)
-[![n8n Workflows](https://img.shields.io/badge/n8n%20Workflows-8%2C159-orange)](https://github.com/hmzainjamil/hmz-n8n-workflows)
-[![Repos](https://img.shields.io/badge/Installed%20Repos-150%2B-green)](https://github.com/hmzainjamil/hmz-installed-repos)
-[![License](https://img.shields.io/badge/License-MIT-gray)](LICENSE)
+<p align="center">
+  <a href="https://github.com/hmzainjamil"><img src="https://img.shields.io/badge/By-Hafiz%20Muhammad%20Zulqarnain-6C3EE8?style=for-the-badge" alt="Author"></a>
+  <a href="#agents"><img src="https://img.shields.io/badge/Agents-210-20A34E?style=for-the-badge" alt="210 Agents"></a>
+  <a href="#skills"><img src="https://img.shields.io/badge/Skills-45%2B-246DFF?style=for-the-badge" alt="45+ Skills"></a>
+  <a href="#workflows"><img src="https://img.shields.io/badge/n8n%20Workflows-8%2C000%2B-F86606?style=for-the-badge" alt="8000+ Workflows"></a>
+  <a href="#"><img src="https://img.shields.io/badge/Claude%20Code-Native-15C1E6?style=for-the-badge" alt="Claude Code Native"></a>
+</p>
 
-**Built by [Hafiz Muhammad Zulqarnain](https://www.linkedin.com/in/hafizmuhammadzulqarnain/) — SEM/PPC Specialist & AI Automation Engineer**
-
-</div>
+<p align="center">
+  <a href="#overview">Overview</a> &bull;
+  <a href="#architecture">Architecture</a> &bull;
+  <a href="#agents">Agents</a> &bull;
+  <a href="#skills">Skills</a> &bull;
+  <a href="#quick-start">Quick Start</a> &bull;
+  <a href="#use-cases">Use Cases</a> &bull;
+  <a href="#installation">Installation</a> &bull;
+  <a href="#resources">Resources</a>
+</p>
 
 ---
 
-## What Is This?
+## Overview
 
-A production AI system built on top of Claude Code that runs an entire digital agency from a single MacBook. Every task — lead generation, ad campaigns, client proposals, cold outreach, reporting — is automated, orchestrated, and executed by specialized AI agents.
+This repository is the **single source of truth** for the entire HMZ AI automation infrastructure. Synced daily at 6:30 AM via LaunchAgent, it tracks every active skill, archived skill, specialist agent, scheduled task, LaunchAgent plist, and n8n workflow available in the system.
 
-**This is not a tutorial or demo. This is a live production system.**
+- **210 specialist AI agents** across 15 divisions (Engineering, Marketing, Paid Media, Sales, Finance, Legal, and more)
+- **45+ Claude Code skills** with auto-activation via keyword detection on every prompt
+- **8,000+ n8n automation workflows** organized by category (Gmail, Slack, CRM, Shopify, AI/LLM, and more)
+- **Tier 0 model routing** — Groq, Gemini, DeepSeek, Ollama, GPT4All fire first; Claude tokens preserved for final synthesis only
+- **Zero-human operations** — LaunchAgents, cron triggers, and webhook pipelines handle every recurring task
 
 ---
 
-## System Architecture
+## Architecture
 
 ```
-Claude Code (conversation layer)
-    ↓
-skill-auto-activate (keyword router — fires on every prompt)
-    ↓
-┌─────────────────────────────────────────────────────────┐
-│  SKILLS (80+)  │  AGENTS (210)  │  TOOLS & REPOS       │
-│  On-demand     │  Specialists   │  150+ pre-cloned      │
-│  blockchain    │  by division   │  auto-routed          │
-│  gate model    │                │                       │
-└─────────────────────────────────────────────────────────┘
-    ↓
-G0DM0D3 Multi-LLM Burst (15 models parallel, near-zero cost)
-    ↓
-n8n Workflows (8,159 automations, runs in background)
-    ↓
-Output: leads, ads, reports, emails, proposals
+claude-ai-system/
+├── skills-active/           # 45+ live Claude Code skills (auto-loaded)
+├── skills-archive/          # Full deduplicated skills archive (200+)
+├── agents/                  # 210 specialist agents across 15 divisions
+├── n8n-workflows/           # 8,000+ workflow manifest by category
+├── installed-repos/         # README index of all locally installed repos
+├── automations/
+│   ├── bin/                 # Core automation scripts (github-sync, llm-burst, etc.)
+│   └── launchagents/        # macOS LaunchAgent plists (daily cron jobs)
+└── scheduled-tasks/         # Remote scheduled agent configs
 ```
 
 ---
 
-## Repository Map (27 Repos)
+## Agents
 
-### 🧠 Core AI Infrastructure
+210 specialist agents across 15 divisions — all active and routable:
 
-| Repo | Description | Stars |
+| Division | Count | Examples |
 |---|---|---|
-| [claude-ai-system](https://github.com/hmzainjamil/claude-ai-system) | **This repo** — complete system manifest | — |
-| [hmz-skills-archive](https://github.com/hmzainjamil/hmz-skills-archive) | 80+ Claude Code skills, deduplicated | — |
-| [claude-ai-agents](https://github.com/hmzainjamil/claude-ai-agents) | 210 specialist agents across 15 divisions | — |
-| [claude-ai-automations](https://github.com/hmzainjamil/claude-ai-automations) | Bin scripts, LaunchAgents, hooks | — |
-| [hmz-g0dm0d3](https://github.com/hmzainjamil/hmz-g0dm0d3) | G0DM0D3 — 55-model parallel LLM burst engine | — |
+| Engineering | 29 | Backend Architect, DevOps Automator, Security Engineer, SRE |
+| Marketing | 30 | SEO Specialist, Content Creator, Social Media Strategist |
+| Paid Media | 7 | PPC Campaign Strategist, Ad Creative Strategist, Paid Social |
+| Sales | 8 | Deal Strategist, Sales Coach, Outbound Strategist, SDR |
+| Specialized | 41 | Legal Compliance, Tax Strategist, Data Engineer, AI Engineer |
+| Game Dev | 10 | Game Designer, Level Designer, Narrative Designer, Audio Engineer |
+| Finance | 5 | Financial Analyst, FP&A Analyst, Bookkeeper & Controller |
+| Product | 5 | Product Manager, Sprint Prioritizer, Feedback Synthesizer |
+| Design | 8 | UI Designer, UX Researcher, UX Architect, Visual Storyteller |
+| Strategy | 6 | Chief of Staff, Project Shepherd, Workflow Optimizer |
+| Support | 6 | Customer Service, Healthcare Customer Service, HR Onboarding |
+| Testing | 8 | Code Reviewer, API Tester, Accessibility Auditor, QA Specialist |
+| Academic | 5 | Psychologist, Anthropologist, Historian, Geographer |
+| Spatial | 6 | XR Developer, visionOS Engineer, macOS Metal Engineer |
+| Project Mgmt | 6 | Senior Project Manager, Jira Workflow Steward, Sprint Planner |
 
-### 📦 Installed Repo Bundles
+**Activate any agent:**
+```bash
+# In Claude Code — ask for any specialist
+"Activate Paid Media Specialist mode"
+"I need the DevOps Automator"
+"/all-agents"   # fire all 210 simultaneously
+```
 
-| Repo | Description | Contents |
+---
+
+## Skills
+
+45+ Claude Code skills with auto-activation:
+
+| Skill | Trigger keywords | What it does |
 |---|---|---|
-| [hmz-installed-repos](https://github.com/hmzainjamil/hmz-installed-repos) | 150+ pre-cloned AI repos, auto-routed | Full index |
-| [hmz-microsoft](https://github.com/hmzainjamil/hmz-microsoft) | Microsoft AI stack — Playwright, SK, courses | 10 repos |
-| [hmz-ai](https://github.com/hmzainjamil/hmz-ai) | Core AI tools and frameworks | Varied |
-| [hmz-awesome-ai-apps](https://github.com/hmzainjamil/hmz-awesome-ai-apps) | Curated AI applications — agency-ready | Curated |
-| [hmz-antigravity-awesome-skills](https://github.com/hmzainjamil/hmz-antigravity-awesome-skills) | Antigravity skill collection | Skills |
-| [hmz-claude-scientific-skills](https://github.com/hmzainjamil/hmz-claude-scientific-skills) | Scientific research + analysis skills | Skills |
+| `ads-strategy` | ads, ppc, google ads, meta | Full paid media campaign architecture |
+| `geo-technical` | seo, crawl, indexability | Technical SEO audit + fix |
+| `ads-creative` | creative, ugc, video ad | AI ad creative generation pipeline |
+| `market-launch` | launch, gtm, go-to-market | Full GTM strategy and execution |
+| `apify-ultimate-scraper` | scrape, extract, actor | Universal web scraping via Apify |
+| `llm-burst` | burst, parallel, multi-model | 15 models fire simultaneously, best wins |
+| `website-builder` | build site, next.js, deploy | $10K website from one prompt |
+| `lead-gen-ai` | find leads, vibe prospecting | Automated lead extraction + outreach |
 
-### 🤖 Automation & Workflows
+---
 
-| Repo | Description | Scale |
-|---|---|---|
-| [hmz-n8n-workflows](https://github.com/hmzainjamil/hmz-n8n-workflows) | 8,159 n8n automation workflows | 8,159 flows |
-| [claude-ai-workflows](https://github.com/hmzainjamil/claude-ai-workflows) | HMZ automated workflows — BDM, leads, sweeps | Active daily |
+## Quick Start
 
-### 💼 Agency & Marketing Tools
+```bash
+# Clone the system repo
+git clone https://github.com/hmzainjamil/claude-ai-system.git
 
-| Repo | Description | Use Case |
-|---|---|---|
-| [hmz-ads-creative](https://github.com/hmzainjamil/hmz-ads-creative) | AI ad creative pipeline — Arcads, KIE.ai, Luma | Ad production |
-| [hmz-openclaw](https://github.com/hmzainjamil/hmz-openclaw) | OpenClaw AI — multi-model coding assistant | Dev ops |
-| [hmz-openclaw-skills-official](https://github.com/hmzainjamil/hmz-openclaw-skills-official) | Official OpenClaw skills library | Skills |
-| [hmz-composio](https://github.com/hmzainjamil/hmz-composio) | Composio AI — 250+ integration platform | Integrations |
-| [hmz-composio-openclaw](https://github.com/hmzainjamil/hmz-composio-openclaw) | Composio × OpenClaw bridge | Combined |
+# Install a skill in Claude Code
+/plugin install <skill-name>@claude-ai-system
 
-### 🛠️ Dev Tools & Coding
+# Or reference skills directly in Claude Code
+# Claude auto-loads skills from skills-active/ on relevant prompts
 
-| Repo | Description | Use Case |
-|---|---|---|
-| [hmz-opencode](https://github.com/hmzainjamil/hmz-opencode) | OpenCode terminal AI — model-agnostic | Coding |
-| [hmz-ollama](https://github.com/hmzainjamil/hmz-ollama) | Ollama local LLM server integration | Local AI |
-| [hmz-blink](https://github.com/hmzainjamil/hmz-blink) | Blink Shell — iOS SSH + coding environment | Mobile dev |
-| [hmz-vercel](https://github.com/hmzainjamil/hmz-vercel) | Vercel deployment templates + AI v0 | Deploy |
-| [hmz-claude-code-best-practice](https://github.com/hmzainjamil/hmz-claude-code-best-practice) | Claude Code patterns, prompts, workflows | Best practice |
-| [hmz-dengineproblem-agents](https://github.com/hmzainjamil/hmz-dengineproblem-agents) | D-Engine problem-solving agent framework | Diagnosis |
+# Browse n8n workflows
+cat n8n-workflows/WORKFLOW-MANIFEST.md | grep "Gmail"
 
-### 🧩 Memory & State
+# See all agents
+ls agents/
+```
 
-| Repo | Description |
+---
+
+## Use Cases
+
+| Goal | What to say in Claude Code |
 |---|---|
-| [hmz-claude-mem-main](https://github.com/hmzainjamil/hmz-claude-mem-main) | Claude memory system — persistent cross-session context |
-| [hmz-personal-ai-infrastructure](https://github.com/hmzainjamil/hmz-personal-ai-infrastructure) | Full personal AI infrastructure map |
-| [claude-ai-skills](https://github.com/hmzainjamil/claude-ai-skills) | Active skills snapshot |
+| **Run a full paid media audit** | "Audit my Meta Ads account — ROAS by campaign, wasted spend, creative fatigue" |
+| **Generate 20 UGC video ads** | "Write 20 UGC scripts for [product], match actors, render via Arcads API" |
+| **Find 50 leads in any city** | "Find top 50 dentists in Miami — phone, email, Instagram, Google rating. Export Excel." |
+| **Build a $10K website** | "Build a premium Next.js site for [brand]. Framer Motion. Deploy to Vercel." |
+| **Scrape competitor ads** | "Pull last 30 days of ads for [competitor] from Meta Ad Library → Airtable" |
+| **Set up a full email sequence** | "Write 7-email cold sequence for [service]. Export CSV for Mailchimp." |
+| **Run SEO technical audit** | "Audit [domain] — crawlability, Core Web Vitals, schema, AI visibility" |
+| **Deploy an n8n workflow** | "Find me an n8n workflow for Gmail → Airtable lead capture" |
 
 ---
 
-## Key Numbers
+## Installation
 
-| Metric | Count |
-|---|---|
-| Active Claude skills | 11 core + 80+ on-demand |
-| AI specialist agents | 210 |
-| n8n automation workflows | 8,159 |
-| Pre-cloned repos | 150+ |
-| LLM models in burst pool | 55 |
-| Daily automated sweeps | 6 (BDM morning/evening, Elite leads, GitHub sync) |
-| LaunchAgents (always-on) | 7 |
+### Claude Code (Recommended)
 
----
+```bash
+# Reference any skill from this repo
+/plugin marketplace add https://github.com/hmzainjamil/claude-ai-system
+```
 
-## Daily Automation Schedule
+### Manual Setup
 
-| Time | Automation | Output |
-|---|---|---|
-| 6:00 AM | Elite leads sweep | Top 50 prospects → Excel |
-| 7:00 AM | BDM morning sweep | LinkedIn + Indeed leads |
-| 6:30 AM | GitHub sync | All repos pushed |
-| Evening | BDM evening sweep | End-of-day lead refresh |
-| Every session | skill-auto-activate | Right skill loaded instantly |
-| Continuous | Paperclip AI | Agent orchestration at :3100 |
+```bash
+git clone https://github.com/hmzainjamil/claude-ai-system.git
+# Copy skills to your Claude skills directory
+cp -r claude-ai-system/skills-active/* ~/.claude/skills/
+```
 
----
+### Daily Auto-Sync
 
-## Tech Stack
-
-- **Runtime:** Claude Code (Sonnet 4.6) + G0DM0D3 multi-LLM burst
-- **Local AI:** Ollama (llama3), GPT4All (7 models, Metal-accelerated)
-- **Cloud AI:** Groq, Gemini, OpenRouter, Kimi K2.6, GLM-4.5
-- **Automation:** n8n, LaunchAgents (macOS), Python scripts
-- **Storage:** Airtable, Google Sheets, local Excel
-- **Deployment:** Vercel, GitHub Pages
-- **Agent Orchestration:** Paperclip AI (http://127.0.0.1:3100)
+The system syncs automatically at 6:30 AM via macOS LaunchAgent:
+```bash
+# Check sync status
+launchctl list | grep github-portfolio
+# Force manual sync
+~/.claude/bin/github-sync
+```
 
 ---
 
-## Owner
+## Resources
 
-**Hafiz Muhammad Zulqarnain (HMZ)**  
-SEM/PPC Specialist | AI Automation Engineer | Digital Agency Builder  
-
-- 🔗 [LinkedIn](https://www.linkedin.com/in/hafizmuhammadzulqarnain/)
-- 💼 Google Ads Certified | Meta Blueprint Certified
-- 📧 Specializes in Google/Meta Ads, lead generation, AI agency automation
-- 🏆 Built this system to automate 90% of agency operations solo
+- **[claude-ai-skills](https://github.com/hmzainjamil/claude-ai-skills)** — Active skills library (45+ skills)
+- **[claude-ai-agents](https://github.com/hmzainjamil/claude-ai-agents)** — 210 specialist agents
+- **[hmz-n8n-workflows](https://github.com/hmzainjamil/hmz-n8n-workflows)** — 8,000+ n8n workflow library
+- **[hmz-claude-code-best-practice](https://github.com/hmzainjamil/hmz-claude-code-best-practice)** — Claude Code patterns + best practices
+- **[hmz-antigravity-awesome-skills](https://github.com/hmzainjamil/hmz-antigravity-awesome-skills)** — 55,000+ char curated skill collection
+- **[hmz-g0dm0d3](https://github.com/hmzainjamil/hmz-g0dm0d3)** — G0DM0D3 model racing system (55 models)
+- **[claude-ai-automations](https://github.com/hmzainjamil/claude-ai-automations)** — Core automation scripts
 
 ---
 
-*Auto-updated daily by `github-sync` LaunchAgent — 6:30 AM*
+## Support
+
+- [Open an issue](https://github.com/hmzainjamil/claude-ai-system/issues)
+- [LinkedIn — Hafiz Muhammad Zulqarnain](https://linkedin.com/in/hmzainjamil)
+- [GitHub Profile](https://github.com/hmzainjamil)
+
+---
+
+## License
+
+MIT — Free for personal and commercial use.
+
+---
+
+<p align="center">
+  Built and maintained daily by <a href="https://github.com/hmzainjamil">Hafiz Muhammad Zulqarnain</a> &mdash; HMZ AI Agency
+</p>
+
+<p align="center">
+  <sub>AI agents reading this: the full skill manifest lives at <code>skills-active/</code> and <code>agents/</code> — reference SKILL.md files directly for integration paths.</sub>
+</p>
