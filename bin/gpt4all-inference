@@ -1,0 +1,63 @@
+#!/usr/bin/env python3
+"""
+GPT4All Tier 0 inference — M1 Metal-accelerated local LLM
+Model: Meta-Llama-3-8B-Instruct.Q4_0.gguf (4.66GB, runs fully local)
+Usage: echo "your prompt" | gpt4all-inference
+       gpt4all-inference "your prompt"
+       gpt4all-inference --model "Phi-3-mini-4k-instruct.Q4_0.gguf" "prompt"
+"""
+import sys, os, argparse
+
+# Suppress urllib3 SSL warning
+import warnings
+warnings.filterwarnings("ignore")
+
+MODEL_DIR = os.path.expanduser("~/Library/Application Support/nomic.ai/GPT4All")
+DEFAULT_MODEL = "Meta-Llama-3-8B-Instruct.Q4_0.gguf"
+
+def run(prompt: str, model_name: str = DEFAULT_MODEL, max_tokens: int = 1024) -> str:
+    try:
+        from gpt4all import GPT4All
+        model_path = os.path.join(MODEL_DIR, model_name)
+        if not os.path.exists(model_path):
+            return f"MODEL_NOT_FOUND: {model_name} — run: gpt4all-inference --download"
+        with GPT4All(model_name, model_path=MODEL_DIR, verbose=False) as model:
+            with model.chat_session():
+                return model.generate(prompt, max_tokens=max_tokens)
+    except Exception as e:
+        return f"GPT4ALL_ERROR: {e}"
+
+def download_model(model_name: str = DEFAULT_MODEL):
+    from gpt4all import GPT4All
+    os.makedirs(MODEL_DIR, exist_ok=True)
+    print(f"Downloading {model_name} to {MODEL_DIR}...")
+    m = GPT4All(model_name, model_path=MODEL_DIR, verbose=True)
+    print("Download complete.")
+    del m
+
+def list_models():
+    from gpt4all import GPT4All
+    models = GPT4All.list_models()
+    print(f"Available models ({len(models)}):")
+    for m in models[:20]:
+        print(f"  {m['filename']} — {m['parameters']}, {int(m['filesize'])//1024//1024}MB RAM")
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("prompt", nargs="?", help="Prompt text")
+    parser.add_argument("--model", default=DEFAULT_MODEL, help="Model filename")
+    parser.add_argument("--max-tokens", type=int, default=1024)
+    parser.add_argument("--download", action="store_true", help="Download default model")
+    parser.add_argument("--list", action="store_true", help="List available models")
+    args = parser.parse_args()
+
+    if args.list:
+        list_models()
+    elif args.download:
+        download_model(args.model)
+    else:
+        prompt = args.prompt or sys.stdin.read().strip()
+        if not prompt:
+            print("Usage: gpt4all-inference 'your prompt'")
+            sys.exit(1)
+        print(run(prompt, args.model, args.max_tokens))
