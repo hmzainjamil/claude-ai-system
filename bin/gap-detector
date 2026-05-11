@@ -1,0 +1,86 @@
+#!/usr/bin/env bash
+# gap-detector — Self-learning gap detector. Runs on every Stop hook.
+# Reads session transcript context, detects:
+#   - Missing skills (asked for X, no skill existed)
+#   - Mistakes made (errors, corrections, retries)
+#   - Capability gaps (things Claude said it couldn't do)
+#   - Repeated failures (pattern across sessions)
+# Writes gaps to ~/.claude/gap-queue.jsonl for auto-remediation.
+
+source ~/.claude/tier0.env 2>/dev/null
+QUEUE="$HOME/.claude/gap-queue.jsonl"
+SKILLS_ACTIVE="$HOME/.claude/skills"
+SKILLS_ARCHIVE="$HOME/.claude/skills-archive"
+AGENTS="$HOME/.agents/skills"
+LOG="$HOME/.claude/gap-learn.log"
+TS=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
+
+# Read session input from stdin (Claude Code passes transcript JSON)
+SESSION=$(cat 2>/dev/null || echo "")
+
+# Extract prompt + response text
+PROMPT=$(echo "$SESSION" | python3 -c "
+import json,sys
+try:
+    d=json.loads(sys.stdin.read())
+    msgs = d.get('messages',[])
+    # Get last user prompt
+    for m in reversed(msgs):
+        if m.get('role') == 'user':
+            print(str(m.get('content',''))[:2000])
+            break
+except: pass
+" 2>/dev/null || echo "")
+
+RESPONSE=$(echo "$SESSION" | python3 -c "
+import json,sys
+try:
+    d=json.loads(sys.stdin.read())
+    msgs = d.get('messages',[])
+    for m in reversed(msgs):
+        if m.get('role') == 'assistant':
+            c = m.get('content','')
+            if isinstance(c, list):
+                c = ' '.join([x.get('text','') for x in c if isinstance(x,dict)])
+            print(str(c)[:3000])
+            break
+except: pass
+" 2>/dev/null || echo "")
+
+COMBINED="$PROMPT $RESPONSE"
+
+# ── PATTERN: API keys / credentials needed ──────────────────────
+if echo "$COMBINED" | grep -qiE "api key|no key|missing key|unauthorized|401|403|no credit|insufficient balance"; then
+    echo "{\"type\":\"gap\",\"category\":\"credentials\",\"description\":\"Missing API key or credentials detected\",\"detail\":\"$TS\",\"action\":\"check_tier0_env\"}" >> "$QUEUE"
+fi
+
+# ── PATTERN: Skill was needed but not found ─────────────────────
+if echo "$COMBINED" | grep -qiE "skill not found|no skill|can't find skill|skill missing|activate.*skill"; then
+    SKILL_NAME=$(echo "$COMBINED" | grep -oiE "(skill-|/)[a-z][a-z0-9-]+" | head -1 | tr -d '/')
+    [ -n "$SKILL_NAME" ] && echo "{\"type\":\"gap\",\"category\":\"missing_skill\",\"name\":\"$SKILL_NAME\",\"description\":\"Skill referenced but not found: $SKILL_NAME\",\"action\":\"create_stub\",\"ts\":\"$TS\"}" >> "$QUEUE"
+fi
+
+# ── PATTERN: Task failed / retry / error ─────────────────────────
+if echo "$COMBINED" | grep -qiE "error:|failed|couldn't complete|try again|doesn't work|broken|fix.*issue|not working"; then
+    echo "{\"type\":\"gap\",\"category\":\"task_failure\",\"description\":\"Task error or failure detected in session\",\"ts\":\"$TS\",\"action\":\"review_and_learn\"}" >> "$QUEUE"
+fi
+
+# ── PATTERN: Capability requested but not available ──────────────
+if echo "$COMBINED" | grep -qiE "can't do|cannot|don't have access|not available|not supported|outside.*capabilities|i don't know how"; then
+    echo "{\"type\":\"gap\",\"category\":\"capability_gap\",\"description\":\"Capability gap detected — Claude said it couldn't do something\",\"ts\":\"$TS\",\"action\":\"find_alternative_skill\"}" >> "$QUEUE"
+fi
+
+# ── PATTERN: User corrected Claude ───────────────────────────────
+if echo "$COMBINED" | grep -qiE "that's wrong|incorrect|no,|not what i|you missed|you forgot|wrong approach|try again|that's not"; then
+    echo "{\"type\":\"gap\",\"category\":\"correction\",\"description\":\"User correction detected — learning opportunity\",\"ts\":\"$TS\",\"action\":\"queue_memory\"}" >> "$QUEUE"
+fi
+
+# ── PATTERN: New tool/platform mentioned but not integrated ──────
+NEW_TOOLS=$(echo "$COMBINED" | grep -oiE "\b(zapier|make\.com|n8n|airtable|notion|hubspot|salesforce|stripe|twilio|sendgrid|webflow|wordpress|shopify|woocommerce|linkedin|twitter|instagram|tiktok|youtube|whatsapp|telegram)\b" | sort -u | tr '\n' ',')
+if [ -n "$NEW_TOOLS" ]; then
+    echo "{\"type\":\"gap\",\"category\":\"platform_integration\",\"platforms\":\"$NEW_TOOLS\",\"description\":\"Platforms mentioned — check if skills exist\",\"ts\":\"$TS\",\"action\":\"skill_search\"}" >> "$QUEUE"
+fi
+
+# Log gaps found
+GAPS=$(wc -l < "$QUEUE" 2>/dev/null || echo 0)
+echo "[$TS] gap-detector: $GAPS total gaps in queue" >> "$LOG"
