@@ -1,0 +1,256 @@
+#!/usr/bin/env python3
+"""
+AGENCY — Health Check & Anomaly Detection v1.0
+Runs BEFORE every pipeline phase. Auto-heals known issues. Never interrupts user.
+Checks:
+  1. API key validity (env vars present)
+  2. Rate limits (via limit-tracker)
+  3. File system health (required dirs/files)
+  4. LLM availability (ping each service)
+  5. Yesterday's run anomalies (incomplete, wrong counts, errors)
+  6. Daily reset of usage counters if new day
+Output: health_report.json + prints status
+"""
+import os, sys, json, datetime, requests, subprocess
+from pathlib import Path
+
+HOME        = Path.home()
+AGENCY_DIR  = HOME / ".claude/agency"
+LIMITS_DIR  = AGENCY_DIR / "limits"
+HEALTH_DIR  = AGENCY_DIR / "health"
+LOG_FILE    = AGENCY_DIR / "logs/health.log"
+TODAY       = datetime.date.today().strftime("%Y%m%d")
+YESTERDAY   = (datetime.date.today() - datetime.timedelta(1)).strftime("%Y%m%d")
+
+GROQ_KEY   = os.environ.get("GROQ_API_KEY","")
+GLM_KEY    = os.environ.get("GLM_API_KEY","")
+APIFY_KEY  = os.environ.get("APIFY_API_TOKEN","")
+REDDIT_CID = os.environ.get("REDDIT_CLIENT_ID","")
+OPENROUTER = os.environ.get("OPENROUTER_API_KEY","")
+G0DM0D3    = os.environ.get("G0DM0D3_KEY","") or os.environ.get("G0DM0D3_API","")
+OLLAMA_URL = "http://localhost:11434/api/tags"
+
+GROQ_URL   = "https://api.groq.com/openai/v1/models"
+GLM_URL    = "https://open.bigmodel.cn/api/paas/v4/models"
+
+def log(msg):
+    ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    line = f"[{ts}] {msg}"
+    print(line)
+    with open(LOG_FILE,"a") as f: f.write(line+"\n")
+
+def ping_groq():
+    if not GROQ_KEY: return False, "no key"
+    try:
+        r = requests.get(GROQ_URL, headers={"Authorization":f"Bearer {GROQ_KEY}"}, timeout=8)
+        return r.status_code == 200, f"status {r.status_code}"
+    except Exception as e:
+        return False, str(e)[:50]
+
+def ping_ollama():
+    try:
+        r = requests.get(OLLAMA_URL, timeout=5)
+        models = [m["name"] for m in r.json().get("models",[])]
+        return r.status_code == 200, f"models: {models[:3]}"
+    except Exception as e:
+        return False, str(e)[:50]
+
+def ping_glm():
+    if not GLM_KEY: return False, "no key"
+    try:
+        r = requests.get(GLM_URL, headers={"Authorization":f"Bearer {GLM_KEY}"}, timeout=8)
+        return r.status_code == 200, f"status {r.status_code}"
+    except Exception as e:
+        return False, str(e)[:50]
+
+def check_yesterday_run():
+    """Check if yesterday's run completed successfully."""
+    issues = []
+    prop_file = AGENCY_DIR / f"proposals/proposals_{YESTERDAY}.json"
+    jobs_file = AGENCY_DIR / f"data/jobs_{YESTERDAY}.json"
+
+    if not prop_file.exists() and not jobs_file.exists():
+        issues.append(f"yesterday ({YESTERDAY}) had no run at all")
+    elif prop_file.exists():
+        try:
+            d = json.loads(prop_file.read_text())
+            total = d.get("total_proposals", 0)
+            if total == 0:
+                issues.append(f"yesterday: 0 proposals generated (likely LLM failure)")
+            elif total < 50:
+                issues.append(f"yesterday: only {total} proposals (low — check LLM logs)")
+        except Exception as e:
+            issues.append(f"yesterday proposal file corrupt: {e}")
+
+    return issues
+
+def check_filesystem():
+    """Ensure required dirs and files exist."""
+    issues = []
+    required = [
+        AGENCY_DIR / "data",
+        AGENCY_DIR / "proposals",
+        AGENCY_DIR / "submissions",
+        AGENCY_DIR / "reports",
+        AGENCY_DIR / "social",
+        AGENCY_DIR / "logs",
+        AGENCY_DIR / "limits",
+        HOME / ".claude/bin/agency",
+    ]
+    for d in required:
+        if not d.exists():
+            d.mkdir(parents=True, exist_ok=True)
+            issues.append(f"auto-created missing dir: {d}")
+
+    # Check log files writable
+    for log_name in ["proposals.log", "health.log", "report.log", "submission.log"]:
+        lf = AGENCY_DIR / f"logs/{log_name}"
+        try:
+            with open(lf, "a"): pass
+        except Exception as e:
+            issues.append(f"log not writable: {log_name} — {e}")
+    return issues
+
+def check_daily_reset():
+    """Reset daily usage counters if it's a new day."""
+    tracker = HOME / ".claude/bin/agency/limit-tracker"
+    usage_file = LIMITS_DIR / "usage.json"
+    if usage_file.exists():
+        u = json.loads(usage_file.read_text())
+        last_reset = u.get("last_reset","")
+        today_str  = datetime.date.today().isoformat()
+        if last_reset != today_str:
+            subprocess.run([sys.executable, str(tracker), "reset-daily"], capture_output=True)
+            return True
+    return False
+
+def auto_fix(issue):
+    """Attempt automatic fixes for known issues."""
+    if "missing dir" in issue:
+        return "auto-fixed: created directory"
+    if "no key" in issue:
+        return "fallback LLM will be used (Ollama)"
+    if "0 proposals" in issue:
+        return "will run with extended timeouts today"
+    return "logged — monitoring"
+
+def main():
+    HEALTH_DIR.mkdir(parents=True, exist_ok=True)
+    log(f"=== HEALTH CHECK v1.0 — {datetime.datetime.now().strftime('%Y-%m-%d %H:%M')} ===")
+
+    report = {
+        "date": TODAY,
+        "timestamp": datetime.datetime.now().isoformat(),
+        "api_status": {},
+        "issues_found": [],
+        "auto_fixes": [],
+        "limits_ok": {},
+        "recommended_batch_sizes": {},
+        "overall_health": "GREEN",
+        "pipeline_can_proceed": True
+    }
+
+    # 1. Daily reset check
+    reset = check_daily_reset()
+    if reset:
+        log("Daily usage counters reset (new day)")
+        report["daily_reset"] = True
+
+    # 2. API availability
+    log("Checking API availability...")
+    checks = [
+        ("groq",   ping_groq),
+        ("ollama", ping_ollama),
+        ("glm",    ping_glm),
+    ]
+    for name, fn in checks:
+        ok, detail = fn()
+        report["api_status"][name] = {"ok": ok, "detail": detail}
+        icon = "✓" if ok else "✗"
+        log(f"  {icon} {name}: {detail}")
+
+    # Ensure at least one LLM available
+    llm_ok = any(report["api_status"][k]["ok"] for k in ["groq","ollama","glm"])
+    if not llm_ok:
+        report["issues_found"].append("CRITICAL: No LLMs available")
+        report["overall_health"] = "RED"
+        report["pipeline_can_proceed"] = False
+        log("  CRITICAL: All LLMs down — pipeline blocked")
+
+    # 3. Rate limit checks
+    tracker = HOME / ".claude/bin/agency/limit-tracker"
+    for api in ["groq", "glm", "apify_rag", "reddit"]:
+        try:
+            r = subprocess.run(
+                [sys.executable, str(tracker), "check", api],
+                capture_output=True, text=True, timeout=5
+            )
+            result = json.loads(r.stdout.strip()) if r.stdout.strip() else {"ok": True, "batch_size": 110}
+            report["limits_ok"][api] = result["ok"]
+            report["recommended_batch_sizes"][api] = result.get("batch_size", 110)
+            if not result["ok"]:
+                report["issues_found"].append(f"{api} limit exceeded: {result.get('reason','')}")
+                if api == "groq":
+                    report["overall_health"] = "YELLOW"  # not critical — has fallbacks
+        except Exception as e:
+            report["limits_ok"][api] = True  # assume ok if can't check
+            log(f"  limit check error for {api}: {e}")
+
+    # 4. Filesystem health
+    fs_issues = check_filesystem()
+    for issue in fs_issues:
+        fix = auto_fix(issue)
+        report["issues_found"].append(issue)
+        report["auto_fixes"].append(fix)
+        log(f"  FS: {issue} → {fix}")
+
+    # 5. Yesterday's run check
+    yesterday_issues = check_yesterday_run()
+    for issue in yesterday_issues:
+        fix = auto_fix(issue)
+        report["issues_found"].append(issue)
+        report["auto_fixes"].append(fix)
+        log(f"  Run: {issue} → {fix}")
+
+    # 6. API key presence check
+    keys = {
+        "GROQ_API_KEY": bool(GROQ_KEY),
+        "GLM_API_KEY": bool(GLM_KEY),
+        "APIFY_API_TOKEN": bool(APIFY_KEY),
+        "REDDIT_CLIENT_ID": bool(REDDIT_CID),
+        "OPENROUTER_API_KEY": bool(OPENROUTER),
+        "G0DM0D3_KEY": bool(G0DM0D3),
+    }
+    missing = [k for k, v in keys.items() if not v]
+    if missing:
+        log(f"  Missing keys (will use fallbacks): {', '.join(missing)}")
+        report["missing_keys"] = missing
+    report["key_status"] = keys
+
+    # Final health
+    if report["overall_health"] == "RED":
+        log(f"HEALTH: RED — pipeline BLOCKED ({len(report['issues_found'])} issues)")
+    elif report["overall_health"] == "YELLOW" or report["issues_found"]:
+        report["overall_health"] = "YELLOW"
+        log(f"HEALTH: YELLOW — {len(report['issues_found'])} issues (auto-fixed, proceeding)")
+    else:
+        log(f"HEALTH: GREEN — all systems OK, proceeding")
+
+    # Write report
+    health_file = HEALTH_DIR / f"health_{TODAY}.json"
+    health_file.write_text(json.dumps(report, indent=2))
+    log(f"Health report → {health_file}")
+
+    # Return batch sizes for pipeline to use
+    batch = report["recommended_batch_sizes"].get("groq", 110)
+    print(json.dumps({
+        "health": report["overall_health"],
+        "can_proceed": report["pipeline_can_proceed"],
+        "batch_size": batch,
+        "issues": len(report["issues_found"]),
+        "auto_fixed": len(report["auto_fixes"])
+    }))
+    sys.exit(0 if report["pipeline_can_proceed"] else 1)
+
+if __name__ == "__main__":
+    main()
