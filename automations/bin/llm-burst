@@ -390,6 +390,7 @@ async def burst(prompt: str, models: list = None) -> dict:
         callers["gpt4o"]      = call_gpt4o_mini  # #8 — paid, skips if no credits
         callers["glm"]        = call_glm         # #9 — paid, skips if no credits
         callers["ollama"]     = call_ollama      # #10 — local, LaunchAgent persistent
+        callers["bytez"]      = call_bytez       # #11 — bytez.com free tier
 
     async with aiohttp.ClientSession() as session:
         tasks = [fn(prompt, session) for fn in callers.values()]
