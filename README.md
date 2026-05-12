@@ -113,7 +113,7 @@ tcc-dashboard
 | `GROQ_API_KEY` | `~/.zshrc` | Groq llama3-70b — fastest free cloud LLM |
 | `OPENROUTER_API_KEY` | `~/.zshrc` | OpenRouter — 100+ models via one endpoint |
 | `GOOGLE_API_KEY` | `~/.zshrc` | Gemini 2.0 Flash — 1M context free tier |
-| `BYTEZ_API_KEY` | `~/.zshrc` | cb4a7065a586ec6ca26394724ce5ec49 |
+| `BYTEZ_API_KEY` | `~/.zshrc` | BYTEZ_API_KEY_REDACTED |
 | `DASHSCOPE_API_KEY` | `~/.zshrc` | Alibaba DashScope — Qwen models |
 | `LUMA_API_KEY` | `~/.zshrc` | Luma uni-1 image generation API |
 | `ARCADS_API_KEY` | `~/.zshrc` | Arcads AI actor video generation |
@@ -137,7 +137,7 @@ tcc-dashboard
 | Groq llama3-70b: sub-500ms, best synthesis and analysis tasks | [Groq](https://console.groq.com) |
 | Gemini 2.0 Flash: free, 1M context — best for long document analysis | [Google AI](https://ai.google.dev) |
 | DeepSeek-V3 via OpenRouter: best free code model, beats GPT-4o | [OpenRouter](https://openrouter.ai) |
-| Bytez API key: cb4a7065a586ec6ca26394724ce5ec49 — 100+ free models | [Bytez](https://bytez.com) |
+| Bytez API key: BYTEZ_API_KEY_REDACTED — 100+ free models | [Bytez](https://bytez.com) |
 | Ollama Metal GPU: 40+ tok/s on M2 Mac — faster than many cloud APIs | [Ollama](https://ollama.com) |
 
 <a id="tips-mae_orchestration_6"></a>
