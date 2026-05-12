@@ -208,6 +208,25 @@ async def call_kimi_k26(prompt, session):   return await call_kimi(prompt, sessi
 async def call_kimi_long(prompt, session):  return await call_kimi(prompt, session, "moonshot-v1-128k")
 async def call_kimi_k2(prompt, session):    return await call_kimi(prompt, session, "kimi-k2.5")
 
+async def call_bytez(prompt: str, session, model: str = "meta-llama/Llama-3.1-8B-Instruct") -> dict:
+    """Bytez.com — free multi-model access, OpenAI-compatible API"""
+    if not BYTEZ_KEY: return {"model":"bytez","text":"","score":0,"latency":0,"skip":True}
+    import aiohttp
+    t0 = time.time()
+    try:
+        headers = {"Authorization": f"Bearer {BYTEZ_KEY}", "Content-Type": "application/json"}
+        body = {"model": model, "messages": [{"role":"user","content":prompt}],
+                "max_tokens": 1024, "stream": False}
+        async with session.post(f"{BYTEZ_BASE}/chat",
+                                headers=headers, json=body,
+                                timeout=aiohttp.ClientTimeout(total=30)) as r:
+            d = await r.json()
+            text = d["choices"][0]["message"]["content"]
+            return {"model": f"bytez:{model.split('/')[-1]}", "text": text,
+                    "score": score_response(text, prompt), "latency": round(time.time()-t0, 2)}
+    except Exception as e:
+        return {"model":"bytez","text":"","score":0,"latency":round(time.time()-t0,2),"error":str(e),"skip":True}
+
 async def call_g0dm0d3(prompt: str, session) -> dict:
     """G0DM0D3 ULTRAPLINIAN — races ~55 models, returns best via Liquid Response"""
     if not G0DM0D3_KEY: return {"model":"g0dm0d3","text":"","score":0,"latency":0,"skip":True}
