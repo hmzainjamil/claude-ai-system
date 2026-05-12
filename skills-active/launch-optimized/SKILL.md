@@ -1,1 +1,0 @@
-/Users/mc/.claude/skills/launch-optimized/launch-optimized.md

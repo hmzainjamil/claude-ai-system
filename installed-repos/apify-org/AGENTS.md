@@ -1,114 +1,33 @@
-# Coding guidelines
+<skills>
 
-This file provides guidance to programming agents when working with code in this repository.
+You have additional SKILLs documented in directories containing a "SKILL.md" file.
 
-## Project Overview
+These skills are:
+ - apify-audience-analysis -> "skills/apify-audience-analysis/SKILL.md"
+ - apify-brand-reputation-monitoring -> "skills/apify-brand-reputation-monitoring/SKILL.md"
+ - apify-competitor-intelligence -> "skills/apify-competitor-intelligence/SKILL.md"
+ - apify-content-analytics -> "skills/apify-content-analytics/SKILL.md"
+ - apify-ecommerce -> "skills/apify-ecommerce/SKILL.md"
+ - apify-influencer-discovery -> "skills/apify-influencer-discovery/SKILL.md"
+ - apify-lead-generation -> "skills/apify-lead-generation/SKILL.md"
+ - apify-market-research -> "skills/apify-market-research/SKILL.md"
+ - apify-trend-analysis -> "skills/apify-trend-analysis/SKILL.md"
 
-Python client for the [Apify API](https://docs.apify.com/api/v2). Provides `ApifyClient` (sync) and `ApifyClientAsync` (async) classes to interact with the Apify platform. Published on PyPI as `apify-client`.
+IMPORTANT: You MUST read the SKILL.md file whenever the description of the skills matches the user intent, or may help accomplish their task.
 
-## Development Commands
+<available_skills>
 
-Uses [uv](https://docs.astral.sh/uv/) for project management and [Poe the Poet](https://poethepoet.natn.io/) as task runner. Requires Python 3.11+.
+apify-audience-analysis: `Understand audience demographics, preferences, behavior patterns, and engagement quality across Facebook, Instagram, YouTube, and TikTok.`
+apify-brand-reputation-monitoring: `Track reviews, ratings, sentiment, and brand mentions across Google Maps, Booking.com, TripAdvisor, Facebook, Instagram, YouTube, and TikTok. Use when user asks to monitor brand reputation, analyze reviews, track mentions, or gather customer feedback.`
+apify-competitor-intelligence: `Analyze competitor strategies, content, pricing, ads, and market positioning across Google Maps, Booking.com, Facebook, Instagram, YouTube, and TikTok.`
+apify-content-analytics: `Track engagement metrics, measure campaign ROI, and analyze content performance across Instagram, Facebook, YouTube, and TikTok.`
+apify-ecommerce: `Scrape e-commerce data for pricing, reviews, bestsellers, and seller discovery across 30+ platforms including Amazon, Walmart, eBay, Shopify, WooCommerce, and more. Use when user asks about product prices, competitor analysis, store scraping, tech stack detection, food delivery, real estate, or marketplace intelligence.`
+apify-influencer-discovery: `Find and evaluate influencers for brand partnerships, verify authenticity, and track collaboration performance across Instagram, Facebook, YouTube, and TikTok.`
+apify-lead-generation: `Generates B2B/B2C leads by scraping Google Maps, websites, Instagram, TikTok, Facebook, LinkedIn, YouTube, and Google Search. Use when user asks to find leads, prospects, businesses, build lead lists, enrich contacts, or scrape profiles for sales outreach.`
+apify-market-research: `Analyze market conditions, geographic opportunities, pricing, consumer behavior, and product validation across Google Maps, Facebook, Instagram, Booking.com, and TripAdvisor.`
+apify-trend-analysis: `Discover and track emerging trends across Google Trends, Instagram, Facebook, YouTube, and TikTok to inform content strategy.`
+</available_skills>
 
-```bash
-uv run poe install-dev              # Install dev deps + git hooks
-uv run poe check-code               # Run all checks (lint, type-check, unit-tests, docstring check)
-uv run poe lint                     # Ruff format check + ruff check
-uv run poe format                   # Auto-fix lint issues and format
-uv run poe type-check               # Run ty type checker
-uv run poe unit-tests               # Run unit tests
-uv run poe check-docstrings         # Verify async docstrings match sync
-uv run poe fix-docstrings           # Auto-fix async docstrings
-uv run poe generate-models          # Regenerate _models.py and _typeddicts.py from live OpenAPI spec
-uv run poe generate-models-from-file <path>  # Regenerate from a local OpenAPI spec file
+Paths referenced within SKILL.md files are relative to that SKILL folder. For example `reference/workflows.md` refers to the workflows file inside the skill's reference folder.
 
-# Run a single test
-uv run pytest tests/unit/test_file.py
-uv run pytest tests/unit/test_file.py::test_name
-```
-
-Integration tests require `APIFY_TEST_USER_API_TOKEN` and `APIFY_TEST_USER_2_API_TOKEN` env vars.
-
-## Architecture
-
-### Client Hierarchy
-
-`ApifyClient`/`ApifyClientAsync` are the entry points. They provide methods that return resource sub-clients:
-
-```
-ApifyClient
-├── .actor(id)    → ActorClient        (single resource operations)
-├── .actors()     → ActorCollectionClient  (list/create)
-├── .dataset(id)  → DatasetClient
-├── .datasets()   → DatasetCollectionClient
-├── .run(id)      → RunClient
-├── .runs()       → RunCollectionClient
-└── ... (schedules, tasks, webhooks, key-value stores, request queues, etc.)
-```
-
-Each resource client can create child clients (e.g., `ActorClient.builds()` → `BuildCollectionClient`).
-
-### Sync/Async Symmetry
-
-Every resource client has both sync and async variants in the **same file**. For example, `actor.py` contains both `ActorClient` and `ActorClientAsync`. Both share the same interface — async versions use `async/await`.
-
-Docstrings are written on sync clients and **automatically copied** to async clients via `scripts/check_docstrings.py`. When modifying docstrings, edit only the sync client and run `uv run poe fix-docstrings`.
-
-### Dependency Injection via ClientRegistry
-
-`ClientRegistry`/`ClientRegistryAsync` (in `_client_registry.py`) holds references to all resource client classes and is passed to each client. This avoids circular imports and lets resource clients create child clients without directly importing them.
-
-### HTTP Client Abstraction
-
-- `HttpClient`/`HttpClientAsync` — abstract base classes in `_http_clients/_base.py`
-- `ImpitHttpClient`/`ImpitHttpClientAsync` — default implementation (Rust-based Impit)
-- `HttpResponse` — Protocol (not a concrete class) for response objects
-- Users can plug in custom HTTP clients via `ApifyClient.with_custom_http_client()`
-
-### Base Classes
-
-- `ResourceClientBase` — shared URL building, parameter handling, metaclass-based logging
-- `ResourceClient` / `ResourceClientAsync` — sync/async base classes with HTTP call methods
-- `WithLogDetailsClient` metaclass — auto-wraps public methods for structured logging
-
-### Data Models
-
-`src/apify_client/_models.py` and `src/apify_client/_typeddicts.py` are **auto-generated** — do not edit them manually. Every Pydantic model and TypedDict comes from the OpenAPI spec.
-
-- Generated by `datamodel-code-generator` from the OpenAPI spec at `https://docs.apify.com/api/openapi.json` (config in `pyproject.toml` under `[tool.datamodel-codegen]`, aliases in `datamodel_codegen_aliases.json`)
-- After generation, `scripts/postprocess_generated_models.py` is run to apply additional fixes
-- To regenerate locally:
-  - From the live published spec: `uv run poe generate-models`
-  - From a local spec file: `uv run poe generate-models-from-file path/to/openapi.json`
-- In CI, model regeneration is triggered automatically by the `apify/apify-docs` repo when its OpenAPI spec changes (workflow `manual_regenerate_models.yaml`). It downloads the pre-built `openapi-bundles` artifact from the apify-docs workflow run, opens a PR titled `[TODO]: update generated models from apify-docs PR #N`, assigns it to the docs PR author, and posts a cross-repo comment on the original apify-docs PR
-- Manual regeneration is also possible from the GitHub Actions UI (`Regenerate models` workflow)
-
-## Code Conventions
-
-- **Line length**: 120 characters
-- **Linting/formatting**: Ruff with nearly all rules enabled (see `pyproject.toml`)
-- **Type checking**: ty (Astral's type checker)
-- **Docstrings**: Google style format, single backticks for inline code references (`` `ApifyClient` `` not ``` ``ApifyClient`` ```)
-- **Imports**: `from __future__ import annotations` used throughout
-- **Commits**: [Conventional Commits](https://www.conventionalcommits.org/) format. Choose the type based on *what* changed, not just *why*:
-  - `feat:` / `fix:` / `perf:` / `refactor:` / `style:` — **source code only**; these trigger a release and appear in the changelog
-  - `test:` — test additions or changes (no release triggered)
-  - `docs:` — documentation changes; also triggers a doc release on master
-  - `ci:` — CI/workflow changes
-  - `chore:` — dependency bumps, tooling, generated files (e.g. model regeneration PRs), and other housekeeping
-  - `build:` — build system changes
-
-## Testing
-
-- **Unit tests** (`tests/unit/`): Use `pytest-httpserver` to mock HTTP. No network required.
-- **Integration tests** (`tests/integration/`): Hit the live Apify API.
-- **Async**: `asyncio_mode = "auto"` — async tests run automatically without markers.
-- **Parallelism**: Tests run in parallel via `pytest-xdist`.
-
-Unit test pattern:
-```python
-def test_example(httpserver: HTTPServer) -> None:
-    httpserver.expect_request('/v2/endpoint').respond_with_json({'data': ...})
-    client = ApifyClient(token='test', api_url=httpserver.url_for('/').removesuffix('/'))
-    # assert client behavior
-```
+</skills>

@@ -1,115 +1,238 @@
-# Agent Orchestrator Config Examples
+# @aoagents/ao-core
 
-This directory contains example configurations for common use cases.
+Core services, types, and configuration for the Agent Orchestrator system.
 
-## Quick Start
+## What's Here
 
-Copy an example and customize:
+- **`src/types.ts`** — All TypeScript interfaces (Runtime, Agent, Workspace, Tracker, SCM, Notifier, Terminal, Session, events)
+- **`src/services/`** — Core services (SessionManager, LifecycleManager, PluginRegistry)
+- **`src/config.ts`** — Configuration loading + Zod schemas
+- **`src/utils/`** — Shared utilities (shell escaping, metadata parsing, etc.)
 
-```bash
-cp examples/simple-github.yaml agent-orchestrator.yaml
-nano agent-orchestrator.yaml  # edit as needed
-ao spawn my-app ISSUE-123
+## Key Files
+
+### `src/types.ts` — The Source of Truth
+
+Every interface the system uses is defined here. If you're working on any part of the orchestrator, start by reading this file.
+
+**Main interfaces:**
+
+- `Runtime` — where sessions execute (tmux, docker, k8s)
+- `Agent` — AI coding tool adapter (claude-code, codex, aider)
+- `Workspace` — code isolation (worktree, clone)
+- `Tracker` — issue tracking (GitHub Issues, Linear)
+- `SCM` — PR/CI/reviews (GitHub, GitLab)
+- `Notifier` — push notifications (desktop, Slack, webhook)
+- `Terminal` — human interaction UI (iTerm2, web)
+- `Session` — running agent instance (state, metadata, handles)
+- `OrchestratorEvent` — events emitted by lifecycle manager
+- `PluginModule` — what every plugin exports
+
+### `src/services/session-manager.ts` — Session CRUD
+
+Handles session lifecycle:
+
+- `spawn(config)` — create new session (workspace + runtime + agent)
+- `list(projectId?)` — list all sessions
+- `get(sessionId)` — get session details
+- `kill(sessionId)` — terminate session
+- `cleanup(projectId?)` — kill completed/merged sessions
+- `send(sessionId, message)` — send message to agent
+
+**Data flow in `spawn()`:**
+
+1. Load project config
+2. **Validate issue exists** via `Tracker.getIssue()` (if issueId provided, fails-fast if not found)
+3. Reserve session ID
+4. Determine branch name
+5. Create workspace via `Workspace.create()`
+6. Generate prompt via `Tracker.generatePrompt()`
+7. Build launch command via `Agent.getLaunchCommand()`
+8. Create runtime session via `Runtime.create()`
+9. Run `Agent.postLaunchSetup()` (optional)
+10. Write metadata file
+11. Return Session object
+
+**Note:** If issue validation fails (not found, auth error), spawn fails before creating any resources (no workspace, no runtime, no session ID). This prevents spawning sessions with broken issue references.
+
+### `src/services/lifecycle-manager.ts` — State Machine + Reactions
+
+Polls sessions, detects state changes, triggers reactions:
+
+**State machine:**
+
+```
+spawning → working → pr_open → ci_failed/review_pending/approved → mergeable → merged
 ```
 
-## Examples
+**Reactions:**
 
-### [simple-github.yaml](./simple-github.yaml)
+- `ci-failed` → send fix prompt to agent
+- `changes-requested` → send review comments to agent
+- `approved-and-green` → notify human (or auto-merge)
+- `agent-stuck` → notify human
 
-**Minimal setup with GitHub Issues**
+**Polling loop:**
 
-Perfect for getting started. Just specify your repo and you're ready to spawn agents.
+1. For each session: check agent activity state (`Agent.getActivityState()`)
+2. If PR exists: check CI status (`SCM.getCISummary()`), review state (`SCM.getReviewDecision()`)
+3. Update session status based on state
+4. Trigger reactions if state changed
+5. Emit events
 
-Use this if:
+### `src/services/plugin-registry.ts` — Plugin Discovery + Loading
 
-- You're working on a single GitHub repository
-- You want to use GitHub Issues for task tracking
-- You want the simplest possible setup
+Loads plugins and provides access to them:
 
-### [linear-team.yaml](./linear-team.yaml)
+- `register(plugin, config?)` — register a plugin instance
+- `get<T>(slot, name)` — get plugin by slot + name
+- `list(slot)` — list all plugins for a slot
+- `loadBuiltins(config?)` — load built-in plugins (runtime-tmux, agent-claude-code, etc.)
+- `loadFromConfig(config)` — load built-ins today; external plugin descriptors are the marketplace extension point
 
-**Linear integration**
+**Built-in plugins** (loaded by default):
 
-Integrates with Linear for issue tracking. Requires `LINEAR_API_KEY` environment variable.
+- runtime-tmux, runtime-process
+- agent-claude-code, agent-codex, agent-aider, agent-opencode
+- workspace-worktree, workspace-clone
+- tracker-github, tracker-linear, tracker-gitlab
+- scm-github, scm-gitlab
+- notifier-desktop, notifier-discord, notifier-slack, notifier-composio, notifier-openclaw, notifier-webhook
+- terminal-iterm2, terminal-web
 
-Spawns prefer Linear’s **Copy git branch name** (API `branchName`); if absent, AO uses `feat/<issue-id>` as before. To change Linear’s pattern, use **Linear → Settings → Integrations → GitHub → Branch format**.
+### `src/config.ts` — Configuration Loading
 
-Use this if:
+Loads and validates `agent-orchestrator.yaml`:
 
-- Your team uses Linear for project management
-- You want agents to update Linear ticket status
-- You need custom agent rules per project
+**Main config sections:**
 
-### [multi-project.yaml](./multi-project.yaml)
+- Runtime data paths are auto-derived from the config location under `~/.agent-orchestrator/{hash}-{projectId}/`
+- `port` — web dashboard port (default 3000, set different values for multiple projects)
+- `terminalPort` — terminal WebSocket port (auto-detected if not set)
+- `directTerminalPort` — direct terminal WebSocket port (auto-detected if not set)
+- `defaults` — default plugins (runtime, agent, workspace, notifiers)
+- `plugins` — installer-managed external plugin descriptors (registry, npm, or local)
+- `projects` — per-project config (repo, path, branch, symlinks, reactions, agentRules)
+- `notifiers` — notification channel config (Slack webhooks, etc.)
+- `notificationRouting` — which notifiers get which priority events
+- `reactions` — auto-response config (ci-failed, changes-requested, approved-and-green, etc.)
 
-**Multiple repos with different trackers**
+**Zod schemas** validate all config at load time.
 
-Shows how to manage multiple projects with different trackers and notification routing.
+## Common Tasks
 
-Use this if:
+### Adding a Field to Session
 
-- You're managing multiple repositories
-- Different projects use different trackers (GitHub Issues vs Linear)
-- You want Slack notifications in addition to desktop
-- You need different rules per project
+1. Edit `src/types.ts` → `Session` interface
+2. Edit `src/services/session-manager.ts` → initialize field in `spawn()`
+3. Rebuild: `pnpm --filter @aoagents/ao-core build`
 
-### [auto-merge.yaml](./auto-merge.yaml)
+### Adding an Event Type
 
-**Aggressive automation with auto-merge**
+1. Edit `src/types.ts` → `EventType` union
+2. Emit the event: `eventEmitter.emit()` in relevant service
+3. Add reaction handler (optional): `src/services/lifecycle-manager.ts`
 
-Automatically merges approved PRs with passing CI. Auto-retries CI failures and review comments.
+### Adding a Reaction
 
-Use this if:
+1. Edit `src/services/lifecycle-manager.ts` → add handler function
+2. Wire it up in the polling loop
+3. Add config schema in `src/config.ts` if new reaction type
 
-- You trust your agents and CI pipeline
-- You want maximum automation
-- You want agents to handle routine failures autonomously
-- You want escalation only when agents get stuck
+### Feedback Tools (v1)
 
-### [codex-integration.yaml](./codex-integration.yaml)
+`@aoagents/ao-core` exports two structured feedback tool contracts:
 
-**Using Codex instead of Claude Code**
+- `bug_report`
+- `improvement_suggestion`
 
-Shows how to use a different AI agent (Codex) instead of the default Claude Code.
+Both share the same required input fields:
 
-Use this if:
+- `title`
+- `body`
+- `evidence` (array of strings)
+- `session`
+- `source`
+- `confidence` (0..1)
 
-- You prefer GPT-4/Codex over Claude
-- You need agent-specific configuration
-- You're evaluating different AI coding assistants
+Example:
 
-## Configuration Tips
+```ts
+import { FEEDBACK_TOOL_NAMES, FeedbackReportStore, getFeedbackReportsDir } from "@aoagents/ao-core";
 
-1. **Start simple** - Use `simple-github.yaml` as a starting point
-2. **Add complexity incrementally** - Enable features as you need them
-3. **Test with one project first** - Get comfortable before adding multiple projects
-4. **Review defaults** - Most sensible defaults are already configured
-5. **Use environment variables** - Store API keys in env vars, not config files
+const reportsDir = getFeedbackReportsDir(configPath, projectPath);
+const store = new FeedbackReportStore(reportsDir);
 
-## Environment Variables
-
-These environment variables are commonly used:
-
-```bash
-# Linear integration
-export LINEAR_API_KEY="lin_api_..."
-
-# Slack notifications
-export SLACK_WEBHOOK_URL="https://hooks.slack.com/services/..."
-
-# GitHub (usually set by gh CLI)
-# export GITHUB_TOKEN="ghp_..."
+const saved = store.persist(FEEDBACK_TOOL_NAMES.BUG_REPORT, {
+  title: "SSO login loop",
+  body: "Google SSO redirects back to /login repeatedly.",
+  evidence: ["trace_id=abc123", "screenshot: login-loop.png"],
+  session: "ao-22",
+  source: "agent",
+  confidence: 0.84,
+});
 ```
 
-Add these to your shell profile (`~/.zshrc` or `~/.bashrc`) to persist them.
+Storage format:
 
-## Next Steps
+- Reports are persisted under `~/.agent-orchestrator/{hash}-{projectId}/feedback-reports`
+- Each report is a typed key=value file (`report_<timestamp>_<id>.kv`) for easy inspection
+- A deterministic dedupe key (`sha256`, 16 hex chars) is generated from normalized tool+content
 
-After copying an example:
+Migration notes:
 
-1. **Edit the config** - Update repo paths, team IDs, etc.
-2. **Validate** - Run `ao start` to check for config errors
-3. **Spawn an agent** - Try `ao spawn project-id ISSUE-123`
-4. **Monitor** - Use `ao status` or open the dashboard (default http://localhost:3000, configurable via `port:` in config)
+- No migration needed for existing AO installs
+- The `feedback-reports` directory is created lazily on first persisted report
 
-See [SETUP.md](../SETUP.md) for detailed configuration reference and troubleshooting.
+## Testing
+
+```bash
+# Run all core tests
+pnpm --filter @aoagents/ao-core test
+
+# Run in watch mode
+pnpm --filter @aoagents/ao-core test -- --watch
+
+# Run specific test
+pnpm --filter @aoagents/ao-core test -- session-manager.test.ts
+```
+
+Tests are in `src/__tests__/`:
+
+- `session-manager.test.ts` — session CRUD, spawn, cleanup
+- `lifecycle-manager.test.ts` — state machine, reactions
+- `plugin-registry.test.ts` — plugin loading, resolution
+- `tmux.test.ts` — tmux utility functions (not a plugin test)
+- `prompt-builder.test.ts` — prompt generation utilities
+
+## Building
+
+```bash
+# Build core
+pnpm --filter @aoagents/ao-core build
+
+# Typecheck
+pnpm --filter @aoagents/ao-core typecheck
+```
+
+This package is a dependency of all other packages. Build it first if working on the codebase.
+
+## Architecture Notes
+
+**Why flat metadata files?**
+
+- Debuggability: `cat ~/.agent-orchestrator/<hash>-my-app/sessions/app-3` shows full state
+- No database dependency (survives crashes, easy to inspect)
+- Backwards-compatible with bash script orchestrator
+
+**Why polling instead of webhooks?**
+
+- Simpler (no webhook setup, no ngrok for local dev)
+- Works offline (CI/review state is fetched, not pushed)
+- Survives orchestrator restarts (no missed events)
+
+**Why plugin slots?**
+
+- Swappability: use tmux locally, docker in CI, k8s in prod
+- Testability: mock plugins for tests
+- Extensibility: users can add custom plugins (e.g., company-specific notifier)

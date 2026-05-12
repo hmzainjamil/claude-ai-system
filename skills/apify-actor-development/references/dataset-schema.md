@@ -1,6 +1,6 @@
-# Dataset schema reference
+# Dataset Schema Reference
 
-The dataset schema defines how your Actor's output data is structured, transformed, and displayed in the Output tab in Apify Console.
+The dataset schema defines how your Actor's output data is structured, transformed, and displayed in the Output tab in the Apify Console.
 
 ## Examples
 
@@ -176,20 +176,20 @@ Then create the dataset schema in `.actor/dataset_schema.json`:
 
 ## Properties
 
-### Dataset schema properties
+### Dataset Schema Properties
 
 - `actorSpecification` (integer, required) - Specifies the version of dataset schema structure document (currently only version 1)
 - `fields` (JSONSchema object, required) - Schema of one dataset object (use JsonSchema Draft 2020-12 or compatible)
 - `views` (DatasetView object, required) - Object with API and UI views description
 
-### DatasetView properties
+### DatasetView Properties
 
 - `title` (string, required) - Visible in UI Output tab and API
 - `description` (string, optional) - Only available in API response
 - `transformation` (ViewTransformation object, required) - Data transformation applied when loading from Dataset API
 - `display` (ViewDisplay object, required) - Output tab UI visualization definition
 
-### ViewTransformation properties
+### ViewTransformation Properties
 
 - `fields` (string[], required) - Fields to present in output (order matches column order)
 - `unwind` (string[], optional) - Deconstructs nested children into parent object
@@ -198,12 +198,12 @@ Then create the dataset schema in `.actor/dataset_schema.json`:
 - `limit` (integer, optional) - Maximum number of results (default: all)
 - `desc` (boolean, optional) - Sort order (true = newest first)
 
-### ViewDisplay properties
+### ViewDisplay Properties
 
 - `component` (string, required) - Only `table` is available
 - `properties` (Object, optional) - Keys matching `transformation.fields` with ViewDisplayProperty values
 
-### ViewDisplayProperty properties
+### ViewDisplayProperty Properties
 
 - `label` (string, optional) - Table column header
 - `format` (string, optional) - One of: `text`, `number`, `date`, `link`, `boolean`, `image`, `array`, `object`

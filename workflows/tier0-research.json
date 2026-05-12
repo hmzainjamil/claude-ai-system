@@ -1,9 +1,0 @@
-{
-  "name": "tier0-research",
-  "description": "Research + summarize using Tier 0 models then inject into context",
-  "steps": [
-    {"id": "blast", "command": "~/.claude/bin/tier0-blast-async", "depends_on": []},
-    {"id": "inject", "command": "~/.claude/bin/tier0-cache-inject", "depends_on": ["blast"]},
-    {"id": "learn", "command": "~/.claude/bin/gap-detector", "depends_on": ["inject"]}
-  ]
-}

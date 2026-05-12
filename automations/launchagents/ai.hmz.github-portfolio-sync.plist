@@ -27,15 +27,11 @@
     <key>GITHUB_TOKEN</key>
     <string>[REDACTED_GITHUB_TOKEN]</string>
     <key>GITHUB_USERNAME</key>
-    <string>hmzainjamil</string>
-    <key>GH_TOKEN</key>
-    <string>[REDACTED_GITHUB_TOKEN]</string>
+    <string>mc</string>
     <key>PATH</key>
     <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
   </dict>
   <key>RunAtLoad</key>
-  <false/>
-  <key>KeepAlive</key>
   <false/>
 </dict>
 </plist>

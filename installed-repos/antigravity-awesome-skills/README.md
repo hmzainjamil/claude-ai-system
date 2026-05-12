@@ -1,201 +1,103 @@
-# Skills Directory
+# Antigravity Web App
 
-**Welcome to the skills folder!** This is where all 179+ specialized AI skills live.
+This app is the static catalog and skill browser for `antigravity-awesome-skills`. It ships the generated registry, renders searchable skill detail pages, and publishes the public site to GitHub Pages.
 
-## 🤔 What Are Skills?
+## What This App Does
 
-Skills are specialized instruction sets that teach AI assistants how to handle specific tasks. Think of them as expert knowledge modules that your AI can load on-demand.
+- Loads the generated skill catalog and related metadata from tracked assets in `public/`.
+- Renders home, category, bundle, and skill detail routes for the published library.
+- Adds SEO metadata, sitemap-backed URLs, and static asset resolution for GitHub Pages.
+- Supports a local-only "refresh skills" developer flow through the Vite dev server plugin.
+- Treats save/star interactions as browser-local UX, even when optional read-only Supabase counts are configured.
 
-**Simple analogy:** Just like you might consult different experts (a designer, a security expert, a marketer), skills let your AI become an expert in different areas when you need them.
+## Architecture
 
----
+- `src/pages/` contains top-level route screens such as `Home.tsx` and `SkillDetail.tsx`.
+- `src/context/` holds catalog loading and shared app state.
+- `src/hooks/` contains feature-specific client hooks such as star state and filters.
+- `src/utils/` contains URL, SEO, and content helpers.
+- `public/` contains generated catalog artifacts copied from the repo root as part of maintainer sync flows.
 
-## 📂 Folder Structure
+The app intentionally assumes a static hosting model in production. Anything that depends on `/api/*` is development-only unless it is backed by a real serverless or backend implementation.
 
-Each skill lives in its own folder with this structure:
+The hosted Pages build should be understood as a public catalog, not a control plane:
 
-```
-skills/
-├── skill-name/              # Individual skill folder
-│   ├── SKILL.md             # Main skill definition (required)
-│   ├── scripts/             # Helper scripts (optional)
-│   ├── examples/            # Usage examples (optional)
-│   └── resources/           # Templates & resources (optional)
-```
+- `Sync Skills` is a maintainer/development affordance and must stay hidden unless `VITE_ENABLE_SKILLS_SYNC=true`.
+- save/star interactions are local-only unless the project gains a real backend write contract with abuse controls and deployment support.
 
-**Key point:** Only `SKILL.md` is required. Everything else is optional!
+## Development
 
----
+From the repo root:
 
-## How to Use Skills
-
-### Step 1: Make sure skills are installed
-Skills should be in your `.agent/skills/` directory (or `.claude/skills/`, `.gemini/skills/`, etc.)
-
-### Step 2: Invoke a skill in your AI chat
-Use the `@` symbol followed by the skill name:
-
-```
-@brainstorming help me design a todo app
-```
-
-or
-
-```
-@stripe-integration add payment processing to my app
-```
-
-### Step 3: The AI becomes an expert
-The AI loads that skill's knowledge and helps you with specialized expertise!
-
----
-
-## Skill Categories
-
-### Creative & Design
-Skills for visual design, UI/UX, and artistic creation:
-- `@algorithmic-art` - Create algorithmic art with p5.js
-- `@canvas-design` - Design posters and artwork (PNG/PDF output)
-- `@frontend-design` - Build production-grade frontend interfaces
-- `@ui-ux-pro-max` - Professional UI/UX design with color, fonts, layouts
-- `@web-artifacts-builder` - Build modern web apps (React, Tailwind, Shadcn/ui)
-- `@theme-factory` - Generate themes for documents and presentations
-- `@brand-guidelines` - Apply Anthropic brand design standards
-- `@slack-gif-creator` - Create high-quality GIFs for Slack
-
-### Development & Engineering
-Skills for coding, testing, debugging, and code review:
-- `@test-driven-development` - Write tests before implementation (TDD)
-- `@systematic-debugging` - Debug systematically, not randomly
-- `@webapp-testing` - Test web apps with Playwright
-- `@receiving-code-review` - Handle code review feedback properly
-- `@requesting-code-review` - Request code reviews before merging
-- `@finishing-a-development-branch` - Complete dev branches (merge, PR, cleanup)
-- `@subagent-driven-development` - Coordinate multiple AI agents for parallel tasks
-
-### Documentation & Office
-Skills for working with documents and office files:
-- `@doc-coauthoring` - Collaborate on structured documents
-- `@docx` - Create, edit, and analyze Word documents
-- `@xlsx` - Work with Excel spreadsheets (formulas, charts)
-- `@pptx` - Create and modify PowerPoint presentations
-- `@pdf` - Handle PDFs (extract text, merge, split, fill forms)
-- `@internal-comms` - Draft internal communications (reports, announcements)
-- `@notebooklm` - Query Google NotebookLM notebooks
-
-### Planning & Workflow
-Skills for task planning and workflow optimization:
-- `@brainstorming` - Brainstorm and design before coding
-- `@writing-plans` - Write detailed implementation plans
-- `@planning-with-files` - File-based planning system (Manus-style)
-- `@executing-plans` - Execute plans with checkpoints and reviews
-- `@using-git-worktrees` - Create isolated Git worktrees for parallel work
-- `@verification-before-completion` - Verify work before claiming completion
-- `@using-superpowers` - Discover and use advanced skills
-
-### System Extension
-Skills for extending AI capabilities:
-- `@mcp-builder` - Build MCP (Model Context Protocol) servers
-- `@skill-creator` - Create new skills or update existing ones
-- `@writing-skills` - Tools for writing and validating skill files
-- `@dispatching-parallel-agents` - Distribute tasks to multiple agents
-
----
-
-## Finding Skills
-
-### Method 1: Browse this folder
 ```bash
-ls skills/
+npm run app:install
+npm run app:test:coverage
+npm run app:dev
 ```
 
-### Method 2: Search by keyword
+Or directly from this directory:
+
 ```bash
-ls skills/ | grep "keyword"
+npm ci
+npm run dev
 ```
 
-### Method 3: Check the main README
-See the [main README](../README.md) for the complete list of all 179+ skills organized by category.
+Useful root-level commands:
 
----
-
-## 💡 Popular Skills to Try
-
-**For beginners:**
-- `@brainstorming` - Design before coding
-- `@systematic-debugging` - Fix bugs methodically
-- `@git-pushing` - Commit with good messages
-
-**For developers:**
-- `@test-driven-development` - Write tests first
-- `@react-best-practices` - Modern React patterns
-- `@senior-fullstack` - Full-stack development
-
-**For security:**
-- `@ethical-hacking-methodology` - Security basics
-- `@burp-suite-testing` - Web app security testing
-
----
-
-## Creating Your Own Skill
-
-Want to create a new skill? Check out:
-1. [CONTRIBUTING.md](../CONTRIBUTING.md) - How to contribute
-2. [docs/contributors/skill-anatomy.md](../docs/contributors/skill-anatomy.md) - Skill structure guide
-3. `@skill-creator` - Use this skill to create new skills!
-
-**Basic structure:**
-```markdown
----
-name: my-skill-name
-description: "What this skill does"
----
-
-# Skill Title
-
-## Overview
-[What this skill does]
-
-## When to Use
-- Use when [scenario]
-
-## Instructions
-[Step-by-step guide]
-
-## Examples
-[Code examples]
+```bash
+npm run app:build
+npm run sync:web-assets
 ```
 
----
+## Environment Variables
 
-## Documentation
+The app reads configuration from `.env` files in `apps/web-app/`.
 
-- **[Getting Started](../docs/users/getting-started.md)** - Quick start guide
-- **[Examples](../docs/contributors/examples.md)** - Real-world usage examples
-- **[FAQ](../docs/users/faq.md)** - Common questions
-- **[Visual Guide](../docs/users/visual-guide.md)** - Diagrams and flowcharts
+- `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`: optional read access for read-only community save counts.
+- `VITE_ENABLE_SKILLS_SYNC=true`: explicitly exposes the local maintainer-only sync button during development.
+- `VITE_SYNC_SKILLS_TOKEN`: local development token accepted by the Vite refresh plugin.
+- `VITE_SITE_URL`: optional override for canonical URL generation when testing non-default hosts.
 
----
+Saving a skill is intentionally browser-local for now. The UI should not imply a shared write path until the project has a real backend contract for persistence, abuse controls, and deployment.
 
-## 🌟 Contributing
+## Deploy Model
 
-Found a skill that needs improvement? Want to add a new skill?
+Production deploys use GitHub Pages and publish the built `dist/` output from this app. That means:
 
-1. Read [CONTRIBUTING.md](../CONTRIBUTING.md)
-2. Study existing skills in this folder
-3. Create your skill following the structure
-4. Submit a Pull Request
+- production is static
+- Vite `configureServer` hooks are not available in production
+- any refresh or sync endpoint exposed by a dev plugin must be hidden or replaced by a real backend before being treated as a public feature
 
----
+Maintainers should treat `public/skills.json.backup`, `public/sitemap.xml`, and other generated assets as derived artifacts synced from the repo root during release and hygiene workflows.
 
-## References
+## Catalog Data Flow
 
-- [Anthropic Skills](https://github.com/anthropic/skills) - Official Anthropic skills
-- [UI/UX Pro Max Skills](https://github.com/nextlevelbuilder/ui-ux-pro-max-skill) - Design skills
-- [Superpowers](https://github.com/obra/superpowers) - Original superpowers collection
-- [Planning with Files](https://github.com/OthmanAdi/planning-with-files) - Planning patterns
-- [NotebookLM](https://github.com/PleasePrompto/notebooklm-skill) - NotebookLM integration
+The high-level maintainer flow is:
 
----
+1. update skill sources under `skills/`
+2. regenerate canonical registry artifacts from the repo root
+3. sync tracked web assets into `apps/web-app/public/`
+4. build this app for Pages
 
-**Need help?** Check the [FAQ](../docs/users/faq.md) or open an issue on GitHub!
+`npm run sync:repo-state` and `npm run sync:release-state` are the safest entrypoints because they keep the root catalog and the web assets aligned.
+
+## Testing
+
+From the repo root:
+
+```bash
+npm run app:test:coverage
+cd apps/web-app && npm run test
+cd apps/web-app && npm run test:coverage
+npm run test
+```
+
+The repo-level test suite also contains workflow and documentation guardrails outside `src/`, so changes to this app can fail tests in `tools/scripts/tests/` even when the React code itself is untouched.
+
+`main`/release CI also runs `npm run app:test:coverage`, so coverage thresholds are part of the real shipping contract for this app rather than an optional local extra.
+
+## Troubleshooting
+
+- If the app shows stale catalog data, run `npm run sync:web-assets` from the repo root and rebuild.
+- If a feature works in `npm run app:dev` but not on GitHub Pages, check whether it depends on a dev-only Vite plugin or non-static runtime behavior.
+- If canonical URLs or asset links look wrong, inspect the shared path/base URL helpers before patching individual pages.
