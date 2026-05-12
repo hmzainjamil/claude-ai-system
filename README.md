@@ -1,144 +1,127 @@
 # claude-ai-system
-The complete Claude Code infrastructure — hooks, skills, bin scripts, LaunchAgents, and config that power HMZ's autonomous AI agency stack.
+Production-grade Claude Code harness — hooks, bin scripts, agents, LaunchAgents, and full automation OS.
 
-![updated](https://img.shields.io/badge/synced_daily-6%3A30AM-white?style=flat&labelColor=555) [![scripts](https://img.shields.io/badge/bin_scripts-45-blue?style=flat&labelColor=555)](automations/bin/) [![skills](https://img.shields.io/badge/skills-13_core-green?style=flat&labelColor=555)](skills-active/) [![hooks](https://img.shields.io/badge/hooks-4_events-orange?style=flat&labelColor=555)](.claude/settings.json) [![company](https://img.shields.io/badge/DigiMinds-agency-red?style=flat&labelColor=555)](https://digiminds.org)
+![hooks](https://img.shields.io/badge/hooks-PostToolUse%20%7C%20UserPromptSubmit-blue?style=flat&labelColor=555)
+![scripts](https://img.shields.io/badge/bin_scripts-45%2B-green?style=flat&labelColor=555)
+![platform](https://img.shields.io/badge/platform-macOS-lightgrey?style=flat&labelColor=555)
+![tier0](https://img.shields.io/badge/model-Tier0%20first-orange?style=flat&labelColor=555)
+![license](https://img.shields.io/badge/license-MIT-blue?style=flat&labelColor=555)
 
-[Concepts](#-concepts) · [Hot](#-hot) · [Architecture](#️-architecture) · [Tips](#-tips-and-tricks-28) · [Replaced](#️-startups--businesses) · [Stars](#star-history)
-
----
+[Concepts](#-concepts) · [Architecture](#️-architecture) · [Tips](#-tips-and-tricks-24) · [Kills](#️-startups--businesses) · [Stars](#star-history)
 
 ## 🧠 CONCEPTS
 
 | Feature | Location | Description |
 |---------|----------|-------------|
-| [**CLAUDE.md Mandates**](CLAUDE.md) | `CLAUDE.md` | G0DM0D3 model routing · L99 performance mode · OODA decision loop · Skill gating protocol — hardcoded for every session |
-| [**Bin Scripts (45)**](automations/bin/) | `automations/bin/` | `github-sync` `skill-on/off/search/status/reset` `llm-burst` `tier0-prompt-inject` `skill-auto-activate` `openclaw-bridge` `auto-troubleshoot` `paperclip-*` — full CLI automation layer |
-| [**Hook System**](.claude/settings.json) | `.claude/settings.json` | UserPromptSubmit → `skill-auto-activate` + `tier0-prompt-inject` · PostToolUse → `auto-github-push` + `memory-sync` · Stop → `session-queue-processor` |
-| [**Skills (Active)**](skills-active/) | `skills-active/` | 13 always-on core skills: `caveman` `compress` `context-compression` `compact-guard` `skill-router` `find-skills` `launch-optimized` `summarize` — zero overhead |
-| [**Skills Archive**](skills-archive/) | `skills-archive/` | 100+ domain skills dormant until needed: ads, geo, legal, agents, apify, startup, market — blockchain-gated |
-| [**LaunchAgents**](automations/launchagents/) | `automations/launchagents/` | `ai.hmz.github-portfolio-sync` (6:30AM) · `ai.openclaw.gateway` · `ai.hmz.paperclip` · 6 Paperclip scheduled engines |
-| [**Memory System**](memory/) | `~/.claude/projects/.../memory/` | Persistent cross-session memory: user · feedback · project · reference types — auto-loaded via system-reminder |
-| [**Config**](config/) | `config/` | `settings.json` · `keybindings.json` · `skills-lock.json` manifest |
-| [**Installed Repos**](installed-repos/) | `installed-repos/` | Mirror of 50+ third-party tool READMEs for quick local reference |
+| [**Skill Router**](automations/bin/skill-router) | `automations/bin/skill-router` | Keyword-match prompt → auto-activate skills before response [![active](https://img.shields.io/badge/status-always_on-brightgreen?style=flat&labelColor=555)] |
+| [**Auto GitHub Push**](automations/bin/auto-github-push) | `automations/bin/auto-github-push` | PostToolUse hook — any Write/Edit to bin/skills auto-pushes to GitHub via Contents API |
+| [**Skill On/Off**](automations/bin/skill-on) | `automations/bin/skill-on` | Blockchain-gated skill activation — on-demand, never always-loaded |
+| [**Compact Guard**](automations/bin/compact-guard) | `automations/bin/compact-guard` | Enforces context compression before token limit hit |
+| [**LLM Burst**](automations/bin/llm-burst) | `automations/bin/llm-burst` | Cloud-first Tier 0 routing — Groq → OpenRouter → Gemini → Claude last |
+| [**GitHub Portfolio Sync**](automations/bin/github-sync) | `automations/bin/github-sync` | Daily sync of all local scripts to GitHub repos via Contents API |
+| [**Auto Troubleshoot**](automations/bin/auto-troubleshoot) | `automations/bin/auto-troubleshoot` | SessionStart hook — scans LaunchAgents, checks logs, flags stale jobs |
+| [**OODA Loop**](automations/bin/ooda) | `automations/bin/ooda` | Observe-Orient-Decide-Act injected into every UserPromptSubmit |
+| [**Caveman Compress**](automations/bin/caveman) | `automations/bin/caveman` | Strips filler, collapses whitespace — 60-80% token reduction on all outputs |
+| [**Session Queue**](automations/bin/session-queue) | `automations/bin/session-queue` | Writes learnings to ~/.claude/session-queue.jsonl — processed by Stop hook |
+| [**Skill Search**](automations/bin/skill-search) | `automations/bin/skill-search` | fzf-powered fuzzy search across 200+ skills in archive |
+| [**OpenClaw Bridge**](automations/bin/openclaw-bridge) | `automations/bin/openclaw-bridge` | Gateway to Open Design / OpenClaw local MCP server |
 
 ### 🔥 Hot
 
 | Feature | Location | Description |
 |---------|----------|-------------|
-| [**auto-github-push**](automations/bin/auto-github-push) | `automations/bin/auto-github-push` | PostToolUse hook — every file written to `~/.claude/bin/` or `skills/` auto-pushes to GitHub via API. No git, no merge conflicts |
-| [**skill-auto-activate**](automations/bin/skill-auto-activate) | `automations/bin/skill-auto-activate` | Fires on every UserPromptSubmit — keyword-matches prompt → auto-loads domain skills before Claude responds |
-| [**llm-burst**](automations/bin/llm-burst) | `automations/bin/llm-burst` | Blasts prompt to 8 models in parallel (Groq+Gemini+Ollama+DeepSeek+GPT-4o-mini+GLM+Gemma4) — judge picks best. Zero Claude tokens for sub-tasks |
-| [**tier0-prompt-inject**](automations/bin/tier0-prompt-inject) | `automations/bin/tier0-prompt-inject` | Injects G0DM0D3 routing rules into every session — enforces Tier 0 model use automatically |
-
----
+| [**Tier 0 Prompt Inject**](automations/bin/tier0-prompt-inject) | `automations/bin/tier0-prompt-inject` | Injects G0DM0D3 routing rules into every session — zero Claude tokens for sub-tasks |
+| [**Auto Learn**](automations/bin/auto-learn) | `automations/bin/auto-learn` | Stop hook — converts session-queue.jsonl to persistent memory files automatically |
+| [**GitHub Sweep**](automations/bin/github-sweep) | `automations/bin/github-sweep` | Discovers new local scripts and pushes to correct GitHub repo with right path |
 
 ## ⚙️ ARCHITECTURE
 
 ```
 ~/.claude/
-├── bin/                  ← 45 automation scripts
-│   ├── skill-on/off      ← skill activation CLI
-│   ├── llm-burst         ← 8-model parallel inference
-│   ├── github-sync       ← daily portfolio sync
-│   └── auto-github-push  ← instant PostToolUse push
-├── skills/               ← 13 always-active core skills
-├── skills-archive/       ← 100+ dormant domain skills
-├── agents/               ← agent definitions
-├── settings.json         ← hook config (4 event types)
-└── skills-lock.json      ← blockchain manifest
-
-~/Library/LaunchAgents/
-├── ai.hmz.github-portfolio-sync.plist   ← daily 6:30AM
-├── ai.openclaw.gateway.plist            ← always-on
-└── ai.hmz.paperclip.plist               ← CEO loop
+├── bin/                    ← 45+ automation scripts (auto-pushed to this repo)
+│   ├── skill-on            ← activate skill from archive
+│   ├── skill-off           ← deactivate + collapse
+│   ├── skill-router        ← keyword → skill map (fires on UserPromptSubmit)
+│   ├── auto-github-push    ← PostToolUse: Write/Edit → GitHub API
+│   ├── llm-burst           ← Tier 0 cloud routing
+│   └── ...45 more
+├── skills/                 ← ACTIVE skills (loaded into context)
+├── skills-archive/         ← DORMANT skills (gated behind skill-on)
+├── agents/                 ← Agent definitions
+├── logs/                   ← Hook execution logs
+└── settings.json           ← Hook registration
 ```
 
-| Layer | Component | Trigger |
-|-------|-----------|---------|
-| Prompt hooks | `skill-auto-activate` + `tier0-prompt-inject` | Every UserPromptSubmit |
-| File hooks | `auto-github-push` + `memory-sync` | Every Write/Edit |
-| Session hooks | `session-queue-processor` | Session Stop |
-| Daemons | 8 LaunchAgents | Scheduled + always-on |
-| Models | 8 Tier-0 burst | Every sub-task |
+| Hook | Trigger | Script |
+|------|---------|--------|
+| `UserPromptSubmit` | Every prompt | `skill-auto-activate`, `ooda`, `tier0-prompt-inject` |
+| `PostToolUse` | After Write/Edit | `auto-github-push` |
+| `Stop` | Session end | `auto-learn` |
+| `SessionStart` | New session | `auto-troubleshoot`, `openclaw-bridge` |
 
----
+## 💡 TIPS AND TRICKS (24)
 
-## 💡 TIPS AND TRICKS (28)
+[routing](#tips-routing) · [hooks](#tips-hooks) · [skills](#tips-skills) · [tokens](#tips-tokens) · [git](#tips-git)
 
-[Hooks](#tips-hooks) · [Skills](#tips-skills) · [Scripts](#tips-scripts) · [Routing](#tips-routing) · [Git](#tips-git) · [Debugging](#tips-debugging)
-
-<a id="tips-hooks"></a>■ **Hooks (5)**
+<a id="tips-routing"></a>■ **Tier 0 Routing (6)**
 
 | Tip | Source |
 |-----|--------|
-| Hook order matters: `skill-auto-activate` must run before `tier0-prompt-inject` in UserPromptSubmit | [HMZ System SOP](https://github.com/hmzainjamil/claude-ai-system) |
-| PostToolUse `Write\|Edit` now auto-pushes to GitHub — never manually push bin scripts again | [auto-github-push](automations/bin/auto-github-push) |
-| Stop hook runs `session-queue-processor` — saves learnings to memory between sessions | [memory system](https://github.com/hmzainjamil/hmz-claude-mem-main) |
-| Test any hook: simulate trigger by running the script directly from CLI | [settings.json](config/) |
-| Hook failures are silent — always check `~/.claude/logs/` after unexpected behavior | [Ops rule](automations/bin/) |
+| Always check `ollama list` before routing — local models burn zero API tokens | [HMZ](https://github.com/hmzainjamil) |
+| `llm-burst 'prompt'` routes cloud-first: Groq → OpenRouter free → Gemini | [HMZ](https://github.com/hmzainjamil) |
+| DeepSeek-V3 via OpenRouter costs $0.14/1M tokens vs Claude Sonnet $3/1M | [OpenRouter](https://openrouter.ai/deepseek/deepseek-chat) |
+| Groq Llama 3 70B is fastest inference at ~800 tok/s — use for analysis | [Groq](https://console.groq.com) |
+| Kimi K2.5 has 262K context at 5% of Claude Opus cost — use for long docs | [Moonshot AI](https://platform.moonshot.cn) |
+| GLM-4.6 from Zhipu AI is free tier — use for Chinese market content | [Zhipu](https://open.bigmodel.cn) |
 
-<a id="tips-skills"></a>■ **Skills (7)**
-
-| Tip | Source |
-|-----|--------|
-| Core skills cost near-zero tokens — domain skills load context space, deactivate after task | [Skill gating](skills-active/) |
-| `skill-auto-activate` handles 80% of cases — `skill-on` only for edge cases | [skill-auto-activate](automations/bin/skill-auto-activate) |
-| Never leave domain skills active — `skill-off <name>` is mandatory after every task | [Gating protocol](CLAUDE.md) |
-| `skill-status` shows exact manifest with timestamps — check before complex multi-skill tasks | [skill-status](automations/bin/) |
-| Skills in wrong folder break everything — active → `~/.claude/skills/`, dormant → `skills-archive/` | [Architecture](skills-active/) |
-| Symlink skills fail on GitHub checkout — upload as flat `{name}.md` files instead | [GitHub workaround](automations/bin/github-sync) |
-| `skill-reset` rebuilds manifest from filesystem — use when lock file drifts from reality | [skill-reset](automations/bin/) |
-
-<a id="tips-scripts"></a>■ **Scripts (6)**
+<a id="tips-hooks"></a>■ **Hook Engineering (5)**
 
 | Tip | Source |
 |-----|--------|
-| `llm-burst "prompt"` → 8 parallel models → judge picks best — never use Claude for sub-tasks | [llm-burst](automations/bin/llm-burst) |
-| `github-sync` runs at 6:30AM — scrubs tokens from LaunchAgent plists before committing | [github-sync](automations/bin/github-sync) |
-| `auto-troubleshoot` proactively checks all LaunchAgents every session — never wait to be asked | [auto-troubleshoot](automations/bin/auto-troubleshoot) |
-| `openclaw-bridge` bridges Composio + MCP + Paperclip through one persistent gateway | [openclaw-bridge](automations/bin/openclaw-bridge) |
-| All new scripts go in `~/.claude/bin/` — auto-pushed to GitHub via PostToolUse hook | [auto-github-push](automations/bin/auto-github-push) |
-| `chmod +x` every new script immediately — GitHub push fails on non-executable scripts | [Ops rule](automations/bin/) |
+| PostToolUse hooks receive full JSON with `tool_name` + `tool_input` via stdin | [HMZ](https://github.com/hmzainjamil) |
+| Always `set -euo pipefail` in hook scripts — silent failures waste tokens | [HMZ](https://github.com/hmzainjamil) |
+| Use `python3 -c "import sys,json..."` to parse hook JSON — no deps needed | [HMZ](https://github.com/hmzainjamil) |
+| Hook logs → `~/.claude/logs/` — check with `tail -f` during debugging | [HMZ](https://github.com/hmzainjamil) |
+| LaunchAgents need both `KeepAlive=true` AND `RunAtLoad=true` to survive reboots | [HMZ](https://github.com/hmzainjamil) |
 
-<a id="tips-routing"></a>■ **Routing (5)**
-
-| Tip | Source |
-|-----|--------|
-| `llm-burst` default: Groq+Gemini+Ollama+DeepSeek+GPT-4o-mini+GLM+Gemma4 — 8 models in parallel | [G0DM0D3](https://github.com/hmzainjamil/hmz-g0dm0d3) |
-| Research → Groq (fastest) · Code → DeepSeek/Ollama · Analysis → Gemini · Final → Claude | [Tier 0 routing](CLAUDE.md) |
-| Gemini 2.0 Flash = 1,500 free calls/day — use for all analysis and summarization | [API limits](automations/bin/llm-burst) |
-| `tier0-prompt-inject` is hardcoded via CLAUDE.md — cannot be overridden per-prompt | [Design](CLAUDE.md) |
-| Claude Haiku = Tier 1 (absolute last resort), Claude Sonnet = Tier 2 (final output only) | [Routing hierarchy](CLAUDE.md) |
-
-<a id="tips-git"></a>■ **Git (2)**
+<a id="tips-skills"></a>■ **Skill Management (6)**
 
 | Tip | Source |
 |-----|--------|
-| Never use `git push` for claude-ai-system — use GitHub Contents API to avoid symlink conflicts | [Lesson learned](automations/bin/github-sync) |
-| SHA mismatch on API push = another process updated the file — re-fetch SHA and retry | [API gotcha](automations/bin/auto-github-push) |
+| `skill-search <keyword>` uses fzf — faster than scanning 200+ archive entries | [HMZ](https://github.com/hmzainjamil) |
+| Never leave non-core skills active — collapse with `skill-off` after every task | [HMZ](https://github.com/hmzainjamil) |
+| Core skills always-on: caveman, compact-guard, summarize, context-compression | [HMZ](https://github.com/hmzainjamil) |
+| Skill SKILL.md files auto-push to `claude-ai-skills` repo via `auto-github-push` | [HMZ](https://github.com/hmzainjamil) |
+| Use `skill-router` keyword map to batch-activate related skills in one command | [HMZ](https://github.com/hmzainjamil) |
+| Archive skills with `skill-off --archive` — moves to skills-archive/ and deactivates | [HMZ](https://github.com/hmzainjamil) |
 
-<a id="tips-debugging"></a>■ **Debugging (3)**
+<a id="tips-tokens"></a>■ **Token Savings (4)**
 
 | Tip | Source |
 |-----|--------|
-| LaunchAgent exit=256 = script returned exit 1 — check `~/.claude/logs/*-error.log` | [Debug SOP](automations/bin/auto-troubleshoot) |
-| `launchctl list \| grep ai.hmz` — verify all daemons running at session start | [Startup check](automations/bin/auto-troubleshoot) |
-| `~/.claude/logs/auto-github-push.log` — tracks every auto-push with timestamp | [Log location](automations/bin/auto-github-push) |
+| Caveman compression cuts 60-80% of output tokens — apply to all sub-agent outputs | [HMZ](https://github.com/hmzainjamil) |
+| Never re-read files already in context — check system-reminder before Read calls | [HMZ](https://github.com/hmzainjamil) |
+| Batch parallel tool calls — one message with 5 tool calls beats 5 sequential messages | [HMZ](https://github.com/hmzainjamil) |
+| `compact-guard` fires at 70% context usage — forces /compact before overflow | [HMZ](https://github.com/hmzainjamil) |
 
----
+<a id="tips-git"></a>■ **GitHub API Pattern (3)**
+
+| Tip | Source |
+|-----|--------|
+| Always GET SHA before PUT — stale SHA causes 422 conflict on concurrent pushes | [HMZ](https://github.com/hmzainjamil) |
+| Use `gh api repos/owner/repo/contents/path -X PUT` — no git clone needed | [GitHub Docs](https://docs.github.com/en/rest/repos/contents) |
+| Scrub `ghp_*`, `sk-*`, `AIRTABLE_API_KEY` via sed before base64-encoding content | [HMZ](https://github.com/hmzainjamil) |
 
 ## ☠️ STARTUPS / BUSINESSES
 
 | Feature | Replaced |
 |-|-|
-| **Skill gating + auto-activate** | [Continue.dev](https://continue.dev), [Cursor Rules](https://cursor.sh), [Windsurf](https://codeium.com/windsurf) — static rules, no gating |
-| **llm-burst (8-model parallel)** | [LiteLLM](https://litellm.ai), [OpenRouter](https://openrouter.ai) — passive routing only, no parallel judge |
-| **LaunchAgent daemons** | [n8n](https://n8n.io), [Zapier](https://zapier.com) — cloud-only, not local-first |
-| **auto-github-push hook** | Manual git push, [GitHub Desktop](https://desktop.github.com) — zero automation |
-| **GitHub Contents API sync** | Raw `git push` — fails on macOS symlinks, diverges on concurrent pushes |
-| **Persistent memory system** | [MemGPT](https://memgpt.ai), [Zep](https://getzep.com) — separate service, not native |
-
----
+| **Skill Router + Hook System** | [Zapier](https://zapier.com), [Make.com](https://make.com), [n8n Cloud](https://n8n.io) |
+| **LLM Burst / Tier 0 Routing** | [OpenAI API](https://openai.com/api), [Anthropic direct](https://anthropic.com) — routes away from expensive models |
+| **Auto GitHub Push Hook** | [GitHub Actions](https://github.com/features/actions), [CircleCI](https://circleci.com) |
+| **Compact Guard** | [MemGPT](https://memgpt.ai), [Letta](https://letta.com) |
+| **Session Queue + Auto Learn** | [Notion AI](https://notion.so/ai), [Mem.ai](https://mem.ai) |
+| **LaunchAgent Automation** | [Shortcuts](https://support.apple.com/guide/shortcuts-mac), [Raycast](https://raycast.com), [Alfred](https://alfredapp.com) |
 
 ## Star History
 
