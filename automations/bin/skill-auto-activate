@@ -466,6 +466,15 @@ if match "antigravity skill|idea to action|daily log|document api|repo infograph
   on idea_to_action; on daily_log; on document_api; on repo_infographic
 fi
 
+# higgsfield: Cinematic AI video production — Cinema Studio + 29 camera movement prompts
+if match "higgsfield|cinema studio|nano banana|kling video|ai cinematic|camera movement|dolly in|dolly out|orbit shot|crane shot|hero frame|soul id|video prompt|cinematic shot|parallax shot|jib up|tilt up|pan left|rack focus|fisheye|fpv drone|crash zoom|through shot|pov walk|leading shot|following shot|side tracking|aerial pullback|extreme macro|cinematic video|higgsfield prompt|shot generator|kling 2.6|google v3|nano banana pro|popcorn app|skin enhancer|shots app|higgsfield tutorial|ai video workflow|ai video production"; then
+  echo "[HIGGSFIELD] Cinema Studio active → ~/.claude/skills/higgsfield-ai/SKILL.md" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+  echo "[HIGGSFIELD] Shot generator: python3 ~/.claude/bin/higgsfield-shot-generator 'subject' --style commercial" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+  echo "[HIGGSFIELD] Agent: ~/.claude/agents/higgsfield-cinema-agent.md" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+  echo "[HIGGSFIELD] Workflow: ~/.claude/workflows/higgsfield-cinematic-workflow.json" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+  echo "[HIGGSFIELD] 29 shots: dolly-in dolly-out fast-dolly pan-left pan-right tilt-up tilt-down dolly-left dolly-right over-shoulder orbit-180 full-360 cinematic-arc jib-up jib-down crane-overhead zoom-in zoom-out crash-zoom rack-focus fisheye drone-flyover aerial-orbit fpv-drone aerial-pullback extreme-macro leading-shot following-shot side-tracking pov-walk through-shot" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+fi
+
 # ── Step 4: Log metrics ──────────────────────────────────────────
 ACTIVE_COUNT=$(ls "$ACTIVE" 2>/dev/null | wc -l | tr -d ' ')
 ACTIVATED_STR="${ACTIVATED[*]:-none}"
