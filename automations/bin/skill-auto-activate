@@ -23,6 +23,14 @@ except: pass
 TS=$(date +%s)
 ACTIVATED=()
 
+# ── PAPERCLIP AI — always-on health check (every prompt) ─────────
+if ! curl -s http://127.0.0.1:3100 -o /dev/null -w "%{http_code}" 2>/dev/null | grep -q "200\|301\|302"; then
+  launchctl load ~/Library/LaunchAgents/ai.hmz.paperclip.plist 2>/dev/null || true
+  echo "[skill-auto-activate] Paperclip AI → starting at http://127.0.0.1:3100"
+else
+  echo "[skill-auto-activate] Paperclip AI → http://127.0.0.1:3100 ✓ (co-founder OS active)"
+fi
+
 # ── Step 3: Dispatch functions ───────────────────────────────────
 on() {
   local skill="$1"
@@ -123,6 +131,13 @@ fi
 # codex-plugin-cc: OpenAI Codex code review from inside Claude Code
 if match "codex review|codex:review|adversarial review|delegate to codex|codex rescue|codex plugin|openai codex|codex inside claude|codex background job"; then
   echo "[CODEX] codex-plugin-cc → ~/installed-repos/ads-creative/codex-plugin-cc/" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+fi
+
+# speckit: Spec-Driven Development — GitHub Spec Kit + MAE
+if match "spec kit|speckit|spec-driven|speckit.specify|speckit.plan|speckit.tasks|speckit.implement|speckit.constitution|new feature|build feature|major feature|plan before code|sdd workflow|spec before code"; then
+  echo "[SPECKIT] GitHub Spec Kit v0.8.9 active → python3 ~/.claude/bin/speckit-mae-bridge run 'feature'" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+  echo "[SPECKIT] Steps: constitution→specify→clarify→plan→tasks→implement" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+  echo "[SPECKIT] Agent: ~/.claude/agents/mae-speckit-agent.md" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
 fi
 
 # ── MICROSOFT REPOS — AI/AGENTS/PLAYWRIGHT/SK AUTO-ROUTING ──────
