@@ -39,6 +39,8 @@ DASHSCOPE_KEY = os.environ.get("DASHSCOPE_API_KEY","")
 G0DM0D3_KEY   = os.environ.get("G0DM0D3_KEY","") or os.environ.get("GODMODE_API_KEY","")
 KIMI_KEY      = os.environ.get("KIMI_API_KEY","") or os.environ.get("MOONSHOT_API_KEY","")
 KIMI_BASE     = os.environ.get("MOONSHOT_BASE_URL","https://api.moonshot.ai/v1")
+BYTEZ_KEY     = os.environ.get("BYTEZ_API_KEY","cb4a7065a586ec6ca26394724ce5ec49")
+BYTEZ_BASE    = os.environ.get("BYTEZ_BASE_URL","https://api.bytez.com/models/v2")
 
 # ── Score a response (judge logic) ───────────────────────────────
 def score_response(text: str, prompt: str) -> float:
@@ -419,3 +421,16 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+# ── BYTEZ.COM TIER 0 INTEGRATION ──────────────────────────────────────────────
+# bytez_query() — multi-model free access via bytez.com
+# API key: cb4a7065a586ec6ca26394724ce5ec49
+bytez_query() {
+  local prompt="$1"
+  local model="${2:-llama-3.1-8b-instruct}"
+  curl -s -X POST "https://api.bytez.com/models/v2/chat" \
+    -H "Authorization: Bearer ${BYTEZ_API_KEY:-cb4a7065a586ec6ca26394724ce5ec49}" \
+    -H "Content-Type: application/json" \
+    -d "{\"model\":\"$model\",\"messages\":[{\"role\":\"user\",\"content\":\"$prompt\"}],\"stream\":false}" \
+    2>/dev/null | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('choices',[{}])[0].get('message',{}).get('content',''))" 2>/dev/null
+}
