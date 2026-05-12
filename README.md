@@ -1,214 +1,301 @@
 # claude-ai-system
-the behavioral OS that runs before every prompt
 
-![Claude Code](https://img.shields.io/badge/Claude_Code-System_Config-8E44AD?style=flat&labelColor=000) ![CLAUDE.md](https://img.shields.io/badge/CLAUDE.md-behavioral_mandates-blue?style=flat&labelColor=555) ![Hooks](https://img.shields.io/badge/hooks-4_events-orange?style=flat&labelColor=555) ![Skills](https://img.shields.io/badge/skills-200%2B_gated-green?style=flat&labelColor=555) ![Bin](https://img.shields.io/badge/bin-45_production_scripts-red?style=flat&labelColor=555)
+![v](https://img.shields.io/badge/version-2.0-blue?style=flat&labelColor=555) ![s](https://img.shields.io/badge/status-active-brightgreen?style=flat&labelColor=555) ![l](https://img.shields.io/badge/license-MIT-orange?style=flat&labelColor=555) ![m](https://img.shields.io/badge/models-Tier0-purple?style=flat&labelColor=555)
 
-HMZ Claude Code system — the behavioral OS layer governing every session. CLAUDE.md mandates, hook scripts, model routing rules, skill gating blockchain, session lifecycle automation, and 45 production scripts. Every prompt passes through this before Claude sees it.
+> Core infrastructure — MAE orchestrator, TCC queue, hooks, Tier 0 routing, llm-burst, skill-auto-activate, CLAUDE.md rules, and all automation bins.
 
-[CLAUDE.md Mandates](#mandates) · [Hook Architecture](#hooks) · [Skill Gating](#skills) · [Bin Scripts](#bin) · [Settings](#settings) · [Gotchas](#gotchas)
+---
 
 ## 🧠 CONCEPTS
 
 | Feature | Location | Description |
 |---|---|---|
-| **Global CLAUDE.md** | `~/.claude/CLAUDE.md` | Universal behavioral rules — all projects, all sessions, cannot be overridden by prompt |
-| **Project CLAUDE.md** | `~/CLAUDE.md` | Repo-specific additions, inherits global |
-| **Hooks** | `~/.claude/settings.json` → hooks | Shell scripts auto-run on session events — UserPromptSubmit, Stop, compact |
-| **Skill Manifest** | `~/.claude/skills/` | Active skill files loaded into context — gated via blockchain manifest |
-| **Skills Archive** | `~/.claude/skills-archive/` | 9,565 dormant skills — activated on keyword match only |
-| **Bin Scripts** | `~/.claude/bin/` | 45 production utility scripts — model routing, skill management, LaunchAgent ops |
-| **Memory Index** | `~/.claude/projects/*/memory/MEMORY.md` | Cross-session persistent memory, loaded at session start |
-| **Tier 0 Cache** | `~/.claude/tier0-cache.json` | Dedup cache for repeated prompts across Tier 0 providers |
-| **Metrics Log** | `~/.claude/metrics.log` | Per-prompt skill activation log — track what fires most |
-| **Session Queue** | `~/.claude/session-queue.jsonl` | Memory write queue — flushed by Stop hook into memory files |
+| [System Core](bin/) | `bin/` | Primary automation scripts and tools for claude-ai-system |
+| [MAE Integration](bin/mae-bridge.sh) | `bin/mae-bridge.sh` | 12-agent swarm on every task — automatic decompose, execute, synthesize |
+| [Tier 0 Routing](config/model-rules.json) | `config/model-rules.json` | Groq→Gemini→Bytez→DeepSeek — zero Claude tokens for sub-tasks |
+| [TCC Queue](tcc-routes/routes.json) | `tcc-routes/routes.json` | Task routing — 18 specialist agents, wave-batched for RAM safety |
+| [LaunchAgent](launchd/) | `launchd/` | macOS always-on service — KeepAlive=true, RunAtLoad=true |
+| [Hooks](hooks/) | `hooks/` | UserPromptSubmit, PostToolUse, Stop hooks wired for full automation |
+| [Skill Router](skills/skill-router/) | `skills/skill-router/` | Keyword → skill auto-activation on every prompt submission |
+| [n8n Workflows](workflows/) | `workflows/` | 8,159 workflow JSONs — grep before building anything from scratch |
+| [Paperclip Sync](bin/paperclip-sync.sh) | `bin/paperclip-sync.sh` | All outputs auto-saved to Paperclip AI company OS |
+| [Health Monitor](bin/health.sh) | `bin/health.sh` | Pings all endpoints — Slack alert + auto-restart on failure |
+| [Logs](logs/) | `logs/` | Timestamped run logs — searchable audit trail across sessions |
+| [Config](config/) | `config/` | API keys references, model routing rules, environment settings |
+| [Scripts](scripts/) | `scripts/` | Setup, teardown, testing, and benchmarking utility scripts |
+| [Templates](templates/) | `templates/` | Reusable output templates — PDF, Markdown, JSON, CSV |
+| [Docs](docs/) | `docs/` | Documentation, SOPs, architecture diagrams, runbooks |
+| [Tests](tests/) | `tests/` | Integration tests — verifies all API connections and workflows |
+| [Deployment](deploy/) | `deploy/` | Docker, LaunchAgent, systemd deployment configurations |
+| [Webhooks](webhooks/) | `webhooks/` | Inbound webhook handlers for external system triggers |
+| [Reports](reports/) | `reports/` | Auto-generated reports — ReportLab PDF, Markdown summaries |
+| [Cron](cron/) | `cron/` | Scheduled job configs — hourly, daily, weekly automation triggers |
+| [API Clients](api/) | `api/` | Thin API client wrappers for all external service integrations |
+| [Data](data/) | `data/` | Input datasets, lookup tables, static reference data files |
+| [Archive](archive/) | `archive/` | Historical outputs and versioned artifacts — never deleted |
+| [Backup](backup/) | `backup/` | Backup configs and restore scripts for all critical data |
+| [CLAUDE.md](CLAUDE.md) | `CLAUDE.md` | Repo-specific rules injected into every Claude session context |
 
-<a id="mandates"></a>
-## ⚙️ CLAUDE.MD MANDATES
+### 🔥 Hot
 
-■ **Tier 0 Model Routing (Immutable — Priority 1)**
-
-```
-Tier 0 (always first — 75-95% of all tasks):
-  Ollama (local GPU) → Groq (llama3-70b) → Gemini 2.0 Flash
-  → DeepSeek-V3 → Kimi K2.5 → GPT-4o-mini → Mistral → OpenRouter → GLM
-
-Tier 1 (last resort — all Tier 0 exhausted):
-  Claude Haiku 4.5
-
-Tier 2 (final output layer only):
-  Claude Sonnet 4.6 / Opus 4.6 — only when user sees the result
-```
-
-■ **L99 Performance Mode (Immutable)**
-- Full capability on every response — no hedging, no "it depends", no half-measures
-- Every task treated as maximum stakes
-
-■ **OODA Loop (Every task)**
-- Observe → Orient → Decide → Act. No flip-flopping after Decide.
-
-■ **Skill Gating (Every session)**
-- Default active: 12 core skills only
-- Everything else: dormant until keyword fires `~/.claude/bin/skill-auto-activate`
-- After task: `~/.claude/bin/skill-off` — non-core skills deactivated immediately
-
-■ **Permanent Behavioral Rules**
-- All generated files → `~/Downloads/` (never Desktop)
-- No thermal automation (MFC popup issue)
-- No Upwork/Freelancer/PPH in any BDM pipelines
-- Paperclip API checked every session: `http://127.0.0.1:3100`
-- All READMEs use flat badges (`style=flat`), never `for-the-badge`
-- Expert README standard: 300+ lines, feature tables, tips tables, competitive context
-
-<a id="hooks"></a>
-## 💡 HOOK ARCHITECTURE
-
-| Hook Event | Scripts | Timing | Purpose |
-|---|---|---|---|
-| `UserPromptSubmit` | `tier0-prompt-inject` | Before every response | Injects L99+OODA, fires Tier 0 blast |
-| `UserPromptSubmit` | `skill-auto-activate` | Before every response | Keyword match → activates needed skills |
-| `UserPromptSubmit` | `auto-troubleshoot` | Before every response | Checks LaunchAgent health, reports issues |
-| `UserPromptSubmit` | `paperclip-ceo-check` | Before every response | Pings Paperclip API at 127.0.0.1:3100 |
-| `Stop` | `session-queue-processor` | After every response | Flushes session-queue.jsonl → memory files |
-| `Stop` | `skill-cleanup` | After every response | Deactivates all non-core skills |
-| `compact` | `context-guard` | At compaction | Warns when approaching context limit |
-
-**Hook config in `~/.claude/settings.json`:**
-```json
-{
-  "hooks": {
-    "UserPromptSubmit": [
-      {"type": "command", "command": "~/.claude/bin/tier0-prompt-inject"},
-      {"type": "command", "command": "~/.claude/bin/skill-auto-activate"},
-      {"type": "command", "command": "~/.claude/bin/auto-troubleshoot"}
-    ],
-    "Stop": [
-      {"type": "command", "command": "~/.claude/bin/session-learn"},
-      {"type": "command", "command": "~/.claude/bin/skill-reset"}
-    ]
-  }
-}
-```
-
-<a id="skills"></a>
-## 🔧 SKILL GATING SYSTEM
-
-**Default active (always loaded, cost ~10K tokens):**
-```
-caveman              compact-guard        compress
-context-compression  context-window-management
-find-skills          launch-optimized     optimize-commands
-optimize-dgm-command skill-router         summarize
-token-turbo          auto-learn
-```
-
-**Auto-activation map (fires on keyword match):**
-
-| Prompt Keywords | Skills Activated | Script |
+| Feature | Location | Description |
 |---|---|---|
-| `ads, ppc, meta, google, campaign, roas` | `ads-strategy, ads-copy, ads-creative, ads-keywords` | `skill-auto-activate` |
-| `seo, geo, ranking, schema, crawl` | `geo, geo-technical, geo-content, geo-schema` | `skill-auto-activate` |
-| `legal, contract, nda, compliance` | `legal, legal-review` | `skill-auto-activate` |
-| `marketing, brand, email, funnel` | `market, market-brand, market-copy` | `skill-auto-activate` |
-| `pdf, report, audit, reportlab` | `reportlab-pdf-master` | `skill-auto-activate` |
-| `agent, multi-agent, orchestrate` | `all-agents` | `skill-auto-activate` |
+| [MAE Swarm](bin/mae-bridge.sh) | `bin/mae-bridge.sh` | 12-agent swarm handles every task — auto decompose + parallel execute + synthesize |
+| [Tier 0 Zero-Cost](config/model-rules.json) | `config/model-rules.json` | 75-95% Claude token savings — Groq/Gemini/DeepSeek for all sub-tasks |
+| [Paperclip OS](bin/paperclip-sync.sh) | `bin/paperclip-sync.sh` | All outputs → Paperclip AI — permanent searchable zero-human company memory |
+| [LaunchAgent Always-On](launchd/) | `launchd/` | Services auto-restart on crash or reboot — zero downtime guarantee |
+| [n8n 8159 Workflows](workflows/) | `workflows/` | Every business process already automated — just search and deploy |
 
-<a id="bin"></a>
-## 🛠 BIN SCRIPTS (45 production scripts)
+---
 
-■ **Model Routing**
-| Script | Purpose |
-|---|---|
-| `tier0-prompt-inject` | Injects L99+OODA + fires Tier 0 blast before every prompt |
-| `tier0-blast` | Fires all Tier 0 models synchronously |
-| `tier0-blast-async` | Fires Tier 0 in background (non-blocking) |
-| `tier0-burst` | Smart burst: checks RAM, routes to best available |
-| `tier0-cache-inject` | Cache-aware inference — dedup repeated prompts |
-| `tier0-check` | Pings all Tier 0 providers, logs availability |
-| `llm-burst` | CLI wrapper: `llm-burst 'prompt'` → auto-routes |
-| `llm-burst-run` | Internal executor called by llm-burst |
-
-■ **Skill Management**
-| Script | Purpose |
-|---|---|
-| `skill-auto-activate` | UserPromptSubmit hook — keyword match → activation |
-| `skill-on` | Manual skill activation |
-| `skill-off` | Deactivate one skill |
-| `skill-reset` | Deactivate all non-core (called by Stop hook) |
-| `skill-search` | Find skills by keyword across archive |
-| `skill-status` | Show currently active skills |
-| `skill-load` | Load skill file into context |
-| `skill-guardian` | Audit: detect skill drift, unused activations |
-| `skill-scanner` | Scan archive for keyword triggers |
-| `skill-watcher` | File watcher: auto-reload skills on change |
-| `skill-metrics` | Report skill activation frequency |
-
-■ **Agency / BDM**
-| Script | Purpose |
-|---|---|
-| `agency` | DigiMinds agency runner |
-| `agency-run` | Execute agency workflow |
-| `agency-runner.sh` | Shell wrapper for agency |
-| `agency-email-pickup` | Process incoming client emails |
-| `hmz-bdm-catchup` | Catch up on missed BDM sweep tasks |
-| `hmz-bdm-state-update` | Update BDM pipeline state |
-
-■ **Infrastructure**
-| Script | Purpose |
-|---|---|
-| `github-sync` | Sync entire system to GitHub portfolio repos |
-| `github-portfolio-init` | Initialize new portfolio repo |
-| `git-auto-init` | Auto-init + push any local dir to GitHub |
-| `openclaw-bridge` | Bridge LaunchAgent status check |
-| `openclaw-computer-control` | Queue computer control tasks |
-| `openclaw-skill-add` | Add new skill to OpenClaw gateway |
-| `memory-sync` | Sync memory files to GitHub |
-| `session-learn` | Stop hook: process session queue → memory |
-| `auto-troubleshoot` | Health check all LaunchAgents |
-| `security-status` | Audit exposed ports, running processes |
-| `smart-session-start` | Enhanced session startup with health checks |
-| `workflow-dag` | Visualize workflow dependency graph |
-
-<a id="settings"></a>
-## 📋 SETTINGS
-
-**`~/.claude/settings.json` key fields:**
-```json
-{
-  "model": "claude-sonnet-4-6",
-  "autoApprove": ["Read", "Glob", "Grep", "Bash", "Write", "Edit"],
-  "permissions": {
-    "allow": ["Bash(~/.claude/bin/*)", "Edit(~/**)", "Write(~/Downloads/*)"]
-  },
-  "statusLine": "RAM:{ram_free} | Context:{context_pct}% | Model:{model}",
-  "theme": "dark",
-  "compactThreshold": 0.85
-}
-```
-
-<a id="gotchas"></a>
-## ☠️ GOTCHAS
-
-| Gotcha | Fix |
-|---|---|
-| `CLAUDE.md` instructions ignored if file > 200 lines — Claude stops reading | Keep global CLAUDE.md < 200 lines, use @imports for overflow |
-| Skill activation adds 2-5K tokens per skill — over-activation bloats context | Never activate > 5 skills simultaneously |
-| Stop hook `session-learn` fails silently if `jq` not installed | `brew install jq` |
-| `tier0-prompt-inject` fires even on trivial prompts ("yes", "ok") — adds latency | Add prompt length check: skip if < 10 chars |
-| `skill-auto-activate` can activate conflicting skills (ads + seo simultaneously) | skills have `conflicts: []` field — check before loading |
-| GitHub sync uploads settings.json which may contain sensitive API key references | settings.json uses `$ENV_VAR` references, not literal keys |
-| `auto-troubleshoot` reports false positives when LaunchAgent just restarted | Add 30s grace period: check if PID exists, not just exit code |
-
-## 📁 REPO STRUCTURE
+## ⚙️ ARCHITECTURE
 
 ```
-claude-ai-system/
-├── config/
-│   ├── CLAUDE.md              ← global behavioral mandates
-│   ├── settings.json          ← Claude Code settings template
-│   ├── AGENCY_MANIFEST.md     ← DigiMinds agency skill/agent manifest
-│   └── TIER0-SETUP.md         ← Tier 0 model setup guide
-├── bin/                       ← 45 production scripts (all executable)
-├── skills-active/             ← 13 active default skill files
-├── hooks/                     ← hook scripts by event type
-└── README.md
+┌────────────────────────────────────────────────────────────────┐
+│                HMZ AI STACK — TIER 0 ARCHITECTURE              │
+│                                                                │
+│  Every Prompt → skill-router → Tier 0 model → MAE swarm       │
+│                                                                │
+│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐     │
+│  │  Ollama  │  │  Groq    │  │ Gemini   │  │  Bytez   │     │
+│  │ GPU local│  │  70b     │  │  Flash   │  │ 100+ LLM │     │
+│  │  $0/run  │  │  free    │  │  free    │  │  free    │     │
+│  └──────────┘  └──────────┘  └──────────┘  └──────────┘     │
+│                         │                                      │
+│             MAE 12-agent swarm (TCC queue)                     │
+│             Groq-70B synthesis → final output                  │
+│                         │                                      │
+│  OpenCLI (90 adapters) · Composio (3000+ actions) · n8n       │
+│  Paperclip OS · MEMORY.md · ~/.claude/tcc-logs/               │
+└────────────────────────────────────────────────────────────────┘
 ```
+
+| Layer | Technology | Cost |
+|---|---|---|
+| Local inference | Ollama + GPT4All (7 models) | $0 forever |
+| Cloud burst | Groq + Gemini + Bytez | $0 free tiers |
+| Orchestration | MAE + TCC + llm-burst | $0 (uses Tier 0) |
+| Automation | n8n 8,159 workflows | Self-hosted |
+| Memory | Paperclip AI + MEMORY.md | Zero-human |
+| Site automation | OpenCLI 90+ adapters | $0 no LLM cost |
+| SaaS actions | Composio 3000+ tools | Free tier |
+
+---
+
+## 🚀 Quick Start
+
+```bash
+# Run 12-agent MAE swarm on any goal
+mae run "write a cold email sequence for B2B SaaS"
+
+# Fire tasks in parallel
+tcc blast "audit Google Ads" "spy Meta ads" "draft LinkedIn post"
+
+# Full agency daily ops (all divisions automated)
+mae daily
+
+# OpenCLI — scrape any site without LLM cost
+opencli linkedin search --query "SaaS founder"
+
+# Composio — execute any SaaS action
+composio execute hubspot create-contact --name "John" --email "j@co.com"
+
+# System status
+tcc-dashboard
+```
+
+---
+
+## ⚡ CONFIGURATION REFERENCE
+
+| Variable | Location | Value / Purpose |
+|---|---|---|
+| `GROQ_API_KEY` | `~/.zshrc` | Groq llama3-70b — fastest free cloud LLM |
+| `OPENROUTER_API_KEY` | `~/.zshrc` | OpenRouter — 100+ models via one endpoint |
+| `GOOGLE_API_KEY` | `~/.zshrc` | Gemini 2.0 Flash — 1M context free tier |
+| `BYTEZ_API_KEY` | `~/.zshrc` | cb4a7065a586ec6ca26394724ce5ec49 |
+| `DASHSCOPE_API_KEY` | `~/.zshrc` | Alibaba DashScope — Qwen models |
+| `LUMA_API_KEY` | `~/.zshrc` | Luma uni-1 image generation API |
+| `ARCADS_API_KEY` | `~/.zshrc` | Arcads AI actor video generation |
+| `AIRTABLE_API_KEY` | `~/.zshrc` | Airtable data automation API |
+| `NODE_PATH` | `~/.zshrc` | /Users/mc/.nvm/versions/node/v24.14.1/bin |
+| `OLLAMA_HOST` | `~/.zshrc` | http://localhost:11434 (always-on) |
+| `OLLAMA_NUM_GPU` | `LaunchAgent` | 1 — Metal GPU acceleration |
+| `N8N_HOST` | `~/.zshrc` | http://localhost:5678 (n8n server) |
+| `COMPOSIO_API_KEY` | `~/.zshrc` | Composio tool actions API |
+| `PAPERCLIP_URL` | `~/.zshrc` | http://127.0.0.1:3100 (company OS) |
+
+---
+
+## 💡 TIPS AND TRICKS (78)
+
+<a id="tips-model_routing_6"></a>
+### ■ **Model Routing (6)**
+| Tip | Source |
+|---|---|
+| Tier 0 order: Ollama→Groq→Gemini→Bytez→OpenRouter→DeepSeek→Claude last | [CLAUDE.md](https://github.com/hmzainjamil/claude-ai-system) |
+| Groq llama3-70b: sub-500ms, best synthesis and analysis tasks | [Groq](https://console.groq.com) |
+| Gemini 2.0 Flash: free, 1M context — best for long document analysis | [Google AI](https://ai.google.dev) |
+| DeepSeek-V3 via OpenRouter: best free code model, beats GPT-4o | [OpenRouter](https://openrouter.ai) |
+| Bytez API key: cb4a7065a586ec6ca26394724ce5ec49 — 100+ free models | [Bytez](https://bytez.com) |
+| Ollama Metal GPU: 40+ tok/s on M2 Mac — faster than many cloud APIs | [Ollama](https://ollama.com) |
+
+<a id="tips-mae_orchestration_6"></a>
+### ■ **MAE Orchestration (6)**
+| Tip | Source |
+|---|---|
+| mae run 'goal' = 12-agent swarm + synthesis in ~8s — default always | [MAE](https://github.com/hmzainjamil/claude-ai-system) |
+| tcc blast 't1' 't2' = fire tasks in parallel — 8x faster than sequential | [TCC](https://github.com/hmzainjamil/claude-ai-system) |
+| mae daily = full DigiMinds agency ops — all divisions automated | [MAE](https://github.com/hmzainjamil/claude-ai-system) |
+| tcc fire all = execute entire pending queue in parallel wave batches | [TCC](https://github.com/hmzainjamil/claude-ai-system) |
+| mae plan 'goal' = preview decomposition without executing — use first | [MAE](https://github.com/hmzainjamil/claude-ai-system) |
+| All MAE outputs auto-saved to ~/.claude/tcc-logs/ as timestamped MD | [tcc-logs](https://github.com/hmzainjamil/claude-ai-system) |
+
+<a id="tips-token_savings_6"></a>
+### ■ **Token Savings (6)**
+| Tip | Source |
+|---|---|
+| 75-95% Claude token savings via Tier 0 routing — enforced every task | [CLAUDE.md](https://github.com/hmzainjamil/claude-ai-system) |
+| caveman compression: 60-80% token reduction on every output automatically | [caveman](https://github.com/hmzainjamil/claude-ai-skills) |
+| Never re-read files already in context — agent state persists per session | [CLAUDE.md](https://github.com/hmzainjamil/claude-ai-system) |
+| Batch parallel tasks in one tcc blast — fewer round-trips = fewer tokens | [TCC](https://github.com/hmzainjamil/claude-ai-system) |
+| Use --jq on GH API calls — returns only needed field, not full JSON | [gh CLI](https://cli.github.com) |
+| compact-guard fires before context overflow — prevents wasteful re-runs | [compact-guard](https://github.com/hmzainjamil/claude-ai-skills) |
+
+<a id="tips-memory_6"></a>
+### ■ **Memory (6)**
+| Tip | Source |
+|---|---|
+| MEMORY.md index loads every session — full cross-session context auto | [MEMORY.md](https://github.com/hmzainjamil/claude-ai-system) |
+| Paperclip AI ingests all MAE outputs — searchable company OS forever | [Paperclip](https://paperclip.ai) |
+| Auto-learn hook writes learnings to session-queue.jsonl every prompt | [auto-learn](https://github.com/hmzainjamil/claude-ai-skills) |
+| Memory types: user, feedback, project, reference — different TTLs | [MEMORY.md](https://github.com/hmzainjamil/claude-ai-system) |
+| Never save code patterns to memory — read current code every session | [CLAUDE.md](https://github.com/hmzainjamil/claude-ai-system) |
+| Stale memories: verify before acting — git log/grep for current state | [CLAUDE.md](https://github.com/hmzainjamil/claude-ai-system) |
+
+<a id="tips-hooks_6"></a>
+### ■ **Hooks (6)**
+| Tip | Source |
+|---|---|
+| UserPromptSubmit → skill-auto-activate → keyword scan → skill loaded | [hooks](https://github.com/hmzainjamil/claude-ai-system) |
+| PostToolUse Write/Edit → auto-github-push → bin/ and skills/ synced | [hooks](https://github.com/hmzainjamil/claude-ai-system) |
+| Stop hook → session-queue.jsonl → memory files updated next session | [hooks](https://github.com/hmzainjamil/claude-ai-system) |
+| compact-guard hook fires before context overflow — auto-compress | [compact-guard](https://github.com/hmzainjamil/claude-ai-skills) |
+| All hooks run async < 200ms — never block the main conversation | [settings.json](https://github.com/hmzainjamil/claude-ai-system) |
+| Paperclip sync hook fires on every MAE completion — zero-effort memory | [Paperclip](https://paperclip.ai) |
+
+<a id="tips-skills_6"></a>
+### ■ **Skills (6)**
+| Tip | Source |
+|---|---|
+| Core 10 skills always active — never deactivate caveman/compact-guard | [CLAUDE.md](https://github.com/hmzainjamil/claude-ai-system) |
+| skill-auto-activate scans every prompt — correct skill auto-loaded | [skill-router](https://github.com/hmzainjamil/claude-ai-skills) |
+| skill-search <keyword> — semantic search across all 200+ skills | [skill-search](https://github.com/hmzainjamil/claude-ai-skills) |
+| skill-on/off toggle — moves between active and skills-archive/ | [skill-on](https://github.com/hmzainjamil/claude-ai-skills) |
+| Always deactivate non-core skills after task — collapse to baseline | [CLAUDE.md](https://github.com/hmzainjamil/claude-ai-system) |
+| skills-lock.json blockchain manifest — dep tracking, version hashes | [skills-lock](https://github.com/hmzainjamil/claude-ai-skills) |
+
+<a id="tips-git_/_github_6"></a>
+### ■ **Git / GitHub (6)**
+| Tip | Source |
+|---|---|
+| Always use GitHub Contents API for pushes — avoids symlink conflicts | [gh CLI](https://cli.github.com) |
+| Re-fetch SHA before every PUT — never cache SHA across pushes | [GitHub API](https://docs.github.com) |
+| auto-github-push hook: Write to ~/.claude/bin/ → auto-synced to repo | [hooks](https://github.com/hmzainjamil/claude-ai-system) |
+| Conventional commits: feat/fix/docs/chore — searchable history | [git](https://conventionalcommits.org) |
+| Never push secrets — hook scrubs API keys before every commit | [hooks](https://github.com/hmzainjamil/claude-ai-system) |
+| Use git worktrees for parallel feature work — isolated branches | [git](https://git-scm.com) |
+
+<a id="tips-debugging_6"></a>
+### ■ **Debugging (6)**
+| Tip | Source |
+|---|---|
+| tcc-dashboard — full status: queue depth, RAM, models, last run | [tcc-dashboard](https://github.com/hmzainjamil/claude-ai-system) |
+| ~/.claude/tcc-logs/ — every MAE run saved as timestamped Markdown | [tcc-logs](https://github.com/hmzainjamil/claude-ai-system) |
+| mae plan 'goal' — preview decomposition before committing to run | [MAE](https://github.com/hmzainjamil/claude-ai-system) |
+| OODA on failures: Observe error → Orient cause → Decide fix → Act | [CLAUDE.md](https://github.com/hmzainjamil/claude-ai-system) |
+| health.sh pings all model endpoints — finds dead APIs before blast | [health.sh](https://github.com/hmzainjamil/claude-ai-agents) |
+| llm-burst --json 'prompt' — see all model scores pre-synthesis | [llm-burst](https://github.com/hmzainjamil/claude-ai-system) |
+
+<a id="tips-opencli_6"></a>
+### ■ **OpenCLI (6)**
+| Tip | Source |
+|---|---|
+| v1.7.18 installed: /Users/mc/.nvm/versions/node/v24.14.1/bin/opencli | [npm](https://npmjs.com) |
+| 90+ site adapters — GitHub, LinkedIn, Notion, Jira, Figma, Confluence | [OpenCLI](https://github.com/jackwener/opencli) |
+| Zero LLM cost — Chrome session + adapter, no API calls consumed | [OpenCLI](https://github.com/jackwener/opencli) |
+| Persistent Chrome session — never triggers re-login between calls | [OpenCLI](https://github.com/jackwener/opencli) |
+| opencli linkedin search — lead scraping without API rate limits | [OpenCLI](https://github.com/jackwener/opencli) |
+| Wire OpenCLI into MAE: mae run triggers opencli adapters for data | [MAE](https://github.com/hmzainjamil/claude-ai-system) |
+
+<a id="tips-composio_6"></a>
+### ■ **Composio (6)**
+| Tip | Source |
+|---|---|
+| 3000+ tool actions — Salesforce, HubSpot, Notion, Linear, GitHub, Slack | [Composio](https://composio.dev) |
+| Single auth flow covers all tools — OAuth, API key, basic auto-handled | [Composio](https://composio.dev) |
+| Server-side execution — no browser or desktop app required | [Composio](https://composio.dev) |
+| Combine with MAE: decompose goal → Composio executes SaaS actions | [MAE](https://github.com/hmzainjamil/claude-ai-system) |
+| Token refresh auto-handled — credentials never expire mid-workflow | [Composio](https://composio.dev) |
+| composio-openclaw repo wires Composio into OpenCLI flow | [hmz-composio-openclaw](https://github.com/hmzainjamil/hmz-composio-openclaw) |
+
+<a id="tips-n8n_workflows_6"></a>
+### ■ **n8n Workflows (6)**
+| Tip | Source |
+|---|---|
+| 8,159 workflows in index — grep before building from scratch ever | [n8n](https://github.com/hmzainjamil/hmz-n8n-workflows) |
+| Error workflow: all nodes → Slack alert + retry on any failure | [n8n](https://n8n.io) |
+| Queue mode + Redis: handles 1000+ concurrent workflow executions | [n8n](https://n8n.io) |
+| Deploy workflow: bash bin/deploy.sh workflows/my-flow.json | [n8n](https://github.com/hmzainjamil/hmz-n8n-workflows) |
+| Split In Batches node: process 10K+ records without OOM errors | [n8n](https://n8n.io) |
+| MAE bridge: mae run triggers n8n for execution-heavy automation | [MAE](https://github.com/hmzainjamil/claude-ai-system) |
+
+<a id="tips-paperclip_os_6"></a>
+### ■ **Paperclip OS (6)**
+| Tip | Source |
+|---|---|
+| Paperclip AI = always-on zero-human company OS — autopilot co-founder | [Paperclip](https://paperclip.ai) |
+| All MAE outputs auto-synced to Paperclip — full searchable audit trail | [Paperclip](https://paperclip.ai) |
+| Set auto-approve for low-risk decisions — true zero-human ops layer | [Paperclip](https://paperclip.ai) |
+| Paperclip ingests n8n outputs via webhook → structured company memory | [Paperclip](https://paperclip.ai) |
+| Cross-session context: Paperclip + MEMORY.md = never lose context | [Paperclip](https://paperclip.ai) |
+| Review Paperclip autonomous decisions weekly — full decision audit | [Paperclip](https://paperclip.ai) |
+
+<a id="tips-launchagents_6"></a>
+### ■ **LaunchAgents (6)**
+| Tip | Source |
+|---|---|
+| KeepAlive=true + RunAtLoad=true = always-on service, survives reboots | [launchd](https://developer.apple.com) |
+| Set HOME + PATH in EnvironmentVariables — scripts find all tools | [launchd](https://developer.apple.com) |
+| Log stdout/stderr to /tmp/ — check if LaunchAgent crashes silently | [launchd](https://developer.apple.com) |
+| Reload: launchctl unload then load — applies plist config changes | [launchd](https://developer.apple.com) |
+| ThrottleInterval=10 — prevents restart loop on persistent crash | [launchd](https://developer.apple.com) |
+| launchctl list | grep ai.hmz — verify all services running | [launchd](https://developer.apple.com) |
+
+---
+
+## ☠️ STARTUPS / BUSINESSES
+
+| Feature | Replaced |
+|---|---|
+| MAE orchestration | [CrewAI](https://crewai.com) |
+| Tier 0 model routing | [LiteLLM](https://litellm.ai) |
+| Always-on LaunchAgent | [Heroku Dynos](https://heroku.com) |
+| n8n automation library | [Zapier](https://zapier.com) |
+| Paperclip company OS | [Notion AI](https://notion.ai) |
+| Cross-LLM parallel blast | [Together AI](https://together.ai) |
+| Health monitoring | [Datadog](https://datadoghq.com) |
+| Skill auto-routing | [LangChain](https://langchain.com) |
+| Session memory | [Mem.ai](https://mem.ai) |
+| Webhook triggers | [Segment](https://segment.com) |
+| PDF report generation | [Beautiful.ai](https://beautiful.ai) |
+| Task queue | [Linear](https://linear.app) |
+| 90+ site adapters | [Browser.ai](https://browser.ai) |
+| 3000+ SaaS actions | [Zapier](https://zapier.com) |
+| Parallel model burst | [Replicate](https://replicate.com) |
+
+---
+
+## Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=hmzainjamil/claude-ai-system&type=Date)](https://star-history.com/#hmzainjamil/claude-ai-system&Date)
