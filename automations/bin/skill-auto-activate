@@ -475,6 +475,23 @@ if match "higgsfield|cinema studio|nano banana|kling video|ai cinematic|camera m
   echo "[HIGGSFIELD] 29 shots: dolly-in dolly-out fast-dolly pan-left pan-right tilt-up tilt-down dolly-left dolly-right over-shoulder orbit-180 full-360 cinematic-arc jib-up jib-down crane-overhead zoom-in zoom-out crash-zoom rack-focus fisheye drone-flyover aerial-orbit fpv-drone aerial-pullback extreme-macro leading-shot following-shot side-tracking pov-walk through-shot" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
 fi
 
+# awesome-agentic-patterns: 50+ production agent design patterns
+if match "agentic pattern|agent pattern|agent design|agent architecture|multi-agent pattern|agent orchestration pattern|awesome agentic|agent blueprint|agent template|nibzard"; then
+  echo "[AGENT-PATTERNS] awesome-agentic-patterns → ~/installed-repos/awesome-agentic-patterns/" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+  echo "[AGENT-PATTERNS] AGENT.md, CLAUDE.md, docs/ — 50+ patterns: ReAct, RAG, multi-agent, tool-use" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+fi
+
+# AI-Trader: LLM-powered stock trading agent
+if match "ai trader|stock trading agent|llm trading|automated trading|ai stock|trading bot|hkuds trader|equity agent trading|stock llm"; then
+  echo "[AI-TRADER] HKUDS AI-Trader → ~/installed-repos/AI-Trader/" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+fi
+
+# How-to-Clone-Website Claude Skills: AI website cloner Claude skill
+if match "clone website skill|website cloner skill|claude clone site|mood global|clone website claude|site cloning skill|how to clone website"; then
+  echo "[CLONE-WEBSITE] Mood Global website cloner skill → ~/installed-repos/How-to-Clone-Website---Claude-Skills/" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+  echo "[CLONE-WEBSITE] Contains: ai-website-cloner-template-master — Claude skill for cloning any website" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+fi
+
 # ── Step 4: Log metrics ──────────────────────────────────────────
 ACTIVE_COUNT=$(ls "$ACTIVE" 2>/dev/null | wc -l | tr -d ' ')
 ACTIVATED_STR="${ACTIVATED[*]:-none}"
