@@ -492,6 +492,14 @@ if match "clone website skill|website cloner skill|claude clone site|mood global
   echo "[CLONE-WEBSITE] Contains: ai-website-cloner-template-master — Claude skill for cloning any website" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
 fi
 
+# Proxima: 45+ MCP tools — ask_all_ais, compare_ais, smart_query across ChatGPT+Claude+Gemini+Perplexity
+if match "proxima|ask all ais|compare ais|smart query|all four models|chatgpt claude gemini perplexity|proxima mcp|ask_all_ais|compare_ais|multi model mcp"; then
+  echo "[PROXIMA] MCP server → ~/.mcp.json (proxima key) | needs Electron agent hub on :19222" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+  echo "[PROXIMA] 45+ tools: ask_all_ais, compare_ais, smart_query, deep_search, debug_code, summarize_url, fact_check, generate_code" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+  echo "[PROXIMA] Start electron hub: cd ~/installed-repos/Proxima && node src/mcp-server-v3.js" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+  echo "[PROXIMA] Note: Full GUI requires Windows. MCP server runs standalone on macOS but needs hub." >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+fi
+
 # ── Step 4: Log metrics ──────────────────────────────────────────
 ACTIVE_COUNT=$(ls "$ACTIVE" 2>/dev/null | wc -l | tr -d ' ')
 ACTIVATED_STR="${ACTIVATED[*]:-none}"
