@@ -1,0 +1,1 @@
+/Users/mc/installed-repos/agent-skills/skills/apify-generate-output-schema/SKILL.md

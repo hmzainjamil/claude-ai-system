@@ -37,6 +37,7 @@ No command needed. Active every session from first prompt.
 | **GPT4All: Mistral-7B** | Fast general purpose, local | **Free forever** |
 | **GPT4All: Phi-3-mini** | Microsoft, efficient reasoning | **Free forever** |
 | **GPT4All: Qwen2.5-Coder-7B** | Code generation specialist, local | **Free forever** |
+| **Bytez.com** | 100+ free models, OpenAI-compatible API | **Free tier** |
 
 > DeepSeek-R1-7B / 1.5B: disabled — pre-tokenizer unsupported by gpt4all 2.8.2 llama.cpp (tokenizer type `deepseek-r1-qwen` unknown)
 
@@ -252,6 +253,43 @@ cd ~/installed-repos/ads-creative/codex-plugin-cc
 npm install
 # Copy plugins/ dir to ~/.claude/plugins/
 # Then use: /codex:review  /codex:adversarial-review  /codex:rescue
+```
+
+---
+
+## NEW REPOS + TOOLS — AUTO-ROUTING (always-on, installed 2026-05-12)
+
+| Repo | Path | Trigger phrases | Purpose |
+|---|---|---|---|
+| **opencli** | `~/installed-repos/opencli/` | "opencli" / "site adapter" / "zero token web" / "90+ adapters" | 90+ site adapters, zero LLM cost per web op — v1.7.18 installed globally |
+| **deer-flow** | `~/installed-repos/deer-flow/` | "deer flow" / "bytedance research" / "deep research pipeline" | ByteDance deep research pipeline for market intel |
+| **LTX-Video** | `~/installed-repos/LTX-Video/` | "ltx video" / "lightricks video" / "video generation local" | Local video generation by Lightricks |
+| **claw-code** | `~/installed-repos/claw-code/` | "claw code" / "ultraworkers" / "claw agent" | Ultraworkers coding agent |
+| **ai-website-cloner** | `~/installed-repos/ai-website-cloner-template/` | "clone website" / "website cloner" / "replicate site" | AI website cloning template |
+| **antigravity-awesome-skills** | `~/installed-repos/antigravity-awesome-skills/` | "awesome skills" / "antigravity" | Curated skill collection |
+
+**Bytez.com API** — 100+ free models, OpenAI-compatible:
+```bash
+export BYTEZ_API_KEY="cb4a7065a586ec6ca26394724ce5ec49"
+export BYTEZ_BASE_URL="https://api.bytez.com/models/v2"
+# Use in llm-burst: --models bytez
+# Model: meta-llama/Llama-3.1-8B-Instruct (default)
+```
+
+**MAE-Paperclip Bridge** — auto-executes Paperclip goals via MAE:
+```bash
+mae-paperclip-bridge run        # pick up + execute Paperclip goals
+mae-paperclip-bridge hire-all   # hire all 18 specialist agents
+mae-paperclip-bridge sync       # sync MAE logs → Paperclip
+mae-paperclip-bridge status     # system health
+```
+Runs automatically: SessionStart hook + LaunchAgent every 30min (ai.hmz.mae-paperclip-bridge)
+
+**OpenCLI** — global install v1.7.18:
+```bash
+export PATH="$HOME/.nvm/versions/node/v24.14.1/bin:$PATH"
+opencli --help          # 90+ site adapters
+opencli search "query"  # zero-token web search
 ```
 
 ---

@@ -1,0 +1,26 @@
+{
+  "name": "digiminds-daily",
+  "description": "DigiMinds agency full daily ops automation",
+  "steps": [
+    {
+      "id": "check_systems",
+      "command": "source ~/.claude/tier0.env 2>/dev/null && echo '[✓] Systems check: '$(date) && curl -s http://127.0.0.1:3100/ -o /dev/null -w 'Paperclip: HTTP %{http_code}' && echo ''",
+      "depends_on": []
+    },
+    {
+      "id": "queue_daily_tasks",
+      "command": "~/.claude/bin/tcc blast 'Research 5 new agency prospect companies for DigiMinds outreach today' 'Generate daily SEO tip to post on DigiMinds social media' 'Summarize top digital marketing news for agency intel briefing' --priority high 2>/dev/null || true",
+      "depends_on": ["check_systems"]
+    },
+    {
+      "id": "run_pending",
+      "command": "~/.claude/bin/tcc fire all 2>/dev/null || true",
+      "depends_on": ["queue_daily_tasks"]
+    },
+    {
+      "id": "status_report",
+      "command": "~/.claude/bin/tcc queue",
+      "depends_on": ["run_pending"]
+    }
+  ]
+}

@@ -1,0 +1,86 @@
+{
+  "name": "speckit-sdd-workflow",
+  "description": "Spec-Driven Development workflow — Spec Kit + MAE + Paperclip. Full 6-step SDD before any code is written.",
+  "version": "1.0",
+  "trigger": {
+    "keywords": ["build feature", "new feature", "spec", "speckit", "spec-driven", "new project", "architecture", "plan feature"],
+    "auto": true
+  },
+  "steps": [
+    {
+      "id": "constitution",
+      "name": "Step 1 — Constitution",
+      "command": "python3 ~/.claude/bin/speckit-mae-bridge constitution",
+      "input": "{{project}}",
+      "description": "Generate project rules, boundaries, tech standards. Runs ONCE per project.",
+      "model": "deepseek",
+      "output_file": ".specify/memory/constitution.md"
+    },
+    {
+      "id": "specify",
+      "name": "Step 2 — Specify",
+      "slash_command": "/speckit.specify",
+      "description": "Convert rough idea → full spec.md. No tech stack — pure outcomes.",
+      "model": "groq-70b",
+      "output_file": ".specify/specs/{{feature}}/spec.md",
+      "depends_on": "constitution"
+    },
+    {
+      "id": "clarify",
+      "name": "Step 3 — Clarify (optional)",
+      "slash_command": "/speckit.clarify",
+      "description": "Surface ambiguities before planning. Structured Q&A.",
+      "optional": true,
+      "model": "kimi-k2",
+      "depends_on": "specify"
+    },
+    {
+      "id": "plan",
+      "name": "Step 4 — Plan",
+      "slash_command": "/speckit.plan",
+      "description": "Technical architecture → plan.md, data-model.md, research.md, quickstart.md",
+      "model": "deepseek-v3",
+      "output_files": ["plan.md", "data-model.md", "research.md"],
+      "depends_on": "specify",
+      "review_required": true,
+      "review_note": "Annotate plan.md before continuing. Send back: 'Address all notes, do not implement yet'"
+    },
+    {
+      "id": "tasks",
+      "name": "Step 5 — Tasks",
+      "slash_command": "/speckit.tasks",
+      "description": "Break plan into small dependency-ordered tasks. [P] = parallel.",
+      "model": "groq-70b",
+      "output_file": ".specify/specs/{{feature}}/tasks.md",
+      "depends_on": "plan"
+    },
+    {
+      "id": "taskstoissues",
+      "name": "Step 5b — Push to GitHub Issues",
+      "slash_command": "/speckit.taskstoissues",
+      "description": "Convert tasks → real GitHub Issues automatically",
+      "optional": true,
+      "depends_on": "tasks"
+    },
+    {
+      "id": "implement",
+      "name": "Step 6 — Implement",
+      "command": "python3 ~/.claude/bin/mae-paperclip-bridge run",
+      "slash_command": "/speckit.implement",
+      "description": "Execute tasks via MAE 12-agent swarm. Grounded in spec+plan+constitution.",
+      "model": "mae-swarm",
+      "parallel_tasks": true,
+      "depends_on": "tasks"
+    }
+  ],
+  "bonus_commands": {
+    "analyze": "/speckit.analyze — consistency check across all artifacts",
+    "checklist": "/speckit.checklist — quality validation",
+    "health": "specify extension add project-health-check"
+  },
+  "mae_integration": {
+    "bridge": "~/.claude/bin/speckit-mae-bridge",
+    "auto_run": "python3 ~/.claude/bin/speckit-mae-bridge run 'feature'",
+    "paperclip_sync": true
+  }
+}

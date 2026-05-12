@@ -37,6 +37,7 @@ No command needed. Active every session from first prompt.
 | **GPT4All: Mistral-7B** | Fast general purpose, local | **Free forever** |
 | **GPT4All: Phi-3-mini** | Microsoft, efficient reasoning | **Free forever** |
 | **GPT4All: Qwen2.5-Coder-7B** | Code generation specialist, local | **Free forever** |
+| **Bytez.com** | 100+ free models, OpenAI-compatible API | **Free tier** |
 
 > DeepSeek-R1-7B / 1.5B: disabled — pre-tokenizer unsupported by gpt4all 2.8.2 llama.cpp (tokenizer type `deepseek-r1-qwen` unknown)
 
@@ -253,6 +254,85 @@ npm install
 # Copy plugins/ dir to ~/.claude/plugins/
 # Then use: /codex:review  /codex:adversarial-review  /codex:rescue
 ```
+
+---
+
+## NEW REPOS + TOOLS — AUTO-ROUTING (always-on)
+
+| Repo | Path | Trigger phrases | Purpose |
+|---|---|---|---|
+| **opencli** | `~/installed-repos/opencli/` | "opencli" / "site adapter" / "zero token web" / "90+ adapters" | 90+ site adapters, zero LLM cost per web op — v1.7.18 installed globally |
+| **deer-flow** | `~/installed-repos/deer-flow/` | "deer flow" / "bytedance research" / "deep research pipeline" | ByteDance deep research pipeline for market intel |
+| **LTX-Video** | `~/installed-repos/LTX-Video/` | "ltx video" / "lightricks video" / "video generation local" | Local video generation by Lightricks |
+| **claw-code** | `~/installed-repos/claw-code/` | "claw code" / "ultraworkers" / "claw agent" | Ultraworkers coding agent |
+| **ai-website-cloner** | `~/installed-repos/ai-website-cloner-template/` | "clone website" / "website cloner" / "replicate site" | AI website cloning template |
+| **antigravity-awesome-skills** | `~/installed-repos/antigravity-awesome-skills/` | "awesome skills" / "antigravity" | Curated skill collection |
+| **awesome-agentic-patterns** | `~/installed-repos/awesome-agentic-patterns/` | "agentic pattern" / "agent design" / "agent blueprint" / "nibzard" | 50+ production agent patterns: ReAct, RAG, multi-agent, tool-use, AGENT.md |
+| **AI-Trader** | `~/installed-repos/AI-Trader/` | "ai trader" / "stock trading agent" / "llm trading" / "trading bot" | HKUDS LLM-powered stock trading agent — equity analysis + auto-trade |
+| **How-to-Clone-Website--Claude-Skills** | `~/installed-repos/How-to-Clone-Website---Claude-Skills/` | "clone website skill" / "website cloner skill" / "mood global" / "claude clone site" | Mood Global Claude skill for AI website cloning + ai-website-cloner-template |
+
+**Bytez.com API** — 100+ free models, OpenAI-compatible:
+```bash
+export BYTEZ_API_KEY="cb4a7065a586ec6ca26394724ce5ec49"
+export BYTEZ_BASE_URL="https://api.bytez.com/models/v2"
+# Use in llm-burst: --models bytez
+# Model: meta-llama/Llama-3.1-8B-Instruct (default)
+```
+
+**MAE-Paperclip Bridge** — auto-executes Paperclip goals via MAE:
+```bash
+mae-paperclip-bridge run        # pick up + execute Paperclip goals
+mae-paperclip-bridge hire-all   # hire all 18 specialist agents
+mae-paperclip-bridge sync       # sync MAE logs → Paperclip
+mae-paperclip-bridge status     # system health
+```
+Runs automatically: SessionStart hook + LaunchAgent every 30min (ai.hmz.mae-paperclip-bridge)
+
+**OpenCLI** — global install v1.7.18:
+```bash
+export PATH="$HOME/.nvm/versions/node/v24.14.1/bin:$PATH"
+opencli --help          # 90+ site adapters
+opencli search "query"  # zero-token web search
+```
+
+---
+
+## HIGGSFIELD AI — CINEMATIC VIDEO PRODUCTION (always-on)
+
+Skill: `~/.claude/skills/higgsfield-ai/SKILL.md`
+Agent: `~/.claude/agents/higgsfield-cinema-agent.md`
+Workflow: `~/.claude/workflows/higgsfield-cinematic-workflow.json`
+Shot generator: `~/.claude/bin/higgsfield-shot-generator`
+Output: `~/Downloads/higgsfield-output/`
+
+**Auto-routing triggers:** "higgsfield" / "cinema studio" / "nano banana" / "kling video" / "ai cinematic" / "camera movement" / "dolly" / "orbit shot" / "hero frame" / "soul id" / "rack focus" / "cinematic shot" / "parallax"
+
+**29 Shot Categories:**
+| Category | Shots | Best for |
+|---|---|---|
+| Straight line | dolly-in/out, pan, tilt, dolly L/R, rush, over-shoulder | Establishing, environment reveal |
+| Orbital/Crane | orbit-180, full-360, cinematic-arc, jib-up/down, overhead | Character intro, emotional weight |
+| Zoom | zoom-in/out, crash-zoom, rack-focus, fisheye | Intensity, attention shift |
+| Aerial | drone-flyover, aerial-orbit, fpv-drone, aerial-pullback, macro | Scale, context, raw energy |
+| Tracking | leading, following, side-tracking, pov-walk, through-shot | Journey, immersion, POV |
+
+**Quick commands:**
+```bash
+python3 ~/.claude/bin/higgsfield-shot-generator "subject" --style commercial --shots 8
+python3 ~/.claude/bin/higgsfield-shot-generator "subject" --all-shots
+python3 ~/.claude/bin/higgsfield-shot-generator --list-shots
+python3 ~/.claude/bin/higgsfield-shot-generator --shot "dolly-in" "your subject"
+python3 ~/.claude/bin/higgsfield-shot-generator "narrative" --storyboard --beats 6
+```
+
+**Model routing:**
+- Hero frame → Nano Banana Pro (2K, 9x16/16x9)
+- Character consistency → Higgsfield Soul 2 (22 style presets)
+- Cinematic/realistic video → Kling 2.6 (1080p, 5/10s, audio)
+- Character acting/dialogue → Google V3.1 (1080p, 8s, audio)
+- Viral/candid → Sora 2 | Product reveal → V3.1
+
+**DigiMinds revenue:** $200 (reel) → $5,000 (full commercial)
 
 ---
 
@@ -547,3 +627,165 @@ Skill: `~/.claude/skills/lead-gen-ai/SKILL.md`
 - `mcp__8b8885d8-497d-4b96-be50-89e1511947c7__apollo_contacts_search` — filter contacts
 
 **Output:** `~/Downloads/leads.xlsx` — 11-column Excel, auto-width, bold headers
+
+---
+
+## LLM AGENTS BUNDLE — AUTO-ROUTING (always-on)
+
+Installed at: `~/installed-repos/llm-agents-bundle/`
+
+26 specialized AI agent repos — auto-routed by keyword detection.
+
+**Auto-routing table:**
+
+| Prompt contains | Repo | Capability |
+|---|---|---|
+| "google stitch" / "stitch design" / "stitch mockup" / "stitch sdk" | stitch-skills / stitch-sdk / design.md | Google Stitch AI design tool + SDK |
+| "stock agent" / "stock trading" / "equity agent" / "stock analysis ai" | Stockagent | LLM-powered stock market agent |
+| "antigravity skills" / "antigravity global" / "spec kit" | antigravity_global_skills / antigravity-skills / Spec-Kit-Antigravity-Skills | Antigravity Claude skill collections |
+| "recommendation ai" / "recai" / "recommender system" | RecAI | Microsoft RecAI — LLM recommendation systems |
+| "shopping agent" / "ecom agent" / "shopping gpt" | ShoppingGPT | AI shopping assistant agent |
+| "job agent" / "jobber" / "autonomous job" | jobber | Sentient Engineering autonomous job agent |
+| "real estate agent" / "property ai" / "real estate assistant" | ai-real-estate-assistant | AI real estate analysis + recommendation |
+| "medical ai" / "diagnosis agent" / "medical diagnostics" | AI-Agents-for-Medical-Diagnostics | LLM medical diagnostics agents |
+| "genai agents" / "agent patterns" / "agent cookbook" | GenAI_Agents | NirDiamant's GenAI agent collection (100+ patterns) |
+| "mirror gpt" / "persona clone" / "digital twin" | MirrorGPT | GPT persona mirroring system |
+| "edu gpt" / "education agent" / "tutoring ai" | EduGPT | AI education/tutoring agent |
+| "travel agent ai" / "trip planner ai" | ai-travel-agent | AI travel planning agent |
+| "llm game" / "agent game" / "game agent" | LLM-agent-game | LLM-powered game agent |
+| "decepticon" / "adversarial agent" / "agent deception" | Decepticon | Adversarial/deceptive agent research |
+| "cyber security agent" / "security llm" / "nviso" | cyber-security-llm-agents | NVISO cybersecurity LLM agents |
+| "legal ai" / "legal agent" / "contract ai" | legalai | Legal AI agent system |
+| "autonomous driving ai" / "driving agent" / "drivlme" | driVLMe | VLM autonomous driving agent |
+| "industrial automation ai" / "llm4ias" | llm4ias | LLM for industrial automation |
+| "agri bot" / "agriculture ai" / "farming agent" | LLM_Agri_Bot | LLM agriculture assistant |
+| "mirai" / "geopolitical ai" / "conflict prediction" | MIRAI | Geopolitical event prediction AI |
+
+**Quick access:**
+```bash
+ls ~/installed-repos/llm-agents-bundle/          # list all 26
+cd ~/installed-repos/llm-agents-bundle/GenAI_Agents  # 100+ agent patterns
+cd ~/installed-repos/llm-agents-bundle/stitch-skills  # Google Stitch skills
+```
+
+**Top 5 most useful for HMZ:**
+1. **GenAI_Agents** — 100+ production agent patterns (RAG, ReAct, multi-agent, tools)
+2. **stitch-skills + stitch-sdk** — Google Stitch for premium web design mockups
+3. **jobber** — autonomous job application agent (BDM pipeline enhancement)
+4. **cyber-security-llm-agents** — security audit capabilities
+5. **Stockagent** — financial analysis for client campaigns
+
+---
+
+## PAPERCLIP AI — ALWAYS-ON (auto-routes on keyword detection)
+
+Installed at: `~/installed-repos/paperclip/`
+Running at: `http://127.0.0.1:3100` (pnpm dev, embedded PostgreSQL on port 54329)
+LaunchAgent: `ai.hmz.paperclip` (manual start when needed)
+
+**What it is:** Open-source orchestration platform for zero-human companies. Manages AI agents like employees — org charts, budgets, goals, task tracking, cost monitoring.
+
+**Auto-routing triggers:**
+| Prompt contains | Action |
+|---|---|
+| "paperclip" / "paperclip ai" / "papercliping" | Use paperclip at http://127.0.0.1:3100 |
+| "zero-human company" / "agent company" | Start paperclip: `pnpm dev` in ~/installed-repos/paperclip |
+| "agent orchestration platform" / "autonomous company" | Use paperclip dashboard |
+| "agent org chart" / "agent budget" / "agent goals" | Use paperclip |
+
+**Start/stop:**
+```bash
+cd ~/installed-repos/paperclip && pnpm dev   # start (auto-migrates DB)
+# or via LaunchAgent:
+launchctl load ~/Library/LaunchAgents/ai.hmz.paperclip.plist
+```
+
+**Access:** http://127.0.0.1:3100 — dashboard, agents, goals, costs
+
+---
+
+## APIFY ORG REPOS — AUTO-ROUTING (always-on)
+
+Installed at: `~/installed-repos/apify-org/`
+
+| Repo | Purpose | Trigger phrases |
+|---|---|---|
+| **mcpc** (594★) | Universal MCP CLI client — run any MCP server from terminal | "mcpc" / "mcp cli" / "mcp client" / "run mcp server" |
+| **awesome-skills** | 9 curated Apify Claude skills collection | "apify awesome" / "apify skill collection" |
+| **apify-openclaw-plugin** | Apify integration for OpenClaw AI | "apify openclaw" / "openclaw apify" |
+| **n8n-nodes-apify** | Apify n8n community node | "apify n8n" / "n8n apify node" |
+| **cursor-plugins** | Apify Cursor IDE plugins | "apify cursor" / "cursor apify" |
+
+**mcpc quick start (most useful):**
+```bash
+cd ~/installed-repos/apify-org/mcpc
+npm install
+npx mcpc --help    # run any MCP server from CLI
+```
+
+---
+
+## APIFY FULL ORG STACK — AUTO-ROUTING (always-on)
+
+Installed at: `~/installed-repos/apify-org/` (22 repos)
+
+### Top-Tier Repos
+
+| Repo | Stars | Purpose | Trigger phrases |
+|---|---|---|---|
+| **crawlee** | 23k★ | Web scraping + browser automation (Node.js/TypeScript) | "crawlee" / "web crawler" / "scrape website" / "browser automation node" |
+| **crawlee-python** | 9k★ | Web scraping for Python — AI/LLM data extraction | "crawlee python" / "python scraper" / "python crawler" / "scrape for llm" |
+| **fingerprint-suite** | 2.1k★ | Browser fingerprinting — anonymize scrapers | "fingerprint" / "anti-detect" / "browser fingerprint" / "scraper anonymize" |
+| **apify-mcp-server** | 1.2k★ | MCP server — AI agents scrape any website via MCP | "apify mcp" / "apify mcp server" / "scrape via mcp" / "apify agent mcp" |
+| **proxy-chain** | 987★ | Node.js proxy server (SSL, SOCKS5, upstream chaining) | "proxy server" / "proxy chain" / "socks5" / "upstream proxy" |
+| **got-scraping** | 750★ | HTTP client optimized for scraping | "got-scraping" / "http scraping client" / "got http" |
+| **mcpc** | 594★ | Universal MCP CLI client | "mcpc" / "mcp cli" / "run mcp from terminal" |
+| **apify-cli** | 215★ | Apify CLI — create/deploy/manage Actors | "apify cli" / "deploy actor" / "apify create" |
+| **mcp-server-rag-web-browser** | 203★ | MCP Server for RAG Web Browser Actor | "rag web browser" / "mcp rag browser" / "scrape for rag" |
+| **apify-sdk-js** | 176★ | Official Apify SDK for JavaScript/TypeScript | "apify sdk js" / "apify sdk node" / "apify sdk typescript" |
+| **apify-sdk-python** | 167★ | Official Apify SDK for Python | "apify sdk python" / "python actor sdk" |
+| **actor-scraper** | 136★ | Generic scraping actors with simple UI | "actor scraper" / "apify scraper actor" / "generic scraper" |
+| **apify-client-python** | 93★ | Apify API client for Python | "apify client python" / "apify api python" |
+| **apify-client-js** | 84★ | Apify API client for JavaScript | "apify client js" / "apify api node" |
+| **tester-mcp-client** | 77★ | MCP client for testing Apify Actors | "tester mcp" / "test mcp actor" |
+| **mcp-client-capabilities** | 76★ | Index of all MCP clients + capabilities | "mcp capabilities" / "mcp client index" / "which mcp client" |
+| **rag-web-browser** | 72★ | RAG Web Browser Actor — feed LLM with live web content | "rag browser" / "web rag" / "live web llm" / "scrape for rag pipeline" |
+| **actor-templates** | 54★ | Apify Actor starter templates | "actor template" / "new apify actor" / "apify boilerplate" |
+| **actor-whitepaper** | 88★ | Actor serverless microapp concept whitepaper | "actor whitepaper" / "actor architecture" |
+| **awesome-skills** | 173★ | Community Apify agent skills | "apify awesome skills" / "apify agent skills collection" |
+
+### Quick Start
+
+```bash
+# Crawlee — scrape any website (Node.js)
+cd ~/installed-repos/apify-org/crawlee
+npm install
+# See examples/
+
+# Crawlee Python — scrape for AI/RAG pipelines
+cd ~/installed-repos/apify-org/crawlee-python
+pip install crawlee
+
+# Apify MCP Server — wire AI agents to web scraping
+cd ~/installed-repos/apify-org/apify-mcp-server
+npm install
+# Add to ~/.mcp.json for Claude Code MCP integration
+
+# Apify CLI — create and deploy Actors
+cd ~/installed-repos/apify-org/apify-cli
+npm install -g apify-cli
+apify create my-actor --template apify/hello-world
+
+# RAG Web Browser — feed live web to LLM
+cd ~/installed-repos/apify-org/rag-web-browser
+# Use via Apify MCP server or direct API
+```
+
+### Key Integration: apify-mcp-server + Claude Code
+
+The `apify-mcp-server` is already wired as MCP in `~/.mcp.json`. It gives Claude access to:
+- Social media scraping (LinkedIn, Instagram, Twitter)
+- Search engine results (Google, Bing)
+- Maps data (Google Maps, Yelp)
+- E-commerce (Amazon, eBay, Shopify)
+- Any website via RAG Web Browser Actor

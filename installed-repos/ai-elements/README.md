@@ -1,6 +1,6 @@
 # ▲ AI Elements
 
-A command-line interface for installing [AI Elements](https://elements.ai-sdk.dev) components - a component library built on top of [shadcn/ui](https://ui.shadcn.com/) to help you build AI-native applications faster.
+[AI Elements](https://elements.ai-sdk.dev) is a component library built on top of [shadcn/ui](https://ui.shadcn.com/) to help you build AI-native applications faster.
 
 ## Overview
 
@@ -76,31 +76,6 @@ npx shadcn@latest add https://elements.ai-sdk.dev/api/registry/all.json
 npx shadcn@latest add https://elements.ai-sdk.dev/api/registry/message.json
 ```
 
-## Available Components
-
-AI Elements includes the following components:
-
-| Component                  | Description                                             |
-| -------------------------- | ------------------------------------------------------- |
-| `actions`                  | Interactive action buttons for AI responses             |
-| `branch`                   | Branch visualization for conversation flows             |
-| `code-block`               | Syntax-highlighted code display with copy functionality |
-| `conversation`             | Container for chat conversations                        |
-| `image`                    | AI-generated image display component                    |
-| `inline-citation`          | Inline source citations                                 |
-| `loader`                   | Loading states for AI operations                        |
-| `message`                  | Individual chat messages with avatars                   |
-| `prompt-form`              | Controlled form wrapper for prompt submission           |
-| `prompt-input`             | Advanced input component with model selection           |
-| `prompt-input-attachments` | Opt-in file/image attachments for prompt input          |
-| `reasoning`                | Display AI reasoning and thought processes              |
-| `response`                 | Formatted AI response display                           |
-| `source`                   | Source attribution component                            |
-| `suggestion`               | Quick action suggestions                                |
-| `task`                     | Task completion tracking                                |
-| `tool`                     | Tool usage visualization                                |
-| `web-preview`              | Embedded web page previews                              |
-
 ## Quick Start Example
 
 After installing components, you can use them in your React application:
@@ -160,6 +135,15 @@ For the best experience, we recommend:
 1. **AI Gateway**: Set up [Vercel AI Gateway](https://vercel.com/docs/ai-gateway) and add `AI_GATEWAY_API_KEY` to your `.env.local`
 2. **CSS Variables**: Use shadcn/ui's CSS Variables mode for theming
 3. **TypeScript**: Enable TypeScript for better development experience
+
+## Contributing
+
+If you'd like to contribute to AI Elements, please follow these steps:
+
+1. Fork the repository
+2. Create a new branch
+3. Make your changes to the components in `packages/elements`.
+4. Open a PR to the `main` branch.
 
 ---
 

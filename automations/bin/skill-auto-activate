@@ -23,6 +23,14 @@ except: pass
 TS=$(date +%s)
 ACTIVATED=()
 
+# ── PAPERCLIP AI — always-on health check (every prompt) ─────────
+if ! curl -s http://127.0.0.1:3100 -o /dev/null -w "%{http_code}" 2>/dev/null | grep -q "200\|301\|302"; then
+  launchctl load ~/Library/LaunchAgents/ai.hmz.paperclip.plist 2>/dev/null || true
+  echo "[skill-auto-activate] Paperclip AI → starting at http://127.0.0.1:3100"
+else
+  echo "[skill-auto-activate] Paperclip AI → http://127.0.0.1:3100 ✓ (co-founder OS active)"
+fi
+
 # ── Step 3: Dispatch functions ───────────────────────────────────
 on() {
   local skill="$1"

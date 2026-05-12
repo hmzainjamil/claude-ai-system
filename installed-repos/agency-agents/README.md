@@ -1,63 +1,48 @@
-# 🇨🇳 Chinese (zh-CN) Localization
+# Examples
 
-Localize agent `name` and `description` fields in YAML frontmatter to Simplified Chinese. This makes agent names readable in Copilot Chat's agent picker for Chinese-speaking users.
+This directory contains example outputs demonstrating how the agency's agents can be orchestrated together to tackle real-world tasks.
 
-## Files
+## Why This Exists
 
-| File | Description |
-|------|-------------|
-| `agent-names-zh.json` | Mapping of English agent names → Chinese translations (130+ entries) |
-| `localize-agents-zh.ps1` | PowerShell script that reads the JSON and updates installed agent files |
+The agency-agents repo defines dozens of specialized agents across engineering, design, marketing, product, support, spatial computing, and project management. But agent definitions alone don't show what happens when you **deploy them all at once** on a single mission.
 
-## Usage
+These examples answer the question: *"What does it actually look like when the full agency collaborates?"*
 
-After installing agents with `install.sh --tool copilot`:
+## Contents
 
-```powershell
-# Localize agent names to Chinese
-powershell -ExecutionPolicy Bypass -File scripts/i18n/localize-agents-zh.ps1
-```
+### [nexus-spatial-discovery.md](./nexus-spatial-discovery.md)
 
-By default, the script processes:
-- `%USERPROFILE%\.github\agents\`
-- `%USERPROFILE%\.copilot\agents\`
+**What:** A complete product discovery exercise where 8 agents worked in parallel to evaluate a software opportunity and produce a unified plan.
 
-Pass custom paths if needed:
+**The scenario:** Web research identified an opportunity at the intersection of AI agent orchestration and spatial computing. The entire agency was then deployed simultaneously to produce:
 
-```powershell
-powershell -File scripts/i18n/localize-agents-zh.ps1 -TargetDirs @("C:\custom\path\agents")
-```
+- Market validation and competitive analysis
+- Technical architecture (8-service system design with full SQL schema)
+- Brand strategy and visual identity
+- Go-to-market and growth plan
+- Customer support operations blueprint
+- UX research plan with personas and journey maps
+- 35-week project execution plan with 65 sprint tickets
+- Spatial interface architecture specification
 
-## How It Works
+**Agents used:**
+| Agent | Role |
+|-------|------|
+| Product Trend Researcher | Market validation, competitive landscape |
+| Backend Architect | System architecture, data model, API design |
+| Brand Guardian | Positioning, visual identity, naming |
+| Growth Hacker | GTM strategy, pricing, launch plan |
+| Support Responder | Support tiers, onboarding, community |
+| UX Researcher | Personas, journey maps, design principles |
+| Project Shepherd | Phase plan, sprints, risk register |
+| XR Interface Architect | Spatial UI specification |
 
-1. Reads `agent-names-zh.json` (UTF-8 encoded) for the translation map
-2. For each `.md` file in the target directories:
-   - Extracts the `name:` field from YAML frontmatter
-   - Looks up the Chinese translation
-   - Replaces `name:` and `description:` fields
-   - Writes back as UTF-8
+**Key takeaway:** All 8 agents ran in parallel and produced coherent, cross-referencing plans without coordination overhead. The output demonstrates the agency's ability to go from "find an opportunity" to "here's the full blueprint" in a single session.
 
-## Result
+## Adding New Examples
 
-Before:
-```yaml
----
-name: Security Engineer
-description: Threat modeling, secure code review, security architecture
----
-```
+If you run an interesting multi-agent exercise, consider adding it here. Good examples show:
 
-After:
-```yaml
----
-name: 安全工程师
-description: 威胁建模、安全代码审查与应用安全架构专家
----
-```
-
-## Notes
-
-- Only modifies **installed copies** (in `~/.github/agents/`), not source files
-- Re-run after each `install.sh` update (which overwrites with English originals)
-- JSON file is the single source of truth for translations — add new agents there
-- Script is pure ASCII (avoids PowerShell encoding issues); all Chinese text lives in the JSON
+- Multiple agents collaborating on a shared objective
+- The breadth of the agency's capabilities
+- Real-world applicability of the agent definitions

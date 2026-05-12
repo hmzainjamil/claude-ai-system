@@ -1,0 +1,167 @@
+{
+  "name": "higgsfield-cinematic-workflow",
+  "description": "Full cinematic AI video production pipeline — mood board → hero frame → Cinema Studio → edit. Higgsfield AI + Nano Banana Pro + Kling 2.6 + Google V3.1.",
+  "version": "1.0",
+  "trigger": {
+    "keywords": ["higgsfield", "cinema studio", "cinematic video", "ai video", "nano banana", "kling video", "camera movement", "dolly shot", "orbit shot", "hero frame", "soul id", "cinematic shot", "video prompt", "parallax shot"],
+    "auto": true
+  },
+  "steps": [
+    {
+      "id": "brief",
+      "name": "Step 1 — Creative Brief",
+      "description": "Extract subject, setting, emotion, platform, style from rough idea",
+      "model": "groq-70b",
+      "input": "{{user_idea}}",
+      "output": {
+        "subject": "string",
+        "setting": "string",
+        "emotion": "string",
+        "platform": "reels|youtube|commercial|story",
+        "style": "viral|cinematic|commercial|product|action|narrative",
+        "color_grade": "string",
+        "duration_target": "string"
+      }
+    },
+    {
+      "id": "mood-board",
+      "name": "Step 2 — Mood Board Keywords",
+      "description": "Generate Pinterest/reference search keywords for visual inspiration",
+      "model": "gemini-flash",
+      "depends_on": "brief",
+      "output_file": "{{output_dir}}/mood-board-keywords.md"
+    },
+    {
+      "id": "hero-frame",
+      "name": "Step 3 — Hero Frame Prompt",
+      "description": "Generate Nano Banana Pro image prompt for hero frame. Formula: Subject + Setting + Cinematic Lighting + Composition (rule of thirds) + Depth (FG/MG/BG) + Color Grade",
+      "model": "deepseek-v3",
+      "depends_on": "brief",
+      "prompt_formula": "[SUBJECT] [SETTING/ENVIRONMENT] cinematic lighting from [DIRECTION] casting [SHADOW_TYPE]. Subject positioned [COMPOSITION]. Foreground: [FG_ELEMENT]. Background: [BG_ELEMENT]. [COLOR_GRADE] color grade. Photorealistic. No motion blur. No text on clothing.",
+      "model_to_use_in_higgsfield": "Nano Banana Pro",
+      "resolution": "2K",
+      "aspect_ratio": "9x16 for Reels | 16x9 for YouTube",
+      "output_file": "{{output_dir}}/hero-frame-prompt.md"
+    },
+    {
+      "id": "shot-sequence",
+      "name": "Step 4 — Shot Sequence Selection",
+      "description": "Select best 5-8 camera movements from 29-shot library based on style and emotion",
+      "model": "groq-70b",
+      "depends_on": "brief",
+      "command": "python3 ~/.claude/bin/higgsfield-shot-generator '{{subject}}' --style {{style}} --shots {{n_shots}}",
+      "shot_categories": {
+        "viral": ["fast-dolly", "crash-zoom", "fpv-drone", "pov-walk", "through-shot"],
+        "cinematic": ["dolly-in", "orbit-180", "rack-focus", "aerial-pullback", "cinematic-arc"],
+        "commercial": ["dolly-in", "orbit-180", "jib-up", "zoom-in", "leading-shot"],
+        "product": ["zoom-in", "rack-focus", "extreme-macro", "orbit-180", "dolly-in"],
+        "narrative": ["tilt-up", "over-shoulder", "following-shot", "through-shot", "aerial-pullback"],
+        "action": ["fast-dolly", "fpv-drone", "crash-zoom", "full-360", "aerial-pullback"]
+      },
+      "output_file": "{{output_dir}}/shot-sequence.md"
+    },
+    {
+      "id": "video-prompts",
+      "name": "Step 5 — Video Prompts (Cinema Studio)",
+      "description": "Adapt shot library prompts to specific subject. Formula: Camera Movement + Subject Action + Environment + Lighting + Audio Directive",
+      "model": "kimi-k2",
+      "depends_on": ["hero-frame", "shot-sequence"],
+      "prompt_formula": "[CAMERA_MOVEMENT]. [SUBJECT] [ACTION]. [ENVIRONMENT_DETAIL]. [LIGHTING]. [AUDIO: ambient sound / no dialogue]",
+      "audio_rules": {
+        "kling-2.6": "Always specify audio: 'ambient [type] sound' or 'no dialogue'",
+        "google-v3.1": "Always specify: 'no dialogue' or exact dialogue text",
+        "sora-2": "No audio — skip audio directive",
+        "kling-2.1": "No audio — skip audio directive"
+      },
+      "model_selection": {
+        "realistic_scenes": "Kling 2.6",
+        "character_acting": "Google V3.1",
+        "viral_candid": "Sora 2",
+        "product_reveal": "Google V3.1",
+        "action_sequences": "Kling 2.6"
+      },
+      "output_file": "{{output_dir}}/video-prompts.md"
+    },
+    {
+      "id": "soul-id",
+      "name": "Step 6 — Soul ID Character Sheet (optional)",
+      "description": "Generate 20 Nano Banana prompts for Soul ID training — front/side/back/expressions/full body",
+      "optional": true,
+      "model": "groq-70b",
+      "depends_on": "brief",
+      "soul_id_shots": [
+        "Front view, looking at camera, neutral expression, solid background",
+        "Front view, smiling, solid background",
+        "Front view, serious expression, solid background",
+        "Left side profile, looking left, solid background",
+        "Right side profile, looking right, solid background",
+        "Close-up face, looking at camera, slight smile",
+        "Close-up face, intense expression",
+        "Full body front, arms at sides",
+        "Full body, walking toward camera",
+        "Full body, walking away from camera",
+        "¾ angle left, looking camera",
+        "¾ angle right, looking camera",
+        "Looking down, contemplative",
+        "Looking up, hopeful expression",
+        "Laughing, natural",
+        "Surprised expression",
+        "Angry expression",
+        "Sad expression",
+        "Full body, dynamic pose",
+        "Full body, relaxed natural stance"
+      ],
+      "output_file": "{{output_dir}}/soul-id-prompts.md"
+    },
+    {
+      "id": "editing-guide",
+      "name": "Step 7 — Edit Timeline Guide",
+      "description": "Generate editing sequence: clip order, cut points, overlay suggestions, speed ramps",
+      "model": "gemini-flash",
+      "depends_on": "video-prompts",
+      "editing_techniques": [
+        "Import + arrange clips in story order",
+        "Quick cuts: trim AI generation artifacts from start/end",
+        "Luma key overlay: add cinematic depth layers",
+        "Gaussian blur overlay: foreground elements",
+        "Speed ramp: slow entry → normal → slow exit for key moments",
+        "Color grade: match hero frame palette across all clips",
+        "Audio: ambient sound + optional score"
+      ],
+      "output_file": "{{output_dir}}/edit-guide.md"
+    }
+  ],
+  "output_structure": {
+    "base": "~/Downloads/higgsfield-output/",
+    "project": "{{slug}}-{{timestamp}}/",
+    "files": [
+      "mood-board-keywords.md",
+      "hero-frame-prompt.md",
+      "shot-sequence.md",
+      "video-prompts.md",
+      "soul-id-prompts.md",
+      "edit-guide.md",
+      "full-project-brief.md"
+    ]
+  },
+  "quick_commands": {
+    "generate_shots": "python3 ~/.claude/bin/higgsfield-shot-generator 'subject' --style commercial --shots 8",
+    "list_shots":     "python3 ~/.claude/bin/higgsfield-shot-generator --list-shots",
+    "single_shot":    "python3 ~/.claude/bin/higgsfield-shot-generator --shot 'dolly-in' 'your subject'",
+    "all_shots":      "python3 ~/.claude/bin/higgsfield-shot-generator 'subject' --all-shots",
+    "storyboard":     "python3 ~/.claude/bin/higgsfield-shot-generator 'narrative' --storyboard --beats 6"
+  },
+  "revenue_tiers": {
+    "social_reel":      "$200-500 — 5 shots, Reels format, Kling 2.6",
+    "brand_intro":      "$500-1500 — 10 shots, 30s commercial, Kling 2.6 + V3.1",
+    "product_reveal":   "$300-800 — 6 shots, 15s product ad, Google V3.1",
+    "full_commercial":  "$2000-5000 — 29 shots, 60-90s spot, all models",
+    "testimonial_series": "$800-2000 — tracking shots, character acting, V3.1"
+  },
+  "mae_integration": {
+    "auto_trigger": true,
+    "agent": "~/.claude/agents/higgsfield-cinema-agent.md",
+    "skill": "~/.claude/skills/higgsfield-ai/SKILL.md",
+    "paperclip_sync": true
+  }
+}
