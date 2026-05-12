@@ -321,6 +321,8 @@ CLOUD_SAFE = {
     "kimi-128k":  call_kimi_128k,           # 128K context — long docs/codebases
     "kimi-32k":   call_kimi_32k,            # 32K — fast mid-tier
     "kimi":       call_kimi_8k,             # 8K — cheapest, sub-tasks
+    # ── BYTEZ FREE TIER ───────────────────────────────────────────────
+    "bytez":      call_bytez,               # ✓ FREE — Llama 3.1-8B + 100+ models
     # ── FREE TIER ──────────────────────────────────────────────────────
     "groq":       call_groq,                # ✓ FREE forever
     "deepseek":   call_openrouter_deepseek, # ✓ FREE (gpt-oss-120b:free)
