@@ -176,8 +176,9 @@ fi
 if match "create report|make report|generate report|build report|write report|professional report|client report|format report|fix report|report layout|report design|report format"; then
   on report-creator; on reportlab-pdf-master
   match "pdf|audit"      && on ads-report-pdf
-  match "excel|xlsx|data" && true  # handled by xlsx skill inline
-  match "docx|word|editable" && true  # handled by docx skill inline
+  match "excel|xlsx|spreadsheet|workbook|data" && on xlsx-format-master
+  match "docx|word|editable|word document" && on docx-format-master
+  match "pptx|powerpoint|presentation|deck|slides" && on pptx-format-master
 fi
 if match "pdf report|docx report|xlsx report|excel report|performance report|monthly report|weekly report|audit report|360.report|marketing report|deliverable doc"; then
   on report-creator; on reportlab-pdf-master
@@ -186,7 +187,7 @@ fi
 # ── REPORTLAB PDF MASTER — universal trigger ─────────────────────
 # Fires on ANY report/PDF/document/diagnostic request, any session
 if match "report|pdf|audit report|one.pager|diagnostic|deliverable|xlsx|docx|pptx|deck|document|layout|format|design issue|blank page|overflow|column width|cell wrap|table fix|reportlab|platypus"; then
-  on reportlab-pdf-master
+  on reportlab-pdf-master; on docx-format-master; on xlsx-format-master; on pptx-format-master; on document-qa-agent; on doc-preflight; on document-orchestrator
 fi
 
 # ── REPORT TEMPLATE ROUTING — ALL 13 REPOS ───────────────────────
@@ -500,9 +501,34 @@ if match "proxima|ask all ais|compare ais|smart query|all four models|chatgpt cl
   echo "[PROXIMA] Note: Full GUI requires Windows. MCP server runs standalone on macOS but needs hub." >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
 fi
 
+# WFH / Remote Job Finder: 2026 multi-board job search automation
+if match "remote job|wfh job|work from home|find remote work|job search|remote hiring|job board india|find job india|remote apply|ats search|job tracker|remote-first company|lever greenhouse|job hunting|job finder|wfh 2026|remote job board|job search india|find work online|remote customer support job|remote data analyst|qadir|kaamkibaatein"; then
+  echo "[WFH-JOB-FINDER] Skill → ~/.claude/skills/wfh-job-finder/SKILL.md" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+  echo "[WFH-JOB-FINDER] Agent → ~/.claude/agents/remote-job-hunter-agent.md" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+  echo "[WFH-JOB-FINDER] CLI → python3 ~/.claude/bin/remote-job-hunter --daily --role 'role'" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+  echo "[WFH-JOB-FINDER] Boards: LinkedIn RemoteOK Remotive Wellfound WWR Himalayas FlexJobs Naukri Indeed + ATS operators (Lever/Greenhouse/Ashby/Workday)" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+fi
+
 # ── Step 4: Log metrics ──────────────────────────────────────────
 ACTIVE_COUNT=$(ls "$ACTIVE" 2>/dev/null | wc -l | tr -d ' ')
 ACTIVATED_STR="${ACTIVATED[*]:-none}"
 echo "$(date -u '+%Y-%m-%dT%H:%M:%SZ') active=$ACTIVE_COUNT activated=\"$ACTIVATED_STR\" prompt_len=${#PROMPT}" >> "$METRICS" 2>/dev/null || true
 
 exit 0
+
+# HMZ NEW REPOS 2026-05-13
+if echo "$PROMPT" | grep -iE "airllm|run 70b|layer inference|split model|low vram" > /dev/null; then
+  echo "airllm" >> ~/.claude/active-skills.txt
+fi
+
+if echo "$PROMPT" | grep -iE "diagnose|grill.?with.?docs|prototype skill|zoom.?out|to.?prd|to.?issues|triage skill|improve architecture|mattpocock" > /dev/null; then
+  echo "mattpocock-skills" >> ~/.claude/active-skills.txt
+fi
+
+if echo "$PROMPT" | grep -iE "supergrow|linkedin content|hook generator|viral linkedin|carousel post|linkedin schedul" > /dev/null; then
+  echo "supergrow-linkedin-agent" >> ~/.claude/active-skills.txt
+fi
+
+if echo "$PROMPT" | grep -iE "find.?remote.?job|wfh job|job search|ppc job|remote work pakistan|job opening" > /dev/null; then
+  echo "wfh-job-finder-pakistan" >> ~/.claude/active-skills.txt
+fi

@@ -37,6 +37,7 @@ No command needed. Active every session from first prompt.
 | **GPT4All: Mistral-7B** | Fast general purpose, local | **Free forever** |
 | **GPT4All: Phi-3-mini** | Microsoft, efficient reasoning | **Free forever** |
 | **GPT4All: Qwen2.5-Coder-7B** | Code generation specialist, local | **Free forever** |
+| **Bytez.com** | 100+ free models, OpenAI-compatible API | **Free tier** |
 
 > DeepSeek-R1-7B / 1.5B: disabled — pre-tokenizer unsupported by gpt4all 2.8.2 llama.cpp (tokenizer type `deepseek-r1-qwen` unknown)
 
@@ -253,6 +254,131 @@ npm install
 # Copy plugins/ dir to ~/.claude/plugins/
 # Then use: /codex:review  /codex:adversarial-review  /codex:rescue
 ```
+
+---
+
+## NEW REPOS + TOOLS — AUTO-ROUTING (always-on)
+
+| Repo | Path | Trigger phrases | Purpose |
+|---|---|---|---|
+| **opencli** | `~/installed-repos/opencli/` | "opencli" / "site adapter" / "zero token web" / "90+ adapters" | 90+ site adapters, zero LLM cost per web op — v1.7.18 installed globally |
+| **deer-flow** | `~/installed-repos/deer-flow/` | "deer flow" / "bytedance research" / "deep research pipeline" | ByteDance deep research pipeline for market intel |
+| **LTX-Video** | `~/installed-repos/LTX-Video/` | "ltx video" / "lightricks video" / "video generation local" | Local video generation by Lightricks |
+| **claw-code** | `~/installed-repos/claw-code/` | "claw code" / "ultraworkers" / "claw agent" | Ultraworkers coding agent |
+| **ai-website-cloner** | `~/installed-repos/ai-website-cloner-template/` | "clone website" / "website cloner" / "replicate site" | AI website cloning template |
+| **antigravity-awesome-skills** | `~/installed-repos/antigravity-awesome-skills/` | "awesome skills" / "antigravity" | Curated skill collection |
+| **awesome-agentic-patterns** | `~/installed-repos/awesome-agentic-patterns/` | "agentic pattern" / "agent design" / "agent blueprint" / "nibzard" | 50+ production agent patterns: ReAct, RAG, multi-agent, tool-use, AGENT.md |
+| **AI-Trader** | `~/installed-repos/AI-Trader/` | "ai trader" / "stock trading agent" / "llm trading" / "trading bot" | HKUDS LLM-powered stock trading agent — equity analysis + auto-trade |
+| **How-to-Clone-Website--Claude-Skills** | `~/installed-repos/How-to-Clone-Website---Claude-Skills/` | "clone website skill" / "website cloner skill" / "mood global" / "claude clone site" | Mood Global Claude skill for AI website cloning + ai-website-cloner-template |
+
+**Bytez.com API** — 100+ free models, OpenAI-compatible:
+```bash
+export BYTEZ_API_KEY="cb4a7065a586ec6ca26394724ce5ec49"
+export BYTEZ_BASE_URL="https://api.bytez.com/models/v2"
+# Use in llm-burst: --models bytez
+# Model: meta-llama/Llama-3.1-8B-Instruct (default)
+```
+
+**MAE-Paperclip Bridge** — auto-executes Paperclip goals via MAE:
+```bash
+mae-paperclip-bridge run        # pick up + execute Paperclip goals
+mae-paperclip-bridge hire-all   # hire all 18 specialist agents
+mae-paperclip-bridge sync       # sync MAE logs → Paperclip
+mae-paperclip-bridge status     # system health
+```
+Runs automatically: SessionStart hook + LaunchAgent every 30min (ai.hmz.mae-paperclip-bridge)
+
+**OpenCLI** — global install v1.7.18:
+```bash
+export PATH="$HOME/.nvm/versions/node/v24.14.1/bin:$PATH"
+opencli --help          # 90+ site adapters
+opencli search "query"  # zero-token web search
+```
+
+---
+
+## HIGGSFIELD AI — CINEMATIC VIDEO PRODUCTION (always-on)
+
+Skill: `~/.claude/skills/higgsfield-ai/SKILL.md`
+Agent: `~/.claude/agents/higgsfield-cinema-agent.md`
+Workflow: `~/.claude/workflows/higgsfield-cinematic-workflow.json`
+Shot generator: `~/.claude/bin/higgsfield-shot-generator`
+Output: `~/Downloads/higgsfield-output/`
+
+**Auto-routing triggers:** "higgsfield" / "cinema studio" / "nano banana" / "kling video" / "ai cinematic" / "camera movement" / "dolly" / "orbit shot" / "hero frame" / "soul id" / "rack focus" / "cinematic shot" / "parallax"
+
+**29 Shot Categories:**
+| Category | Shots | Best for |
+|---|---|---|
+| Straight line | dolly-in/out, pan, tilt, dolly L/R, rush, over-shoulder | Establishing, environment reveal |
+| Orbital/Crane | orbit-180, full-360, cinematic-arc, jib-up/down, overhead | Character intro, emotional weight |
+| Zoom | zoom-in/out, crash-zoom, rack-focus, fisheye | Intensity, attention shift |
+| Aerial | drone-flyover, aerial-orbit, fpv-drone, aerial-pullback, macro | Scale, context, raw energy |
+| Tracking | leading, following, side-tracking, pov-walk, through-shot | Journey, immersion, POV |
+
+**Quick commands:**
+```bash
+python3 ~/.claude/bin/higgsfield-shot-generator "subject" --style commercial --shots 8
+python3 ~/.claude/bin/higgsfield-shot-generator "subject" --all-shots
+python3 ~/.claude/bin/higgsfield-shot-generator --list-shots
+python3 ~/.claude/bin/higgsfield-shot-generator --shot "dolly-in" "your subject"
+python3 ~/.claude/bin/higgsfield-shot-generator "narrative" --storyboard --beats 6
+```
+
+**Model routing:**
+- Hero frame → Nano Banana Pro (2K, 9x16/16x9)
+- Character consistency → Higgsfield Soul 2 (22 style presets)
+- Cinematic/realistic video → Kling 2.6 (1080p, 5/10s, audio)
+- Character acting/dialogue → Google V3.1 (1080p, 8s, audio)
+- Viral/candid → Sora 2 | Product reveal → V3.1
+
+**DigiMinds revenue:** $200 (reel) → $5,000 (full commercial)
+
+---
+
+## WFH / REMOTE JOB FINDER — 2026 SYSTEM (always-on)
+
+Skill: `~/.claude/skills/wfh-job-finder/SKILL.md` | Agent: `~/.claude/agents/remote-job-hunter-agent.md`
+CLI: `~/.claude/bin/remote-job-hunter` | Output: `~/Downloads/job-search/`
+
+**Auto-routing triggers:** `remote job` · `wfh job` · `work from home` · `find remote work` · `job search` · `remote hiring` · `job board india` · `ats search` · `job tracker` · `remote-first company`
+
+| Command | What it does |
+|---|---|
+| `--daily --role "customer support"` | Full sweep across 9 boards + ATS operators + AI tactics |
+| `--ats --role "data analyst"` | Google site: operators for Lever, Greenhouse, Ashby, Workday |
+| `--weekly-plan` | Day-by-day rhythm (Mon–Sun action plan) |
+| `--check "URL"` | Scam-score any listing (0-22 scale, 8 red flags) |
+| `--export` | Blank 11-column job tracker → Excel |
+
+**9 boards:** LinkedIn · RemoteOK · Remotive · Wellfound · WeWorkRemotely · Himalayas · FlexJobs · Indeed · Naukri
+
+**Quality target:** 5–12 tailored apps/day · Apply within 48h of posting · Never spray-and-pray
+
+---
+
+## PROXIMA MCP — MULTI-MODEL QUERY (always-on)
+
+Installed at: `~/installed-repos/Proxima/` | Wired: `~/.mcp.json`
+
+**45+ tools — ask ChatGPT, Claude, Gemini, Perplexity simultaneously. Zero API cost.**
+
+| Tool | Use case |
+|---|---|
+| `ask_all_ais` | Same prompt → all 4 models simultaneously |
+| `compare_ais` | Side-by-side model comparison |
+| `smart_query` | Auto-route to best model by query type |
+| `ask_perplexity` | Real-time web search via Perplexity |
+
+```bash
+# MCP server start (macOS — Electron GUI is Windows-only):
+node ~/installed-repos/Proxima/src/mcp-server-v3.js
+```
+
+> ⚠️ Full execution requires Agent Hub on port 19222 (Windows Electron app).
+> macOS: MCP server wired + tools visible in Claude Code; IPC relay needs hub.
+
+**Auto-activation keywords:** `proxima` · `ask all ais` · `compare ais` · `multi model mcp`
 
 ---
 

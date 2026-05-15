@@ -1,0 +1,193 @@
+#!/usr/bin/env python3
+"""
+Remote Job Hunter — WFH/Remote Job Finding Automation
+DigiMinds Global | Auto-activated on: remote job / wfh / job search / find job india
+"""
+import argparse, json, os, sys, datetime, subprocess
+from pathlib import Path
+
+OUTPUT_DIR = Path.home() / "Downloads" / "job-search"
+OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+
+BOARDS = {
+    "linkedin":    "https://www.linkedin.com/jobs/search/?keywords={role}&location={location}&f_WT=2&sortBy=DD",
+    "remoteok":    "https://remoteok.com/remote-{role_slug}-jobs",
+    "remotive":    "https://remotive.com/remote-jobs?search={role}",
+    "wellfound":   "https://wellfound.com/jobs?role={role}&remote=true",
+    "weworkremotely": "https://weworkremotely.com/remote-jobs/search?term={role}",
+    "himalayas":   "https://himalayas.app/jobs?q={role}",
+    "flexjobs":    "https://www.flexjobs.com/search?search={role}&location=Remote",
+    "indeed":      "https://www.indeed.com/jobs?q={role}&l=Remote&fromage=2",
+    "naukri":      "https://www.naukri.com/{role_slug}-jobs?wfhType=2",
+}
+
+ATS_OPERATORS = [
+    'site:lever.co "{role}" "Remote"',
+    'site:lever.co "{role}" "Remote" "India"',
+    'site:greenhouse.io "{role}" "Remote"',
+    'site:greenhouse.io "{role}" "Remote" "India"',
+    'site:myworkdayjobs.com "Remote" "India" "{role}"',
+    'site:jobs.ashbyhq.com "{role}" "remote"',
+    'site:jobs.ashbyhq.com "{role}" "remote" "india"',
+]
+
+LINKEDIN_FEED_STRINGS = [
+    '"hiring" "remote" "{role}"',
+    '"we\'re hiring" "remote" "{role}"',
+    '"open role" "remote" "india" "{role}"',
+    '"join our team" "wfh" "{role}"',
+    '"work from anywhere" "{role}"',
+]
+
+SCAM_FLAGS = [
+    ("pay unrealistically high for simple work", 3),
+    ("weak/missing company website", 3),
+    ("recruiter avoids official email domain", 3),
+    ("asks for money / deposit / training fee", 5),
+    ("vague description copied across titles", 2),
+    ("process unusually rushed", 2),
+    ("contact via telegram/whatsapp only", 2),
+    ("no linkedin company page", 2),
+]
+
+WEEKLY_PLAN = {
+    "Monday":    ("Fresh roles",          "Check alerts → apply to newest → update tracker"),
+    "Tuesday":   ("Company watchlist",    "Visit 10-15 target career pages → save openings"),
+    "Wednesday": ("LinkedIn discovery",   "Search feed posts → founder/recruiter posts"),
+    "Thursday":  ("Resume optimization",  "Improve 1 resume version + 1 cover template"),
+    "Friday":    ("Follow-up",            "Reconnect with recruiters → check status → polite nudges"),
+    "Saturday":  ("Skill proof",          "Portfolio / case studies / certs"),
+    "Sunday":    ("Review",               "Measure apps/interviews → set next-week priorities"),
+}
+
+def llm_burst(prompt):
+    burst = Path.home() / ".claude/bin/llm-burst"
+    if burst.exists():
+        r = subprocess.run([str(burst), "--models", "groq,gemini", prompt],
+                           capture_output=True, text=True, timeout=30)
+        return r.stdout.strip() or "[llm-burst unavailable]"
+    return "[llm-burst not found — install via optimize-commands]"
+
+def build_urls(role, location="india", boards="all"):
+    slug = role.lower().replace(" ", "-")
+    active = BOARDS if boards == "all" else {k: v for k, v in BOARDS.items() if k in boards.split(",")}
+    out = {}
+    for name, tpl in active.items():
+        out[name] = tpl.format(role=role, role_slug=slug, location=location)
+    return out
+
+def build_ats(role):
+    return [op.format(role=role) for op in ATS_OPERATORS]
+
+def build_linkedin_feed(role):
+    return [s.format(role=role) for s in LINKEDIN_FEED_STRINGS]
+
+def scam_check(url="", notes=""):
+    print("\n🔍 SCAM CHECK")
+    print(f"URL: {url}")
+    score = 0
+    triggered = []
+    for flag, weight in SCAM_FLAGS:
+        ans = input(f"  [{weight}pt] {flag}? (y/N) ").strip().lower()
+        if ans == "y":
+            score += weight
+            triggered.append(flag)
+    verdict = "✅ APPLY" if score <= 2 else ("⚠️  VERIFY FIRST" if score <= 5 else "❌ SKIP")
+    print(f"\nScam score: {score}/22 → {verdict}")
+    if triggered:
+        print("Flags hit:", ", ".join(triggered))
+    return score
+
+def export_tracker():
+    try:
+        import openpyxl
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "Job Tracker"
+        headers = ["Date Applied","Company","Job Title","Source","Role URL",
+                   "Country/TZ Restriction","Resume Version","Status",
+                   "Follow-up Date","Notes","Scam Score"]
+        for i, h in enumerate(headers, 1):
+            ws.cell(1, i).value = h
+            ws.cell(1, i).font = openpyxl.styles.Font(bold=True)
+        path = OUTPUT_DIR / f"job-tracker-{datetime.date.today()}.xlsx"
+        wb.save(path)
+        print(f"✅ Tracker exported → {path}")
+    except ImportError:
+        print("⚠️  openpyxl not installed. Run: pip3 install openpyxl")
+
+def daily_sweep(role, location):
+    ts = datetime.datetime.now().strftime("%Y%m%d-%H%M")
+    lines = [f"# Remote Job Daily Sweep — {ts}", f"Role: {role} | Location: {location}", ""]
+
+    lines.append("## 🔗 JOB BOARD URLS (open all in browser)")
+    for name, url in build_urls(role, location).items():
+        lines.append(f"- **{name}**: {url}")
+
+    lines.append("\n## 🔍 ATS GOOGLE OPERATORS (paste into Google)")
+    for op in build_ats(role):
+        lines.append(f"- `{op}`")
+
+    lines.append("\n## 📱 LINKEDIN FEED SEARCH STRINGS")
+    for s in build_linkedin_feed(role):
+        lines.append(f'- `{s}`')
+
+    lines.append("\n## 🤖 AI ANALYSIS (via llm-burst)")
+    prompt = f"Give me 5 fresh remote {role} job search tactics for India-based candidates in 2026. Be specific."
+    lines.append(llm_burst(prompt))
+
+    out = OUTPUT_DIR / f"daily-sweep-{ts}.md"
+    out.write_text("\n".join(lines))
+    print(f"✅ Daily sweep → {out}")
+    print("\n".join(lines[:20]))
+
+def weekly_plan():
+    print("\n📅 WEEKLY REMOTE JOB SEARCH RHYTHM")
+    print("=" * 55)
+    for day, (focus, actions) in WEEKLY_PLAN.items():
+        print(f"\n{day:12} | {focus}")
+        print(f"{'':12}   {actions}")
+    print("\n" + "=" * 55)
+    print("Daily target: 5-12 quality applications (NOT 100 spam)")
+    print("Apply within 24-48h of posting for best response rate")
+
+def main():
+    p = argparse.ArgumentParser(description="Remote Job Hunter — WFH/Remote Job Automation")
+    p.add_argument("--daily", action="store_true", help="Full daily sweep across all boards")
+    p.add_argument("--role", default="customer support", help="Job role to search")
+    p.add_argument("--location", default="india", help="Target location")
+    p.add_argument("--boards", default="all", help="Boards (comma-separated or 'all')")
+    p.add_argument("--ats", action="store_true", help="Print ATS Google operator strings")
+    p.add_argument("--check", metavar="URL", help="Scam-check a listing URL")
+    p.add_argument("--export", action="store_true", help="Export blank job tracker to Excel")
+    p.add_argument("--weekly-plan", action="store_true", dest="weekly", help="Print weekly rhythm")
+    p.add_argument("--boards-list", action="store_true", dest="blist", help="List all board URLs for role")
+    args = p.parse_args()
+
+    if args.daily:
+        daily_sweep(args.role, args.location)
+    elif args.ats:
+        print("\n🔍 ATS GOOGLE OPERATORS:")
+        for op in build_ats(args.role):
+            print(f"  {op}")
+    elif args.check:
+        scam_check(url=args.check)
+    elif args.export:
+        export_tracker()
+    elif args.weekly:
+        weekly_plan()
+    elif args.blist:
+        print(f"\n🔗 JOB BOARD URLS for: {args.role} | {args.location}")
+        for name, url in build_urls(args.role, args.location, args.boards).items():
+            print(f"  {name}: {url}")
+    else:
+        p.print_help()
+        print("\n📌 QUICK START:")
+        print(f"  python3 {__file__} --daily --role 'customer support'")
+        print(f"  python3 {__file__} --ats --role 'data analyst'")
+        print(f"  python3 {__file__} --weekly-plan")
+        print(f"  python3 {__file__} --check 'https://suspicious-job.com'")
+        print(f"  python3 {__file__} --export")
+
+if __name__ == "__main__":
+    main()

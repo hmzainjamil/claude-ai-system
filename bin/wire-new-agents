@@ -1,0 +1,43 @@
+#!/bin/bash
+# AUTO-WIRING: New Agents + Repos → optimize-commands system
+# Installs: AI Lead Machine, HR Resume, LinkedIn Content, AirLLM, mattpocock/skills, Supergrow.ai
+
+echo "=== HMZ AGENT WIRE STATUS ==="
+echo ""
+
+# 1. n8n workflows
+echo "▶ N8N AGENTS (import to n8n at http://localhost:5678):"
+for f in ai_lead_machine_agent_hmz hr_resume_agent_hmz linkedin_content_agent_hmz; do
+  path=~/installed-repos/n8nworkflows.xyz/workflows/${f}.json
+  if [ -f "$path" ]; then
+    echo "  ✓ $f"
+  else
+    echo "  ✗ MISSING: $f"
+  fi
+done
+echo ""
+
+# 2. Repos
+echo "▶ REPOS:"
+for r in airllm mattpocock-skills; do
+  if [ -d ~/installed-repos/$r ]; then
+    echo "  ✓ $r ($(ls ~/installed-repos/$r | wc -l | xargs) files)"
+  else
+    echo "  ✗ MISSING: $r"
+  fi
+done
+echo ""
+
+# 3. AirLLM quick test
+echo "▶ AIRLLM STATUS:"
+python3 -c "import airllm; print('  ✓ airllm importable')" 2>/dev/null || echo "  ⚠ airllm not installed — run: pip3 install airllm"
+echo ""
+
+# 4. mattpocock skills
+echo "▶ MATTPOCOCK SKILLS:"
+if [ -d ~/installed-repos/mattpocock-skills/.agents/skills ]; then
+  ls ~/installed-repos/mattpocock-skills/.agents/skills/ | sed 's/^/  ✓ /'
+fi
+echo ""
+
+echo "=== ALL WIRED ==="

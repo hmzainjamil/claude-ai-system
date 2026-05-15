@@ -1,0 +1,107 @@
+#!/usr/bin/env bash
+# codex-task-runner — fires Codex/DeepSeek agent on any mae run code task
+# Auto-triggered by MAE when task_type = code/refactor/debug/test
+# Usage:
+#   codex-task-runner "fix bug in auth.py"
+#   codex-task-runner --file src/api.py "refactor to async"
+#   codex-task-runner --review src/          — full code review via DeepSeek
+
+source ~/.claude/tier0.env 2>/dev/null
+export PATH="$HOME/.nvm/versions/node/v24.14.1/bin:$HOME/.claude/bin:/opt/homebrew/bin:/usr/bin:/bin"
+
+G="\033[32m"; Y="\033[33m"; R="\033[31m"; C="\033[36m"; B="\033[1m"; RST="\033[0m"
+LOG_DIR="$HOME/.claude/tcc-logs"
+TS=$(date +%Y%m%d-%H%M%S)
+LOG="$LOG_DIR/codex-$TS.md"
+
+# ── Model router ──────────────────────────────────────────────────────────────
+route_model() {
+    local task="$1"
+    case "$task" in
+        *review*|*audit*|*security*)   echo "kimi"     ;;   # 262K context
+        *refactor*|*rewrite*|*arch*)   echo "deepseek" ;;   # reasoning
+        *bug*|*fix*|*error*|*crash*)   echo "deepseek" ;;   # code debug
+        *test*|*spec*|*coverage*)      echo "groq"     ;;   # fast gen
+        *doc*|*comment*|*readme*)      echo "gemini"   ;;   # drafting
+        *)                              echo "deepseek" ;;   # default
+    esac
+}
+
+# ── Task executor ─────────────────────────────────────────────────────────────
+run_codex_task() {
+    local task="$1"
+    local file="$2"
+    local model=$(route_model "$task")
+
+    echo -e "${B}${C}Codex Task Runner${RST}"
+    echo -e "  Task:  $task"
+    echo -e "  File:  ${file:-(none)}"
+    echo -e "  Model: $model"
+    echo ""
+
+    # Build context from file if provided
+    local context=""
+    if [ -n "$file" ] && [ -f "$file" ]; then
+        context=$(head -100 "$file" 2>/dev/null)
+        echo -e "${G}✓ File context loaded: $file ($(wc -l < "$file") lines)${RST}"
+    elif [ -n "$file" ] && [ -d "$file" ]; then
+        context=$(find "$file" -name "*.py" -o -name "*.js" -o -name "*.ts" 2>/dev/null | head -5 | xargs head -50 2>/dev/null)
+        echo -e "${G}✓ Directory context loaded: $file${RST}"
+    fi
+
+    # Build prompt
+    local prompt="You are a senior software engineer. Task: $task"
+    if [ -n "$context" ]; then
+        prompt="$prompt\n\nCode context:\n\`\`\`\n$context\n\`\`\`\n\nProvide: 1) Root cause analysis 2) Exact fix/refactor 3) Test cases 4) Confidence score"
+    fi
+
+    # Route to correct model via llm-burst
+    echo -e "${C}→ Firing $model via llm-burst...${RST}"
+    result=$(~/.claude/bin/llm-burst --models "$model" "$prompt" 2>/dev/null)
+
+    if [ -z "$result" ]; then
+        # Fallback to full burst
+        echo -e "${Y}  model fallback → full burst${RST}"
+        result=$(~/.claude/bin/llm-burst "$prompt" 2>/dev/null)
+    fi
+
+    # Output
+    echo ""
+    echo -e "${B}Result:${RST}"
+    echo "$result"
+
+    # Save log
+    {
+        echo "# Codex Task: $task"
+        echo "Model: $model | File: ${file:-(none)} | $(date)"
+        echo ""
+        echo "## Result"
+        echo "$result"
+    } > "$LOG"
+
+    echo -e "\n${G}✓ saved → $LOG${RST}"
+
+    # Sync to Paperclip
+    python3 ~/.claude/bin/mae-paperclip-bridge sync 2>/dev/null &
+}
+
+# ── Main ──────────────────────────────────────────────────────────────────────
+if [ "$1" = "--file" ]; then
+    FILE="$2"; shift 2
+    TASK="$*"
+elif [ "$1" = "--review" ]; then
+    FILE="$2"; shift 2
+    TASK="full code review: identify bugs, security issues, performance problems"
+else
+    FILE=""
+    TASK="$*"
+fi
+
+if [ -z "$TASK" ]; then
+    echo "Usage: codex-task-runner 'task description'"
+    echo "       codex-task-runner --file path/to/file.py 'refactor to async'"
+    echo "       codex-task-runner --review src/"
+    exit 1
+fi
+
+run_codex_task "$TASK" "$FILE"

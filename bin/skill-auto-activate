@@ -133,6 +133,13 @@ if match "codex review|codex:review|adversarial review|delegate to codex|codex r
   echo "[CODEX] codex-plugin-cc → ~/installed-repos/ads-creative/codex-plugin-cc/" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
 fi
 
+# speckit: Spec-Driven Development — GitHub Spec Kit + MAE
+if match "spec kit|speckit|spec-driven|speckit.specify|speckit.plan|speckit.tasks|speckit.implement|speckit.constitution|new feature|build feature|major feature|plan before code|sdd workflow|spec before code"; then
+  echo "[SPECKIT] GitHub Spec Kit v0.8.9 active → python3 ~/.claude/bin/speckit-mae-bridge run 'feature'" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+  echo "[SPECKIT] Steps: constitution→specify→clarify→plan→tasks→implement" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+  echo "[SPECKIT] Agent: ~/.claude/agents/mae-speckit-agent.md" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+fi
+
 # ── MICROSOFT REPOS — AI/AGENTS/PLAYWRIGHT/SK AUTO-ROUTING ──────
 # Triggers: any AI learning, agent building, browser automation, semantic kernel, ML, data science
 if match "semantic kernel|playwright|browser automation|browser test|e2e test|end to end test|page automation|web scrape playwright|ai for beginners|ml for beginners|machine learning beginner|generative ai|genai beginner|ai agent beginner|data science beginner|agent framework|microsoft agent|SK plugin|SK orchestration|semantic function|SK memory|SK planner|agent365|playwright mcp|microsoft ai|microsoft ml"; then
@@ -169,8 +176,9 @@ fi
 if match "create report|make report|generate report|build report|write report|professional report|client report|format report|fix report|report layout|report design|report format"; then
   on report-creator; on reportlab-pdf-master
   match "pdf|audit"      && on ads-report-pdf
-  match "excel|xlsx|data" && true  # handled by xlsx skill inline
-  match "docx|word|editable" && true  # handled by docx skill inline
+  match "excel|xlsx|spreadsheet|workbook|data" && on xlsx-format-master
+  match "docx|word|editable|word document" && on docx-format-master
+  match "pptx|powerpoint|presentation|deck|slides" && on pptx-format-master
 fi
 if match "pdf report|docx report|xlsx report|excel report|performance report|monthly report|weekly report|audit report|360.report|marketing report|deliverable doc"; then
   on report-creator; on reportlab-pdf-master
@@ -179,7 +187,7 @@ fi
 # ── REPORTLAB PDF MASTER — universal trigger ─────────────────────
 # Fires on ANY report/PDF/document/diagnostic request, any session
 if match "report|pdf|audit report|one.pager|diagnostic|deliverable|xlsx|docx|pptx|deck|document|layout|format|design issue|blank page|overflow|column width|cell wrap|table fix|reportlab|platypus"; then
-  on reportlab-pdf-master
+  on reportlab-pdf-master; on docx-format-master; on xlsx-format-master; on pptx-format-master; on document-qa-agent; on doc-preflight; on document-orchestrator
 fi
 
 # ── REPORT TEMPLATE ROUTING — ALL 13 REPOS ───────────────────────
@@ -321,6 +329,11 @@ if match "launch.optimized|launch optimized|/launch|optimize.command|optimize co
   # Full manifest load via skill-load (loads all declared deps from manifest.json)
   "$SKILLS_BIN/skill-load" launch-optimized > /dev/null 2>&1 || true
   ACTIVATED+=("launch-optimized-manifest")
+  # Wire: launch-optimized → hermes bridge → MAE
+  on "hermes-nous-agent"
+  echo "[LAUNCH→HERMES] Bridge wired: launch-hermes-bridge → hermes-orchestrator → MAE" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+  echo "[LAUNCH→HERMES] Use: launch-hermes-bridge 'task' --mode auto" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+  (hermes-activate >/dev/null 2>&1 &)
 fi
 
 # ── G0DM0D3 / ULTRAPLINIAN / GODMODE ─────────────────────────────
@@ -459,9 +472,77 @@ if match "antigravity skill|idea to action|daily log|document api|repo infograph
   on idea_to_action; on daily_log; on document_api; on repo_infographic
 fi
 
+# higgsfield: Cinematic AI video production — Cinema Studio + 29 camera movement prompts
+if match "higgsfield|cinema studio|nano banana|kling video|ai cinematic|camera movement|dolly in|dolly out|orbit shot|crane shot|hero frame|soul id|video prompt|cinematic shot|parallax shot|jib up|tilt up|pan left|rack focus|fisheye|fpv drone|crash zoom|through shot|pov walk|leading shot|following shot|side tracking|aerial pullback|extreme macro|cinematic video|higgsfield prompt|shot generator|kling 2.6|google v3|nano banana pro|popcorn app|skin enhancer|shots app|higgsfield tutorial|ai video workflow|ai video production"; then
+  echo "[HIGGSFIELD] Cinema Studio active → ~/.claude/skills/higgsfield-ai/SKILL.md" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+  echo "[HIGGSFIELD] Shot generator: python3 ~/.claude/bin/higgsfield-shot-generator 'subject' --style commercial" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+  echo "[HIGGSFIELD] Agent: ~/.claude/agents/higgsfield-cinema-agent.md" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+  echo "[HIGGSFIELD] Workflow: ~/.claude/workflows/higgsfield-cinematic-workflow.json" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+  echo "[HIGGSFIELD] 29 shots: dolly-in dolly-out fast-dolly pan-left pan-right tilt-up tilt-down dolly-left dolly-right over-shoulder orbit-180 full-360 cinematic-arc jib-up jib-down crane-overhead zoom-in zoom-out crash-zoom rack-focus fisheye drone-flyover aerial-orbit fpv-drone aerial-pullback extreme-macro leading-shot following-shot side-tracking pov-walk through-shot" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+fi
+
+# awesome-agentic-patterns: 50+ production agent design patterns
+if match "agentic pattern|agent pattern|agent design|agent architecture|multi-agent pattern|agent orchestration pattern|awesome agentic|agent blueprint|agent template|nibzard"; then
+  echo "[AGENT-PATTERNS] awesome-agentic-patterns → ~/installed-repos/awesome-agentic-patterns/" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+  echo "[AGENT-PATTERNS] AGENT.md, CLAUDE.md, docs/ — 50+ patterns: ReAct, RAG, multi-agent, tool-use" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+fi
+
+# AI-Trader: LLM-powered stock trading agent
+if match "ai trader|stock trading agent|llm trading|automated trading|ai stock|trading bot|hkuds trader|equity agent trading|stock llm"; then
+  echo "[AI-TRADER] HKUDS AI-Trader → ~/installed-repos/AI-Trader/" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+fi
+
+# How-to-Clone-Website Claude Skills: AI website cloner Claude skill
+if match "clone website skill|website cloner skill|claude clone site|mood global|clone website claude|site cloning skill|how to clone website"; then
+  echo "[CLONE-WEBSITE] Mood Global website cloner skill → ~/installed-repos/How-to-Clone-Website---Claude-Skills/" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+  echo "[CLONE-WEBSITE] Contains: ai-website-cloner-template-master — Claude skill for cloning any website" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+fi
+
+# Proxima: 45+ MCP tools — ask_all_ais, compare_ais, smart_query across ChatGPT+Claude+Gemini+Perplexity
+if match "proxima|ask all ais|compare ais|smart query|all four models|chatgpt claude gemini perplexity|proxima mcp|ask_all_ais|compare_ais|multi model mcp"; then
+  echo "[PROXIMA] MCP server → ~/.mcp.json (proxima key) | needs Electron agent hub on :19222" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+  echo "[PROXIMA] 45+ tools: ask_all_ais, compare_ais, smart_query, deep_search, debug_code, summarize_url, fact_check, generate_code" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+  echo "[PROXIMA] Start electron hub: cd ~/installed-repos/Proxima && node src/mcp-server-v3.js" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+  echo "[PROXIMA] Note: Full GUI requires Windows. MCP server runs standalone on macOS but needs hub." >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+fi
+
+# WFH / Remote Job Finder: 2026 multi-board job search automation
+if match "remote job|wfh job|work from home|find remote work|job search|remote hiring|job board india|find job india|remote apply|ats search|job tracker|remote-first company|lever greenhouse|job hunting|job finder|wfh 2026|remote job board|job search india|find work online|remote customer support job|remote data analyst|qadir|kaamkibaatein"; then
+  echo "[WFH-JOB-FINDER] Skill → ~/.claude/skills/wfh-job-finder/SKILL.md" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+  echo "[WFH-JOB-FINDER] Agent → ~/.claude/agents/remote-job-hunter-agent.md" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+  echo "[WFH-JOB-FINDER] CLI → python3 ~/.claude/bin/remote-job-hunter --daily --role 'role'" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+  echo "[WFH-JOB-FINDER] Boards: LinkedIn RemoteOK Remotive Wellfound WWR Himalayas FlexJobs Naukri Indeed + ATS operators (Lever/Greenhouse/Ashby/Workday)" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+fi
+
+# Hermes Agent — auto-activate on tool-use / agent / orchestration keywords
+if match "hermes|nous research|tool use agent|orchestrate task|multi-tool|persistent memory agent|self-evolve|evolve skill|function call.*local|local agent|hermes chat|hermes-fc|hermes orchestrat|agent memory|qwen.*local|ollama.*agent"; then
+  on "hermes-nous-agent"
+  echo "[HERMES] Auto-activated — qwen2.5:7b local | ~/.local/bin/hermes chat -q 'task' -Q" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+  echo "[HERMES] Orchestrator: ~/.claude/bin/hermes-orchestrator 'task' --mode auto" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+  echo "[HERMES] FC: ~/.claude/bin/hermes-fc 'extract structured data'" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+  (hermes-activate >/dev/null 2>&1 &)
+fi
+
 # ── Step 4: Log metrics ──────────────────────────────────────────
 ACTIVE_COUNT=$(ls "$ACTIVE" 2>/dev/null | wc -l | tr -d ' ')
 ACTIVATED_STR="${ACTIVATED[*]:-none}"
 echo "$(date -u '+%Y-%m-%dT%H:%M:%SZ') active=$ACTIVE_COUNT activated=\"$ACTIVATED_STR\" prompt_len=${#PROMPT}" >> "$METRICS" 2>/dev/null || true
 
 exit 0
+
+# HMZ NEW REPOS 2026-05-13
+if echo "$PROMPT" | grep -iE "airllm|run 70b|layer inference|split model|low vram" > /dev/null; then
+  echo "airllm" >> ~/.claude/active-skills.txt
+fi
+
+if echo "$PROMPT" | grep -iE "diagnose|grill.?with.?docs|prototype skill|zoom.?out|to.?prd|to.?issues|triage skill|improve architecture|mattpocock" > /dev/null; then
+  echo "mattpocock-skills" >> ~/.claude/active-skills.txt
+fi
+
+if echo "$PROMPT" | grep -iE "supergrow|linkedin content|hook generator|viral linkedin|carousel post|linkedin schedul" > /dev/null; then
+  echo "supergrow-linkedin-agent" >> ~/.claude/active-skills.txt
+fi
+
+if echo "$PROMPT" | grep -iE "find.?remote.?job|wfh job|job search|ppc job|remote work pakistan|job opening" > /dev/null; then
+  echo "wfh-job-finder-pakistan" >> ~/.claude/active-skills.txt
+fi

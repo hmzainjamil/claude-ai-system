@@ -1,0 +1,40 @@
+#!/bin/bash
+# Clear caches at session start — keeps Claude Code fast & cool
+# Runs synchronously but fast (<1s). Backgrounded heavy clears.
+
+LOG=~/.claude/logs/cache-clear.log
+mkdir -p ~/.claude/logs
+
+{
+  echo "=== $(date) clear-session-cache ==="
+
+  # 1. Claude Code shell snapshots (one of the biggest culprits — accumulates)
+  find ~/.claude/shell-snapshots -type f -mmin +60 -delete 2>/dev/null
+
+  # 2. Old session JSONL files (>7 days)
+  find ~/.claude/sessions -type f -mtime +7 -delete 2>/dev/null
+
+  # 3. Old TCC logs (>3 days)
+  find ~/.claude/tcc-logs -type f -mtime +3 -delete 2>/dev/null
+
+  # 4. Old telemetry
+  find ~/.claude/telemetry -type f -mtime +7 -delete 2>/dev/null
+
+  # 5. macOS user cache for Claude.app (Electron cache builds up — heat source)
+  rm -rf ~/Library/Caches/com.anthropic.claudefordesktop/Cache_Data 2>/dev/null
+  rm -rf ~/Library/Caches/com.anthropic.claudefordesktop/Code\ Cache 2>/dev/null
+  rm -rf ~/Library/Caches/com.anthropic.claudefordesktop/GPUCache 2>/dev/null
+
+  # 6. Claude Code CLI cache (if exists)
+  rm -rf ~/.claude/cache/* 2>/dev/null
+
+  # 7. Empty session-queue if huge
+  qfile=~/.claude/session-queue.jsonl
+  if [ -f "$qfile" ] && [ $(wc -c <"$qfile") -gt 1048576 ]; then
+    tail -200 "$qfile" > "$qfile.tmp" && mv "$qfile.tmp" "$qfile"
+  fi
+
+  echo "✓ cache clear done"
+} >> "$LOG" 2>&1
+
+exit 0

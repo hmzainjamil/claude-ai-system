@@ -1,0 +1,364 @@
+#!/usr/bin/env python3
+"""
+higgsfield-shot-generator — AI cinematic shot prompt generator
+Generates Higgsfield Cinema Studio prompts using multi-LLM burst.
+
+Usage:
+  higgsfield-shot-generator "subject" --shots 10 --style commercial
+  higgsfield-shot-generator "subject" --all-shots
+  higgsfield-shot-generator "subject" --storyboard --beats 6
+  higgsfield-shot-generator --list-shots
+  higgsfield-shot-generator --shot "dolly in" "your subject"
+"""
+
+import os, sys, json, subprocess
+from pathlib import Path
+from datetime import datetime
+
+# ── Config ─────────────────────────────────────────────────────────────────
+env_file = Path.home() / ".claude/tier0.env"
+if env_file.exists():
+    for line in env_file.read_text().splitlines():
+        if line.startswith("export "): line = line[7:]
+        if "=" in line and not line.startswith("#"):
+            k, _, v = line.partition("=")
+            k=k.strip(); v=v.strip().strip('"').strip("'")
+            if k and v and k not in os.environ: os.environ[k] = v
+
+BURST_BIN  = Path.home() / ".claude/bin/llm-burst"
+LOGS_DIR   = Path.home() / ".claude/tcc-logs"
+OUTPUT_DIR = Path.home() / "Downloads/higgsfield-output"
+LOGS_DIR.mkdir(exist_ok=True)
+OUTPUT_DIR.mkdir(exist_ok=True)
+
+G="\033[32m"; Y="\033[33m"; C="\033[36m"; B="\033[1m"; RST="\033[0m"
+
+# ── 29 Shot Library ────────────────────────────────────────────────────────
+SHOTS = {
+    "dolly-in": {
+        "name": "Dolly In", "type": "PRESET", "duration": "5s", "category": "straight",
+        "prompt": "Slow drift through suspended debris toward the man. The floating glass shards in the foreground pass the camera, creating depth. Warm lighting, calm atmosphere despite the chaos.",
+        "effect": "Brings viewer closer; parallax depth"
+    },
+    "dolly-out": {
+        "name": "Dolly Out", "type": "PRESET", "duration": "5s", "category": "straight",
+        "prompt": "Revealing the vastness of the destruction. As the camera retreats, more frozen debris enters the frame from the edges. The man becomes a small figure in a large, shattered hall.",
+        "effect": "Isolation; character shrinks, world expands"
+    },
+    "fast-dolly": {
+        "name": "Fast Dolly / Rush", "type": "CUSTOM", "duration": "5s", "category": "straight",
+        "prompt": "Aggressive, high-speed camera push-in toward the man's face. Heavy motion blur on the edges of the frame. The background tunnel-visions as the camera accelerates. Sudden, intense impact.",
+        "effect": "Shock/realization; tunnel-vision acceleration"
+    },
+    "pan-left": {
+        "name": "Pan Left", "type": "PRESET", "duration": "5s", "category": "straight",
+        "prompt": "Scanning the lobby from right to left. Revealing a wall of frozen fire and shattered marble columns. The light flares as the angle changes.",
+        "effect": "Environment reveal; fixed camera rotates"
+    },
+    "pan-right": {
+        "name": "Pan Right", "type": "PRESET", "duration": "5s", "category": "straight",
+        "prompt": "Scanning from left to right, following the trajectory of the debris field. The frozen explosion stretches horizontally across the screen.",
+        "effect": "Environment reveal left→right"
+    },
+    "tilt-up": {
+        "name": "Tilt Up", "type": "PRESET", "duration": "5s", "category": "straight",
+        "prompt": "Vertical reveal starting at the polished marble floor covered in rubble, moving up the man's legs to his torso, ending on his face. Emphasizing his stature against the height of the lobby.",
+        "effect": "Reveal from ground up; stature + presence"
+    },
+    "tilt-down": {
+        "name": "Tilt Down", "type": "PRESET", "duration": "5s", "category": "straight",
+        "prompt": "Vertical reveal starting from the high ceiling and shattered chandelier, panning down through layers of falling dust to the man standing below. Sense of vertical scale.",
+        "effect": "Arrival; descent from ceiling to eye level"
+    },
+    "dolly-left": {
+        "name": "Dolly Left", "type": "PRESET", "duration": "5s", "category": "straight",
+        "prompt": "Lateral tracking shot. The foreground glass shards move quickly left, while the man in the mid-ground moves slowly. Strong parallax effect separating the layers of depth.",
+        "effect": "Lateral slide; parallax separates depth layers"
+    },
+    "dolly-right": {
+        "name": "Dolly Right", "type": "PRESET", "duration": "5s", "category": "straight",
+        "prompt": "Lateral slide to the right. The background explosion shifts perspective relative to the man. The 3D space of the lobby is emphasized by the shifting debris.",
+        "effect": "Lateral slide right; 3D space emphasis"
+    },
+    "over-shoulder": {
+        "name": "Over the Shoulder", "type": "CUSTOM", "duration": "5s", "category": "straight",
+        "prompt": "Camera positioned just behind and above the man's right shoulder. We see a fraction of his face and the full destruction field ahead. Anchored viewer perspective, shared POV.",
+        "effect": "Shared perspective; emotional connection"
+    },
+    "orbit-180": {
+        "name": "Orbit 180", "type": "CUSTOM", "duration": "10s", "category": "orbital",
+        "prompt": "Smooth semi-circular orbital move around the man. The camera travels from his front view to his side profile. Background debris rotates in the opposite direction due to parallax. The light wraps around his face as the angle changes.",
+        "effect": "Reveals character from multiple angles"
+    },
+    "full-360": {
+        "name": "Full 360 Spin", "type": "PRESET", "duration": "10s", "category": "orbital",
+        "prompt": "A complete revolution around the stationary man. The entire lobby spins around him. The frozen blast wave is visible from every possible angle—front, side, and back.",
+        "effect": "Full context; every angle revealed"
+    },
+    "cinematic-arc": {
+        "name": "Slow Cinematic Arc", "type": "CUSTOM", "duration": "10s", "category": "orbital",
+        "prompt": "A gentle, curved camera track. Not a full circle, but a wide, sweeping arc that changes the composition from a flat shot to a dynamic ¾ angle. Elegant and controlled movement.",
+        "effect": "Emotional, time-passing feel"
+    },
+    "jib-up": {
+        "name": "Jib Up / Crane Up", "type": "PRESET", "duration": "10s", "category": "crane",
+        "prompt": "The camera lifts vertically into the air. The floor drops away, revealing the layout of the debris field from a high angle. The man looks smaller as the space expands.",
+        "effect": "Scale reveal; pulls back to larger context"
+    },
+    "jib-down": {
+        "name": "Jib Down / Crane Down", "type": "PRESET", "duration": "10s", "category": "crane",
+        "prompt": "The camera descends from the ceiling level, passing through a cloud of suspended dust and glass, landing at eye-level with the man. Immersion and settling.",
+        "effect": "Descent; immersion into scene"
+    },
+    "crane-overhead": {
+        "name": "Crane Overhead", "type": "CUSTOM", "duration": "10s", "category": "crane",
+        "prompt": "Complex crane move. The camera starts low in front of the man, lifts up, and passes directly over the top of his head to end behind him. The floor perspective flips. Top-down view at the apex of the movement.",
+        "effect": "Floor flip; top-down apex view"
+    },
+    "zoom-in": {
+        "name": "Smooth Optical Zoom In", "type": "PRESET", "duration": "5s", "category": "zoom",
+        "prompt": "The camera stays fixed in space, but the lens magnifies the image. The champagne glass gets larger, filling the frame. No parallax, just pure magnification of detail.",
+        "effect": "Obsession/focus; no parallax"
+    },
+    "zoom-out": {
+        "name": "Smooth Optical Zoom Out", "type": "PRESET", "duration": "5s", "category": "zoom",
+        "prompt": "The camera stays fixed, but the lens widens. Starting tight on a single droplet, expanding to reveal the whole glass and the chaos surrounding it.",
+        "effect": "Scale reveal; crisis breakdown"
+    },
+    "crash-zoom": {
+        "name": "Crash Zoom", "type": "CUSTOM", "duration": "5s", "category": "zoom",
+        "prompt": "Snap zoom. Violent and instant magnification. The camera punches in from a wide shot to an extreme close-up of the glass in a fraction of a second. Whip-pan energy, shock factor.",
+        "effect": "Instant shock; Tarantino/Wright style"
+    },
+    "rack-focus": {
+        "name": "Rack Focus", "type": "CUSTOM", "duration": "10s", "category": "zoom",
+        "prompt": "The shot is static. Start with focus locked on the champagne glass in the foreground (background blurry). Slowly, the focus pulls deeper, blurring the glass and sharpening the explosion in the background. Shift of attention.",
+        "effect": "Shifts viewer attention without camera movement"
+    },
+    "fisheye": {
+        "name": "Fisheye / Wide Angle", "type": "CUSTOM", "duration": "5s", "category": "zoom",
+        "prompt": "15mm fisheye lens simulation. The edges of the frame are curved and distorted. The glass looks bulbous and close, the lobby looks vast and spherical. Surreal, security-camera aesthetic.",
+        "effect": "Surreal distortion; unhinged world feel"
+    },
+    "drone-flyover": {
+        "name": "Drone Flyover", "type": "PRESET", "duration": "10s", "category": "aerial",
+        "prompt": "Straight flight path over the top of the building. Looking down at the roof and the frozen debris cloud. The city horizon moves slowly in the distance.",
+        "effect": "Modern establishing shot; scale from above"
+    },
+    "aerial-orbit": {
+        "name": "Aerial Large-Scale Orbit", "type": "CUSTOM", "duration": "10s", "category": "aerial",
+        "prompt": "High-altitude orbital move circling the building at 200 meters. The surrounding city rotates as the building stays centered. Scale and context established. News broadcast framing.",
+        "effect": "Location reveal from above; news coverage style"
+    },
+    "fpv-drone": {
+        "name": "FPV Drone", "type": "CUSTOM", "duration": "5s", "category": "aerial",
+        "prompt": "Fast, chaotic drone flight. The camera dives through a broken window, weaving between floating furniture and glass shards. Banked turns, motion blur, feeling of speed and danger.",
+        "effect": "Raw energy; viewer strapped to front"
+    },
+    "aerial-pullback": {
+        "name": "Aerial Pullback", "type": "CUSTOM", "duration": "10s", "category": "aerial",
+        "prompt": "The camera starts close to the window explosion, then flies backward rapidly, revealing the whole building, then the street, then the city block. Infinite reveal.",
+        "effect": "Farewell shot; leaving the moment behind"
+    },
+    "extreme-macro": {
+        "name": "Extreme Macro Zoom", "type": "CUSTOM", "duration": "10s", "category": "aerial",
+        "prompt": "Microscopic camera movement. Pushing into the surface of the glass shard until the texture of the reflection fills the entire screen. A world within a world.",
+        "effect": "Impossible close-up; gives tiny objects massive scale"
+    },
+    "leading-shot": {
+        "name": "Leading Shot", "type": "PRESET", "duration": "10s", "category": "tracking",
+        "prompt": "Camera moves backward at the same speed the man walks forward. He stays a constant size in the frame. The background recedes behind him. Classic 'walk and talk' framing.",
+        "effect": "Subject owns space; control and presence"
+    },
+    "following-shot": {
+        "name": "Following Shot", "type": "PRESET", "duration": "10s", "category": "tracking",
+        "prompt": "Camera moves forward behind the man, following him into the destruction. We see his back. We enter the scene with him.",
+        "effect": "Journey; companionship feel"
+    },
+    "side-tracking": {
+        "name": "Side Tracking", "type": "CUSTOM", "duration": "10s", "category": "tracking",
+        "prompt": "Profile tracking shot. The camera moves parallel to the man as he walks. Foreground debris whips past the lens (fast), the man is sharp (medium speed), background is slow. Emphasizes lateral speed.",
+        "effect": "Neutral; walk-and-talk; depth from blur"
+    },
+    "pov-walk": {
+        "name": "POV Walk", "type": "CUSTOM", "duration": "5s", "category": "tracking",
+        "prompt": "First Person perspective. Handheld camera movement, slight bob and weave mimicking human footsteps. Approaching the man. It feels like the viewer is walking up to him.",
+        "effect": "First-person immersion; removes emotional buffer"
+    },
+    "through-shot": {
+        "name": "Through Shot", "type": "CUSTOM", "duration": "5s", "category": "tracking",
+        "prompt": "The camera flies through a gap in the debris—literally passing through a hole in a shattered pane of glass. Transitioning from one space to another. Tight squeeze, revealing the man on the other side.",
+        "effect": "Magic transition; entering restricted space"
+    },
+}
+
+STYLE_SHOT_MAP = {
+    "commercial": ["dolly-in", "orbit-180", "jib-up", "zoom-in", "leading-shot", "cinematic-arc"],
+    "viral":      ["crash-zoom", "fpv-drone", "fast-dolly", "pov-walk", "side-tracking"],
+    "cinematic":  ["dolly-in", "orbit-180", "rack-focus", "aerial-pullback", "crane-overhead", "cinematic-arc"],
+    "product":    ["zoom-in", "zoom-out", "rack-focus", "extreme-macro", "orbit-180", "dolly-in"],
+    "narrative":  ["tilt-up", "over-shoulder", "following-shot", "leading-shot", "through-shot", "aerial-pullback"],
+    "action":     ["fast-dolly", "fpv-drone", "crash-zoom", "side-tracking", "aerial-pullback", "full-360"],
+    "reels":      ["crash-zoom", "fpv-drone", "pov-walk", "fast-dolly", "through-shot"],
+}
+
+def llm_burst(prompt, models="groq,gemini"):
+    env = {**os.environ, "PATH": f"{Path.home()}/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"}
+    try:
+        r = subprocess.run([str(BURST_BIN), "--models", models, prompt[:500]],
+            capture_output=True, text=True, timeout=60, env=env)
+        return r.stdout.strip() or prompt
+    except:
+        return prompt
+
+def adapt_prompt(base_prompt, subject):
+    """Replace generic subject references with actual subject."""
+    return (base_prompt
+        .replace("the man", subject)
+        .replace("the character", subject)
+        .replace("a man", subject)
+        .replace("him", subject.split()[0] if subject else "the subject")
+    )
+
+def generate_shots(subject, shot_keys, use_llm=False):
+    results = []
+    for key in shot_keys:
+        if key not in SHOTS:
+            continue
+        shot = SHOTS[key]
+        prompt = adapt_prompt(shot["prompt"], subject)
+        if use_llm:
+            enhanced = llm_burst(f"Adapt this Higgsfield Cinema Studio camera prompt for subject '{subject}'. Keep camera movement exact, only change scene details. Original: {prompt}")
+            prompt = enhanced if enhanced else prompt
+        results.append({
+            "shot": shot["name"],
+            "key": key,
+            "type": shot["type"],
+            "duration": shot["duration"],
+            "category": shot["category"],
+            "effect": shot["effect"],
+            "prompt": prompt,
+        })
+    return results
+
+def generate_storyboard(subject, beats, style="cinematic"):
+    print(f"{C}→ Generating {beats}-beat storyboard for: {subject}{RST}")
+    storyboard_prompt = f"""Create a {beats}-scene cinematic storyboard for: {subject}
+Each scene needs: shot type, emotion goal, camera movement, action.
+Available movements: dolly-in, dolly-out, orbit-180, crane-up, zoom-in, fpv-drone, leading-shot, through-shot
+Format: SCENE N | SHOT TYPE | EMOTION | CAMERA | ACTION"""
+    outline = llm_burst(storyboard_prompt)
+    return outline
+
+def list_shots():
+    print(f"\n{B}{C}Higgsfield Cinema Studio — 29 Shot Library{RST}\n")
+    categories = {}
+    for key, shot in SHOTS.items():
+        cat = shot["category"]
+        if cat not in categories:
+            categories[cat] = []
+        categories[cat].append((key, shot))
+
+    for cat, shots in categories.items():
+        print(f"{Y}── {cat.upper()} MOVES ──{RST}")
+        for key, shot in shots:
+            print(f"  {G}{key:<20}{RST} {shot['name']:<25} [{shot['type']}] {shot['duration']}")
+            print(f"  {'':20} {C}{shot['effect']}{RST}")
+        print()
+
+def save_output(subject, shots, style):
+    ts = datetime.now().strftime("%Y%m%d-%H%M%S")
+    slug = subject.lower().replace(" ", "-")[:30]
+    out_file = OUTPUT_DIR / f"shots-{slug}-{ts}.md"
+
+    lines = [f"# Higgsfield Shot Prompts: {subject}\n",
+             f"Generated: {datetime.now().isoformat()} | Style: {style}\n\n"]
+
+    for s in shots:
+        lines.append(f"## {s['shot']} [{s['type']}] — {s['duration']}\n")
+        lines.append(f"**Effect:** {s['effect']}\n\n")
+        lines.append(f"```\n{s['prompt']}\n```\n\n")
+
+    out_file.write_text("".join(lines))
+    print(f"\n{G}✓ Saved: {out_file}{RST}")
+    return out_file
+
+# ── Main ───────────────────────────────────────────────────────────────────
+if __name__ == "__main__":
+    args = sys.argv[1:]
+
+    if not args or "--help" in args or "-h" in args:
+        print(__doc__)
+        sys.exit(0)
+
+    if "--list-shots" in args:
+        list_shots()
+        sys.exit(0)
+
+    # Parse --shot "name" "subject"
+    if "--shot" in args:
+        idx = args.index("--shot")
+        shot_name = args[idx+1].lower().replace(" ", "-") if idx+1 < len(args) else ""
+        subject = args[idx+2] if idx+2 < len(args) else "character"
+        shots = generate_shots(subject, [shot_name])
+        for s in shots:
+            print(f"\n{B}{s['shot']}{RST} [{s['type']}] — {s['duration']}")
+            print(f"{C}{s['effect']}{RST}\n")
+            print(s["prompt"])
+        sys.exit(0)
+
+    # First positional = subject
+    subject = args[0] if args[0] and not args[0].startswith("--") else "character"
+
+    style = "cinematic"
+    n_shots = 6
+    all_shots = False
+    storyboard = False
+    beats = 6
+    platform = "general"
+
+    for i, arg in enumerate(args):
+        if arg == "--style" and i+1 < len(args):
+            style = args[i+1]
+        elif arg == "--shots" and i+1 < len(args):
+            n_shots = int(args[i+1])
+        elif arg == "--all-shots":
+            all_shots = True
+        elif arg == "--storyboard":
+            storyboard = True
+        elif arg == "--beats" and i+1 < len(args):
+            beats = int(args[i+1])
+        elif arg == "--platform" and i+1 < len(args):
+            platform = args[i+1]
+
+    if platform == "reels":
+        style = "reels"
+
+    print(f"\n{B}{C}Higgsfield Shot Generator{RST}")
+    print(f"Subject: {subject} | Style: {style} | Platform: {platform}\n")
+
+    if storyboard:
+        outline = generate_storyboard(subject, beats, style)
+        print(outline)
+        ts = datetime.now().strftime("%Y%m%d-%H%M%S")
+        out = OUTPUT_DIR / f"storyboard-{ts}.md"
+        out.write_text(f"# Storyboard: {subject}\n\n{outline}")
+        print(f"\n{G}✓ Saved: {out}{RST}")
+    elif all_shots:
+        shot_keys = list(SHOTS.keys())
+        shots = generate_shots(subject, shot_keys)
+        print(f"{G}Generated all {len(shots)} shots{RST}")
+        out = save_output(subject, shots, "all")
+        # Print condensed
+        for s in shots:
+            print(f"  {G}✓{RST} {s['shot']}")
+    else:
+        shot_pool = STYLE_SHOT_MAP.get(style, list(SHOTS.keys()))[:n_shots]
+        shots = generate_shots(subject, shot_pool)
+        save_output(subject, shots, style)
+        print(f"\n{B}Shot Prompts:{RST}\n")
+        for s in shots:
+            print(f"{Y}── {s['shot']} [{s['type']}]{RST}")
+            print(f"{s['prompt']}\n")
+
+    print(f"\n{G}✓ Output saved to: {OUTPUT_DIR}{RST}")

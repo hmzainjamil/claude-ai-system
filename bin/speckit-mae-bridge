@@ -1,0 +1,258 @@
+#!/usr/bin/env python3
+"""
+speckit-mae-bridge — Spec Kit + MAE + Paperclip full automation
+Runs the full 6-step SDD workflow via MAE multi-agent swarm.
+
+Usage:
+  speckit-mae-bridge init "project name"        — init new spec-kit project
+  speckit-mae-bridge run "feature idea"         — full 6-step workflow via MAE
+  speckit-mae-bridge constitution "project"     — generate constitution.md
+  speckit-mae-bridge specify "feature"          — write spec.md from rough idea
+  speckit-mae-bridge plan "feature"             — build technical architecture
+  speckit-mae-bridge tasks "feature"            — generate ordered task list
+  speckit-mae-bridge implement "feature"        — execute tasks via MAE swarm
+  speckit-mae-bridge status                     — show all spec-kit projects
+"""
+
+import os, sys, subprocess, json, time
+from pathlib import Path
+from datetime import datetime
+
+# ── Config ────────────────────────────────────────────────────────────────────
+env_file = Path.home() / ".claude/tier0.env"
+if env_file.exists():
+    for line in env_file.read_text().splitlines():
+        if line.startswith("export "): line = line[7:]
+        if "=" in line and not line.startswith("#"):
+            k, _, v = line.partition("=")
+            k=k.strip(); v=v.strip().strip('"').strip("'")
+            if k and v and k not in os.environ: os.environ[k] = v
+
+SPECIFY_BIN = Path.home() / ".local/bin/specify"
+MAE_BIN     = Path.home() / ".claude/bin/mae"
+BURST_BIN   = Path.home() / ".claude/bin/llm-burst"
+PAPERCLIP   = "http://127.0.0.1:3100"
+COMPANY_ID  = "c5066522-bacc-4a28-b700-6590cbe366ec"
+SPECKIT_DIR = Path.home() / "installed-repos/digiminds-speckit"
+LOGS_DIR    = Path.home() / ".claude/tcc-logs"
+ENV_PATH    = f"{Path.home()}/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"
+
+G="\033[32m"; Y="\033[33m"; R="\033[31m"; C="\033[36m"; B="\033[1m"; RST="\033[0m"
+
+def run(cmd, cwd=None, timeout=120):
+    env = {**os.environ, "PATH": ENV_PATH}
+    r = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=timeout, cwd=cwd, env=env)
+    return r.stdout.strip() or r.stderr.strip()
+
+def llm_burst(prompt, models="groq,gemini,deepseek"):
+    """Fire multi-LLM burst for a spec-kit task."""
+    env = {**os.environ, "PATH": ENV_PATH}
+    try:
+        r = subprocess.run([str(BURST_BIN), "--models", models, prompt[:600]],
+            capture_output=True, text=True, timeout=60, env=env)
+        return r.stdout.strip() or "(no burst output)"
+    except Exception as e:
+        return f"burst error: {e}"
+
+def save_log(name, content):
+    ts = datetime.now().strftime("%Y%m%d-%H%M%S")
+    log = LOGS_DIR / f"speckit-{name}-{ts}.md"
+    log.write_text(content)
+    return log
+
+def get_or_create_project(name):
+    proj = SPECKIT_DIR / name
+    if not (proj / ".specify").exists():
+        proj.mkdir(parents=True, exist_ok=True)
+        run(f"git init -q", cwd=proj)
+        run(f"{SPECIFY_BIN} init {name} --integration claude", cwd=SPECKIT_DIR)
+        print(f"{G}✓ Initialized spec-kit project: {name}{RST}")
+    return proj / name if (SPECKIT_DIR / name / ".specify").exists() else proj
+
+# ── Step 1: Constitution ──────────────────────────────────────────────────────
+def cmd_constitution(project):
+    print(f"{C}→ Step 1: Constitution — {project}{RST}")
+    proj_dir = SPECKIT_DIR / "digiminds"
+
+    prompt = f"""You are a senior architect. Generate a constitution.md for the project: {project}
+
+This is for DigiMinds — an AI-powered digital marketing agency.
+Tech stack: Python, Node.js, React, PostgreSQL, n8n, Claude Code, MAE orchestration.
+
+Include:
+1. Stack preferences and versions
+2. Libraries to avoid
+3. Security requirements (no hardcoded secrets, env vars only)
+4. Testing expectations (pytest, >80% coverage)
+5. What AI must never touch (CI config, .env, vendor files)
+6. Coding style (snake_case Python, camelCase JS)
+7. Three-tier boundary: Always / Ask first / Never
+8. Git workflow (conventional commits, feature branches)
+
+Format as clean Markdown constitution.md content."""
+
+    content = llm_burst(prompt, models="groq,gemini,deepseek")
+
+    const_file = proj_dir / ".specify/memory/constitution.md"
+    const_file.parent.mkdir(parents=True, exist_ok=True)
+    const_file.write_text(f"# Constitution: {project}\n\nGenerated: {datetime.now().isoformat()}\n\n{content}")
+    print(f"{G}✓ constitution.md written: {const_file}{RST}")
+    save_log("constitution", content)
+    return content
+
+# ── Step 2: Specify ───────────────────────────────────────────────────────────
+def cmd_specify(feature):
+    print(f"{C}→ Step 2: Specify — {feature}{RST}")
+    proj_dir = SPECKIT_DIR / "digiminds"
+
+    prompt = f"""You are a product manager. Write a complete spec.md for this feature: {feature}
+
+Context: DigiMinds AI digital marketing agency platform.
+
+Include:
+1. Overview (what & why)
+2. User stories (As a [role], I want [goal] so that [benefit])
+3. Success criteria (measurable outcomes)
+4. Edge cases and error states
+5. What is explicitly OUT of scope
+6. Acceptance criteria
+
+NO tech stack. NO implementation details. Pure outcomes and requirements."""
+
+    content = llm_burst(prompt, models="groq,gemini,kimi")
+
+    specs_dir = proj_dir / f".specify/specs/{feature.lower().replace(' ','-')}"
+    specs_dir.mkdir(parents=True, exist_ok=True)
+    spec_file = specs_dir / "spec.md"
+    spec_file.write_text(f"# Spec: {feature}\n\nGenerated: {datetime.now().isoformat()}\n\n{content}")
+    print(f"{G}✓ spec.md written: {spec_file}{RST}")
+    save_log("spec", content)
+    return content, specs_dir
+
+# ── Step 3: Plan ──────────────────────────────────────────────────────────────
+def cmd_plan(feature, spec_content=""):
+    print(f"{C}→ Step 3+4: Plan — {feature}{RST}")
+    proj_dir = SPECKIT_DIR / "digiminds"
+
+    prompt = f"""You are a senior backend architect. Create a technical plan for: {feature}
+
+Stack: Python 3.11+, FastAPI, PostgreSQL, Redis, React 18, TypeScript, n8n workflows.
+Context: DigiMinds AI digital marketing agency.
+{'Spec context: ' + spec_content[:300] if spec_content else ''}
+
+Produce:
+1. plan.md — full technical architecture, components, data flow
+2. data-model.md — database schema with field types
+3. API contracts — key endpoints with request/response shapes
+4. Phase breakdown for implementation
+
+Be specific. No hallucinated entities."""
+
+    content = llm_burst(prompt, models="deepseek,groq,gemini")
+
+    specs_dir = proj_dir / f".specify/specs/{feature.lower().replace(' ','-')}"
+    specs_dir.mkdir(parents=True, exist_ok=True)
+    (specs_dir / "plan.md").write_text(f"# Plan: {feature}\n\n{content}")
+    print(f"{G}✓ plan.md written{RST}")
+    save_log("plan", content)
+    return content
+
+# ── Step 4: Tasks ─────────────────────────────────────────────────────────────
+def cmd_tasks(feature, plan_content=""):
+    print(f"{C}→ Step 5: Tasks — {feature}{RST}")
+    proj_dir = SPECKIT_DIR / "digiminds"
+
+    prompt = f"""Break this feature into small, ordered, reviewable tasks: {feature}
+{'Plan context: ' + plan_content[:300] if plan_content else ''}
+
+Format:
+Phase 1: Foundation [P = parallel]
+  [P] ☐ Task 1
+  [P] ☐ Task 2
+  [checkpoint: description]
+
+Phase 2: Core
+  ☐ Task 3
+  ☐ Task 4
+
+Rules: Each task reviewable in <10 min. Include [P] for parallelizable. Add checkpoints."""
+
+    content = llm_burst(prompt, models="groq,deepseek")
+
+    specs_dir = proj_dir / f".specify/specs/{feature.lower().replace(' ','-')}"
+    specs_dir.mkdir(parents=True, exist_ok=True)
+    (specs_dir / "tasks.md").write_text(f"# Tasks: {feature}\n\n{content}")
+    print(f"{G}✓ tasks.md written{RST}")
+    save_log("tasks", content)
+    return content
+
+# ── Full 6-step workflow ───────────────────────────────────────────────────────
+def cmd_run(feature):
+    print(f"\n{B}{C}Spec Kit + MAE Full Workflow: {feature}{RST}\n")
+    print(f"{Y}Running 6-step SDD via multi-LLM swarm...{RST}\n")
+
+    ts = time.time()
+    constitution = cmd_constitution(feature)
+    spec, specs_dir = cmd_specify(feature)
+    plan = cmd_plan(feature, spec)
+    tasks = cmd_tasks(feature, plan)
+
+    # MAE synthesis — final implementation roadmap
+    mae_prompt = f"Create implementation roadmap for DigiMinds feature: {feature}. Spec done. Tasks generated. Summarize key decisions, risks, parallel execution plan."
+    try:
+        r = subprocess.run([str(MAE_BIN), "run", mae_prompt[:400]], capture_output=True, text=True, timeout=120,
+            env={**os.environ, "PATH": ENV_PATH})
+        mae_output = r.stdout.strip()
+    except: mae_output = "(mae timeout)"
+
+    elapsed = round(time.time() - ts, 1)
+    summary = f"""# Spec Kit Run: {feature}
+Completed: {datetime.now().isoformat()} | Time: {elapsed}s
+
+## Artifacts
+- constitution.md ✓
+- spec.md ✓
+- plan.md ✓
+- tasks.md ✓
+
+## MAE Synthesis
+{mae_output[:1000]}
+
+## Next Steps
+1. Review spec.md — annotate what's wrong
+2. Review plan.md — correct architecture decisions
+3. Review tasks.md — break down any task >10 min
+4. Run: /speckit.implement (in Claude Code)
+"""
+    log = save_log("run-summary", summary)
+    print(f"\n{G}✓ Complete in {elapsed}s → {log}{RST}")
+    print(f"\n{B}Artifacts in: {specs_dir}{RST}")
+    return summary
+
+# ── Status ────────────────────────────────────────────────────────────────────
+def cmd_status():
+    print(f"\n{B}{C}Spec Kit Status{RST}")
+    proj = SPECKIT_DIR / "digiminds"
+    if proj.exists():
+        specs = list((proj / ".specify/specs").glob("*/spec.md")) if (proj / ".specify/specs").exists() else []
+        print(f"  Project: digiminds ✓")
+        print(f"  Specs: {len(specs)} features")
+        for s in specs:
+            print(f"    {C}• {s.parent.name}{RST}")
+    else:
+        print(f"  {Y}No project initialized{RST}")
+    print(f"  specify version: {run(f'{SPECIFY_BIN} version 2>&1 | head -1')}")
+
+# ── Main ──────────────────────────────────────────────────────────────────────
+if __name__ == "__main__":
+    cmd = sys.argv[1] if len(sys.argv) > 1 else "status"
+    arg = " ".join(sys.argv[2:]) if len(sys.argv) > 2 else ""
+
+    if cmd == "run":         cmd_run(arg or "new feature")
+    elif cmd == "init":      get_or_create_project(arg or "digiminds")
+    elif cmd == "constitution": cmd_constitution(arg or "digiminds")
+    elif cmd == "specify":   cmd_specify(arg)
+    elif cmd == "plan":      cmd_plan(arg)
+    elif cmd == "tasks":     cmd_tasks(arg)
+    elif cmd == "status":    cmd_status()
+    else: print(f"Usage: speckit-mae-bridge [run|init|constitution|specify|plan|tasks|status] <name>")

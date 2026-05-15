@@ -1,0 +1,118 @@
+#!/usr/bin/env python3
+"""
+opencli-adapter — MAE-integrated OpenCLI wrapper
+Calls any of the 144 OpenCLI site adapters with zero LLM tokens.
+
+Usage:
+  opencli-adapter search "query"                    — auto-detect best adapter
+  opencli-adapter run amazon "product name"         — specific adapter
+  opencli-adapter run arxiv "AI agents 2025"        — research papers
+  opencli-adapter run linkedin "python developer"   — people search
+  opencli-adapter list                              — show all 144 adapters
+  opencli-adapter mae "goal"                        — extract adapter from MAE goal
+
+Auto-routing by keyword:
+  amazon/shop/buy/product     → amazon
+  arxiv/paper/research/study  → arxiv
+  linkedin/people/founder/ceo → linkedin
+  github/repo/code            → github
+  news/article/press          → hackernews or techcrunch
+  job/hiring/career           → linkedin or 51job
+  reddit/community/post       → reddit
+"""
+
+import os, sys, subprocess, json, re
+from pathlib import Path
+
+NODE = Path.home() / ".nvm/versions/node/v24.14.1/bin/node"
+NPX  = Path.home() / ".nvm/versions/node/v24.14.1/bin/npx"
+OPENCLI_SRC = Path("/tmp/OpenCLI-1.7.18")
+OPENCLI_BIN = Path.home() / ".nvm/versions/node/v24.14.1/bin/opencli"
+CLIS_DIR = OPENCLI_SRC / "clis"
+
+G="\033[32m"; Y="\033[33m"; R="\033[31m"; C="\033[36m"; RST="\033[0m"; B="\033[1m"
+
+ADAPTER_KEYWORDS = {
+    "amazon":      ["amazon","buy","shop","product","price","ecommerce"],
+    "arxiv":       ["arxiv","paper","research","study","academic","journal"],
+    "linkedin":    ["linkedin","people","founder","ceo","cto","hire","career","job","b2b"],
+    "github":      ["github","repo","code","open source","library","stars"],
+    "hackernews":  ["hackernews","hn","tech news","startup","hacker"],
+    "reddit":      ["reddit","community","post","subreddit","upvote"],
+    "twitter":     ["twitter","tweet","x.com","trending","viral"],
+    "youtube":     ["youtube","video","channel","views"],
+    "google":      ["google","search","serp","seo","rank"],
+    "producthunt": ["producthunt","product hunt","launch","new product"],
+    "crunchbase":  ["crunchbase","startup","funding","investor","vc","series"],
+    "36kr":        ["36kr","china tech","chinese startup"],
+    "51job":       ["51job","china job","chinese hiring"],
+}
+
+def detect_adapter(query: str) -> str:
+    q = query.lower()
+    for adapter, keywords in ADAPTER_KEYWORDS.items():
+        if any(k in q for k in keywords):
+            return adapter
+    return "google"  # fallback
+
+def run_opencli(adapter: str, query: str) -> str:
+    env = {**os.environ, "PATH": f"{NODE.parent}:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"}
+    try:
+        # Try global opencli first
+        if OPENCLI_BIN.exists():
+            r = subprocess.run([str(OPENCLI_BIN), adapter, query],
+                capture_output=True, text=True, timeout=30, env=env)
+            if r.returncode == 0:
+                return r.stdout.strip()
+        # Fallback to npx
+        r = subprocess.run([str(NPX), "@jackwener/opencli", adapter, query],
+            capture_output=True, text=True, timeout=30, env=env, cwd=str(OPENCLI_SRC))
+        return r.stdout.strip() or r.stderr.strip() or "(no output)"
+    except Exception as e:
+        return f"opencli error: {e}"
+
+def list_adapters():
+    if CLIS_DIR.exists():
+        adapters = [d.name for d in CLIS_DIR.iterdir() if d.is_dir() and not d.name.startswith("_")]
+        print(f"{B}OpenCLI Adapters ({len(adapters)} available):{RST}")
+        for i, a in enumerate(sorted(adapters)):
+            print(f"  {C}{a}{RST}", end="  ")
+            if (i+1) % 6 == 0: print()
+        print()
+    else:
+        print(f"{Y}Adapter list not available — run from /tmp/OpenCLI-1.7.18{RST}")
+
+if __name__ == "__main__":
+    cmd = sys.argv[1] if len(sys.argv) > 1 else "search"
+
+    if cmd == "list":
+        list_adapters()
+
+    elif cmd == "run":
+        adapter = sys.argv[2] if len(sys.argv) > 2 else "google"
+        query = " ".join(sys.argv[3:]) if len(sys.argv) > 3 else ""
+        if not query:
+            print(f"{R}Usage: opencli-adapter run <adapter> <query>{RST}"); sys.exit(1)
+        print(f"{C}→ opencli:{adapter} · {query[:60]}{RST}")
+        result = run_opencli(adapter, query)
+        print(result)
+
+    elif cmd in ("search", "mae"):
+        query = " ".join(sys.argv[2:]) if len(sys.argv) > 2 else ""
+        if not query:
+            print(f"{R}Usage: opencli-adapter search <query>{RST}"); sys.exit(1)
+        adapter = detect_adapter(query)
+        print(f"{C}→ auto-routed to opencli:{adapter} · {query[:60]}{RST}")
+        result = run_opencli(adapter, query)
+        print(result)
+        # Save to tcc-logs for MAE sync
+        log = Path.home() / ".claude/tcc-logs" / f"opencli-{adapter}-{hash(query) % 10000}.txt"
+        log.write_text(f"adapter: {adapter}\nquery: {query}\n\n{result}")
+        print(f"\n{G}✓ saved → {log.name}{RST}")
+
+    else:
+        # Treat as direct search query
+        query = " ".join(sys.argv[1:])
+        adapter = detect_adapter(query)
+        print(f"{C}→ opencli:{adapter} · {query[:60]}{RST}")
+        print(run_opencli(adapter, query))
