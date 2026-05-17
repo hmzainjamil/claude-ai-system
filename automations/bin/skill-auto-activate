@@ -329,6 +329,11 @@ if match "launch.optimized|launch optimized|/launch|optimize.command|optimize co
   # Full manifest load via skill-load (loads all declared deps from manifest.json)
   "$SKILLS_BIN/skill-load" launch-optimized > /dev/null 2>&1 || true
   ACTIVATED+=("launch-optimized-manifest")
+  # Wire: launch-optimized → hermes bridge → MAE
+  on "hermes-nous-agent"
+  echo "[LAUNCH→HERMES] Bridge wired: launch-hermes-bridge → hermes-orchestrator → MAE" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+  echo "[LAUNCH→HERMES] Use: launch-hermes-bridge 'task' --mode auto" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+  (hermes-activate >/dev/null 2>&1 &)
 fi
 
 # ── G0DM0D3 / ULTRAPLINIAN / GODMODE ─────────────────────────────
@@ -507,6 +512,15 @@ if match "remote job|wfh job|work from home|find remote work|job search|remote h
   echo "[WFH-JOB-FINDER] Agent → ~/.claude/agents/remote-job-hunter-agent.md" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
   echo "[WFH-JOB-FINDER] CLI → python3 ~/.claude/bin/remote-job-hunter --daily --role 'role'" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
   echo "[WFH-JOB-FINDER] Boards: LinkedIn RemoteOK Remotive Wellfound WWR Himalayas FlexJobs Naukri Indeed + ATS operators (Lever/Greenhouse/Ashby/Workday)" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+fi
+
+# Hermes Agent — auto-activate on tool-use / agent / orchestration keywords
+if match "hermes|nous research|tool use agent|orchestrate task|multi-tool|persistent memory agent|self-evolve|evolve skill|function call.*local|local agent|hermes chat|hermes-fc|hermes orchestrat|agent memory|qwen.*local|ollama.*agent"; then
+  on "hermes-nous-agent"
+  echo "[HERMES] Auto-activated — qwen2.5:7b local | ~/.local/bin/hermes chat -q 'task' -Q" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+  echo "[HERMES] Orchestrator: ~/.claude/bin/hermes-orchestrator 'task' --mode auto" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+  echo "[HERMES] FC: ~/.claude/bin/hermes-fc 'extract structured data'" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+  (hermes-activate >/dev/null 2>&1 &)
 fi
 
 # ── Step 4: Log metrics ──────────────────────────────────────────

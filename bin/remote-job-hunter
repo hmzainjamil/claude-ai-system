@@ -6,7 +6,7 @@ DigiMinds Global | Auto-activated on: remote job / wfh / job search / find job i
 import argparse, json, os, sys, datetime, subprocess
 from pathlib import Path
 
-OUTPUT_DIR = Path.home() / "Downloads" / "job-search"
+OUTPUT_DIR = Path.home() / "Downloads" / "job-dashboards"
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 BOARDS = {

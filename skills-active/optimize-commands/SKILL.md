@@ -270,6 +270,10 @@ npm install
 | **awesome-agentic-patterns** | `~/installed-repos/awesome-agentic-patterns/` | "agentic pattern" / "agent design" / "agent blueprint" / "nibzard" | 50+ production agent patterns: ReAct, RAG, multi-agent, tool-use, AGENT.md |
 | **AI-Trader** | `~/installed-repos/AI-Trader/` | "ai trader" / "stock trading agent" / "llm trading" / "trading bot" | HKUDS LLM-powered stock trading agent — equity analysis + auto-trade |
 | **How-to-Clone-Website--Claude-Skills** | `~/installed-repos/How-to-Clone-Website---Claude-Skills/` | "clone website skill" / "website cloner skill" / "mood global" / "claude clone site" | Mood Global Claude skill for AI website cloning + ai-website-cloner-template |
+| **hermes-agent** | `~/installed-repos/hermes-agent/` | "hermes agent" / "nous agent" / "hermes run" / "hermes tool" | NousResearch full-featured agent: 30+ tools, persistent memory, 8 providers, 80+ skills, MCP support |
+| **hermes-paperclip-adapter** | `~/installed-repos/hermes-paperclip-adapter/` | "hermes paperclip" / "hermes employee" / "paperclip hermes" | Wire Hermes as Paperclip employee — built + synced to ~/installed-repos/paperclip/ |
+| **hermes-agent-self-evolution** | `~/installed-repos/hermes-agent-self-evolution/` | "evolve skill" / "self evolve" / "gepa" / "dspy evolve" / "optimize skill" | DSPy+GEPA skill evolution — auto-improves SKILL.md files via genetic search |
+| **Hermes-Function-Calling** | `~/installed-repos/Hermes-Function-Calling/` | "hermes function" / "hermes json mode" / "hermes tools" / "nous function call" | Hermes-2-Pro structured output: function calling + JSON mode + 30+ financial tools |
 
 **Bytez.com API** — 100+ free models, OpenAI-compatible:
 ```bash
@@ -835,3 +839,56 @@ The `apify-mcp-server` is already wired as MCP in `~/.mcp.json`. It gives Claude
 - Maps data (Google Maps, Yelp)
 - E-commerce (Amazon, eBay, Shopify)
 - Any website via RAG Web Browser Actor
+
+---
+
+## NOUS RESEARCH — HERMES AGENT STACK (always-on)
+
+4 repos installed at `~/installed-repos/` — auto-routed by keyword.
+
+**Auto-routing triggers:** "hermes" / "nous" / "evolve skill" / "gepa" / "dspy evolve" / "self-evolve" / "hermes function" / "hermes paperclip" / "optimize skill"
+
+| Repo | Path | Purpose | Status |
+|---|---|---|---|
+| **hermes-agent** | `~/installed-repos/hermes-agent/` | Full agent: 30+ tools, 8 providers, persistent memory, MCP | ✅ Cloned |
+| **hermes-paperclip-adapter** | `~/installed-repos/hermes-paperclip-adapter/` | Run Hermes as Paperclip employee | ✅ Built + synced |
+| **hermes-agent-self-evolution** | `~/installed-repos/hermes-agent-self-evolution/` | DSPy+GEPA: evolve SKILL.md files automatically | ✅ Installed |
+| **Hermes-Function-Calling** | `~/installed-repos/Hermes-Function-Calling/` | Structured output: function calling + JSON mode | ✅ Cloned |
+
+### Self-Evolution Quick Start
+```bash
+cd ~/installed-repos/hermes-agent-self-evolution
+
+# Evolve any SKILL.md (synthetic eval data):
+python3 -m evolution.skills.evolve_skill \
+    --skill [skill-name] \
+    --iterations 10 \
+    --eval-source synthetic
+
+# Use real session history:
+python3 -m evolution.skills.evolve_skill \
+    --skill [skill-name] \
+    --iterations 10 \
+    --eval-source sessiondb
+
+# Cost: ~$2-10 per run. No GPU. Just API calls.
+# Output: PR against hermes-agent repo with improved skill
+```
+
+### Hermes as Paperclip Employee
+1. Start Paperclip: `cd ~/installed-repos/paperclip && pnpm dev`
+2. Go to: http://127.0.0.1:3100
+3. Add Agent → Type: **Hermes** → auto-detects `~/.hermes/config.yaml`
+4. Hermes runs as managed employee with budget, goals, task tracking
+
+### Hermes Function Calling
+```bash
+cd ~/installed-repos/Hermes-Function-Calling
+pip3 install -r requirements.txt
+python3 functioncall.py --query "Current stock price of AAPL"
+python3 jsonmode.py --query "Return JSON for a SaaS company object"
+```
+
+### TCC Route
+Keyword `hermes` → routes to `hermes_local` agent via Paperclip adapter
+

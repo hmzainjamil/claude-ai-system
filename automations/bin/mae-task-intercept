@@ -44,8 +44,34 @@ For any task, deliverable, or goal the user asks for:
   6. All task outputs auto-saved to ~/.claude/tcc-logs/
   7. Paperclip CEO layer auto-synced on every mae run
 
-RAM: ${RAM_FREE_GB}GB free | MAE: ACTIVE | TCC: ACTIVE
+[HERMES AUTO-ROUTE] For tasks matching: tool use / agent / orchestrate / function call / local LLM / persistent memory / self-evolve
+  → Run: ~/.claude/bin/hermes-orchestrator "task" --mode auto
+  → Or direct: ~/.local/bin/hermes chat -q "task" -Q
+  → Model: Ollama qwen2.5:7b (local, 128K ctx, zero cost) → OpenRouter → Groq fallback
+  → Deactivate when done: ~/.claude/bin/hermes-deactivate
+
+[LAUNCH-OPTIMIZED ROUTE] For full-stack agency tasks / audits / launch-optimized:
+  → run: ~/.claude/bin/launch-hermes-bridge "task" --mode auto
+  → Pipeline: MAE Tier0 blast + Hermes tool execution + TCC logging
+  → One command fires: decompose → specialist swarm → hermes tools → output ~/Downloads/
+
+RAM: ${RAM_FREE_GB}GB free | MAE: ACTIVE | TCC: ACTIVE | HERMES: qwen2.5:7b local
 INJECT
+
+# launch-optimized → bridge → hermes + MAE
+if echo "$PROMPT" | grep -qiE "launch.?optimized|/launch|full.?audit|360.?audit|bdm.?sweep|agency.?task"; then
+  (~/.claude/bin/launch-hermes-bridge "$PROMPT" --mode auto >/dev/null 2>&1 &)
+fi
+
+# Hermes routing — tool-use and agent tasks
+if echo "$PROMPT" | grep -qiE "hermes|tool.?use|orchestrate|self.?evolv|local.?agent|function.?call.*local|agent.*memory|persistent.*memory|evolve.*skill"; then
+  (~/.claude/bin/hermes-activate >/dev/null 2>&1 &)
+fi
+
+# MAE run → always warm hermes as execution layer
+if echo "$PROMPT" | grep -qiE "^mae run|mae.?orchestrate|mae.?deploy|/hermes"; then
+  (~/.claude/bin/hermes-activate >/dev/null 2>&1 &)
+fi
 
 # ── Background: register prompt as TCC task if task-like ─────────
 # (completely non-blocking — spawns detached process)

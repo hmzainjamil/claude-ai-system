@@ -11,6 +11,60 @@ Target: remote-only, English-speaking countries + PK
 import os, sys, json, subprocess, datetime, re
 from pathlib import Path
 
+# ── HMZ Scoring Engine ────────────────────────────────────────────
+_SCOPE_YES = ["google ads","ppc","paid search","paid media","meta ads","facebook ads",
+              "media buyer","performance marketing","paid advertising","sem","roas","paid social"]
+_RATE_FLOOR_SAL = 55000
+_RATE_FLOOR_HR  = 30
+
+def hmz_score(j: dict) -> dict:
+    title   = j.get("title","").lower()
+    budget  = j.get("budget","").lower()
+    remote  = j.get("remote", False)
+    pk      = j.get("pk_compatible","MAYBE")
+    posted  = j.get("client_info",{}).get("posted","") if isinstance(j.get("client_info"),dict) else ""
+    s = 0; flags = []
+
+    # Scope (40pts)
+    hits = [kw for kw in _SCOPE_YES if kw in title]
+    if hits: s += 40
+    else: s += 15; flags.append("scope weak")
+
+    # Remote (20pts)
+    if remote: s += 20
+    else: flags.append("NOT remote")
+
+    # Pay (20pts)
+    pay_ok = False
+    for part in budget.replace("–","-").replace("$","").replace(",","").split("-"):
+        for tok in part.strip().split():
+            try:
+                v = float(tok.replace("/yr","").replace("/hr",""))
+                if v >= _RATE_FLOOR_SAL or (_RATE_FLOOR_HR <= v < 1000): pay_ok = True
+            except: pass
+    if pay_ok: s += 20
+    elif "n/a" in budget: s += 8; flags.append("no pay listed")
+    else: s += 5; flags.append("pay unclear")
+
+    # PK (10pts)
+    if pk == "YES": s += 10
+    elif pk == "MAYBE": s += 8
+    else: s -= 20; flags.append("PK BLOCKED")
+
+    # Freshness (10pts)
+    import datetime as _dt
+    today_str = _dt.date.today().strftime("%Y-%m-%d")
+    week_ago  = (_dt.date.today() - _dt.timedelta(days=7)).strftime("%Y-%m-%d")
+    if posted >= today_str[:8].rstrip("-")+"1": s += 10  # this month
+    elif posted >= week_ago: s += 7
+    else: s += 3; flags.append(f"stale:{posted}")
+
+    rec = "APPLY" if s >= 80 else ("VERIFY" if s >= 60 else "SKIP")
+    j["hmz_score"] = s
+    j["hmz_rec"]   = rec
+    j["hmz_flags"] = flags
+    return j
+
 HOME       = Path.home()
 DATA_DIR   = HOME / ".claude/agency/data"
 TODAY      = datetime.date.today().strftime("%Y%m%d")
@@ -164,11 +218,15 @@ def pk_compatibility_check(title: str, description: str, location: str = "", cou
     if any(w in text for w in ["contract", "freelance", "per project", "hourly"]):
         return {"status": "MAYBE", "reason": "Contract role — likely open to international contractors", "safe_to_apply": True}
 
-    # Default for remote roles with no explicit restriction
+    # Default for remote roles with no explicit restriction — assume safe (contractor context)
     if "remote" in text:
-        return {"status": "MAYBE", "reason": "Remote role — no explicit work auth requirement found. Verify before applying.", "safe_to_apply": True}
+        return {"status": "YES", "reason": "Remote role — no auth restriction found", "safe_to_apply": True}
 
-    return {"status": "MAYBE", "reason": "No location data — verify manually", "safe_to_apply": False}
+    # Non-remote US/UK full-time = likely requires local auth
+    if country in ("US", "GB", "CA", "AU") and "remote" not in text:
+        return {"status": "NO", "reason": f"On-site {country} role — local auth likely required", "safe_to_apply": False}
+
+    return {"status": "YES", "reason": "No blocking signals found", "safe_to_apply": True}
 
 def run_mcp_search(search: str, country_code: str, job_type: str = None) -> list:
     """
@@ -196,14 +254,17 @@ Return ONLY the JSON array, no other text."""
             env={**os.environ, "HOME": str(HOME)}
         )
         output = result.stdout.strip()
-        # Extract JSON array from output
+        if not output:
+            log(f"  ⚠️  Empty output from claude --print ({country_code}) — MCP likely unavailable headlessly")
+            return []
         m = re.search(r'\[.*\]', output, re.DOTALL)
         if m:
             return json.loads(m.group())
+        log(f"  ⚠️  No JSON array in output: {output[:120]}")
     except subprocess.TimeoutExpired:
         log(f"  Timeout: {country_code} '{search[:40]}'")
-    except json.JSONDecodeError:
-        pass
+    except json.JSONDecodeError as e:
+        log(f"  JSON parse error: {e}")
     except Exception as e:
         log(f"  Error: {e}")
     return []
@@ -244,8 +305,13 @@ def main():
     if OUTPUT.exists():
         cached = json.loads(OUTPUT.read_text())
         if cached.get("date") == TODAY and len(cached.get("jobs",[])) > 0:
-            log(f"Cache hit: {len(cached['jobs'])} jobs from today — skipping re-fetch")
-            print(json.dumps(cached["jobs"]))
+            # Re-score in case benchmarks changed
+            rescored = [hmz_score(j) for j in cached["jobs"]]
+            rescored.sort(key=lambda x: -x.get("hmz_score",0))
+            cached["jobs"] = rescored
+            OUTPUT.write_text(json.dumps(cached, indent=2))
+            log(f"Cache hit: {len(rescored)} jobs from today (rescored) — skipping re-fetch")
+            print(json.dumps(rescored))
             return
 
     all_jobs = []
@@ -270,6 +336,7 @@ def main():
                 log(f"    ❌ PK-BLOCKED: {title[:50]} — {normalized['pk_reason']}")
                 continue
 
+            normalized = hmz_score(normalized)
             all_jobs.append(normalized)
         log(f"    → {len(raw)} found | PK-blocked: {rejected_pk} | accepted: {len(all_jobs)} total")
 
@@ -277,13 +344,17 @@ def main():
     pk_maybe = len([j for j in all_jobs if j["pk_compatible"] == "MAYBE"])
     log(f"\nTotal: {len(all_jobs)} PK-compatible jobs ({pk_yes} confirmed ✅ | {pk_maybe} unverified ⚠️)")
 
-    # Save cache
-    OUTPUT.write_text(json.dumps({
-        "date":  TODAY,
-        "count": len(all_jobs),
-        "jobs":  all_jobs
-    }, indent=2))
-    log(f"Saved → {OUTPUT}")
+    # Save cache — ONLY if we got results (never clobber good cache with 0)
+    if all_jobs:
+        OUTPUT.write_text(json.dumps({
+            "date":  TODAY,
+            "count": len(all_jobs),
+            "jobs":  all_jobs
+        }, indent=2))
+        log(f"Saved → {OUTPUT}")
+    else:
+        log("⚠️  0 jobs from claude --print (MCP not available headlessly). Cache preserved.")
+        log("FIX: Run sweep interactively in Claude Code session to populate cache.")
 
     # Output for BDM pipeline to consume
     print(json.dumps(all_jobs))

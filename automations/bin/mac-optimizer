@@ -1,0 +1,75 @@
+import subprocess, json, re
+from pathlib import Path
+
+# Detect chip
+def detect():
+    hw = subprocess.check_output(["system_profiler","SPHardwareDataType"]).decode()
+    chip  = re.search(r'Chip:\s+(.+)', hw)
+    mem   = re.search(r'Memory:\s+(\d+)', hw)
+    cores = re.search(r'Total Number of Cores:\s+(\d+)\s+\((\d+)\s+Performance.*?(\d+)\s+Efficiency', hw)
+    return {
+        "chip":     chip.group(1).strip() if chip else "Unknown",
+        "ram_gb":   int(mem.group(1)) if mem else 8,
+        "p_cores":  int(cores.group(2)) if cores else 4,
+        "e_cores":  int(cores.group(3)) if cores else 2,
+        "total_cores": int(cores.group(1)) if cores else 8,
+    }
+
+hw = detect()
+
+# M-chip RAM tiers → tuned parameters
+ram = hw["ram_gb"]
+p   = hw["p_cores"]
+e   = hw["e_cores"]
+
+if ram >= 32:    tier = "pro"
+elif ram >= 16:  tier = "mid"
+else:            tier = "base"   # 8GB
+
+profile = {
+    **hw,
+    "tier": tier,
+    # Unified Memory allocation
+    "uma": {
+        "ollama_vram_gb":  8 if ram >= 16 else 5,   # qwen2.5:7b headroom
+        "os_reserve_gb":  6,
+        "mae_threads_gb": 0.5,                       # cloud threads ~0 RAM
+        "free_headroom_gb": ram - (8 if ram>=16 else 5) - 6,
+    },
+    # P-core → MAE cloud swarm (parallel API threads, ~0 RAM each)
+    "mae": {
+        "max_cloud_threads": p,         # 1 thread per P-core
+        "batch_size":        p,         # full P-core utilization
+        "synthesis_timeout": 45,
+        "swarm_timeout":     60,
+    },
+    # E-core → background ops (TCC, ctx writes, keep-alive)
+    "background": {
+        "e_cores":       e,
+        "tcc_workers":   e,
+        "ctx_writer":    1,
+    },
+    # Neural-Engine analogue → Ollama/Hermes (local inference)
+    "hermes": {
+        "model":              "qwen2.5:7b",
+        "max_parallel_tasks": 3 if ram >= 32 else (2 if ram >= 16 else 1),
+        "keep_alive_min":     30 if ram >= 32 else 10,
+        "task_timeout":       90,
+        "context_length":     131072,
+    },
+    # Thermal thresholds (M1 Pro runs cooler → higher thresholds OK)
+    "thermal": {
+        "wait_threshold":    70,   # wait before spawning
+        "kill_threshold":    88,   # kill running phase
+        "battery_threshold": 50,   # never fire heavy on battery below this %
+    },
+    # Unified Memory bus (shared ctx file)
+    "shared_memory": {
+        "ctx_file": str(Path.home() / ".claude/mae-hermes-ctx.json"),
+        "log_dir":  str(Path.home() / ".claude/tcc-logs"),
+    }
+}
+
+out = Path.home() / ".claude/mac-profile.json"
+out.write_text(json.dumps(profile, indent=2))
+print(json.dumps(profile, indent=2))

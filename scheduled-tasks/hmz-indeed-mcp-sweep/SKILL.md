@@ -58,7 +58,7 @@ Hard reject if:
 Deduplicate by job ID. Take top 15 scoring jobs.
 
 ### STEP 5: Build HTML Report
-Create /Users/mc/Downloads/HMZ-Indeed-MCP-[DATE]-[TIME].html
+Create /Users/mc/Downloads/job-dashboards/HMZ-Indeed-MCP-[DATE]-[TIME].html
 Structure:
 - Header: "HMZ INDEED MCP REPORT — [DATE] [TIME] — [N] JOBS FOUND"
 - Each job card: Score badge (≥80=green, 60-79=amber, <60=red), Title, Company, Salary/Rate, Posted, Location, Apply button

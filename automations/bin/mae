@@ -38,31 +38,47 @@ def p(text, color=None):
     print(f"{c}{text}{RESET}", flush=True)
 
 # ─── RAM Guard ───────────────────────────────────────────────────────────────
-def get_free_ram_gb() -> float:
-    """Returns free+inactive RAM in GB. Never starts local inference if < 2GB."""
+def _load_mac_profile() -> dict:
+    """Load hardware profile (M-chip aware). Falls back to safe defaults."""
+    p = Path.home() / ".claude/mac-profile.json"
     try:
-        import re, subprocess
-        out = subprocess.check_output(["vm_stat"], timeout=3).decode()
-        free  = int(re.search(r"Pages free:\s+(\d+)", out).group(1))
-        inact = int(re.search(r"Pages inactive:\s+(\d+)", out).group(1))
+        return json.loads(p.read_text())
+    except Exception:
+        return {"tier":"base","ram_gb":8,"p_cores":4,"e_cores":2,
+                "mae":{"batch_size":4},"hermes":{"max_parallel_tasks":1,"keep_alive_min":10},
+                "thermal":{"wait_threshold":65,"kill_threshold":85}}
+
+MAC = _load_mac_profile()
+
+def get_free_ram_gb() -> float:
+    """Returns free+inactive RAM in GB (Unified Memory — same pool for CPU/GPU/NE)."""
+    try:
+        import re as _re, subprocess as _sp
+        out = _sp.check_output(["vm_stat"], timeout=3).decode()
+        free  = int(_re.search(r"Pages free:\s+(\d+)", out).group(1))
+        inact = int(_re.search(r"Pages inactive:\s+(\d+)", out).group(1))
         return round((free + inact) * 4096 / 1024**3, 1)
     except Exception:
-        return 4.0  # assume safe if check fails
+        return float(MAC["ram_gb"]) * 0.4  # assume 40% free
 
 def ram_safe(min_gb=1.5) -> bool:
     return get_free_ram_gb() >= min_gb
 
 def max_parallel_threads() -> int:
     """
-    Wave batch size — controls how many threads run concurrently.
-    ALL tasks and ALL models always run — this only controls concurrency
-    to prevent RAM spike. Lower RAM = smaller waves, same total work.
+    M-chip P-core aware batch size.
+    Cloud threads (~0 RAM each) → run up to P-core count simultaneously.
+    Hermes tasks (8GB RAM each) → capped separately by max_parallel_tasks.
+    ALL tasks always run — this controls wave concurrency only.
     """
+    # Profile-driven: M1 Pro = 6 P-cores → 6 cloud threads at once
+    profile_batch = MAC.get("mae", {}).get("batch_size", 4)
+    # Runtime adjustment based on free RAM (UMA pressure)
     gb = get_free_ram_gb()
-    if gb >= 4.0: return 9    # all at once
-    if gb >= 2.5: return 6    # two fast waves
-    if gb >= 1.5: return 4    # three waves
-    return 3                   # small waves, everything still runs
+    if gb >= 8.0:   return profile_batch        # full P-core count
+    if gb >= 4.0:   return max(4, profile_batch // 2)
+    if gb >= 2.0:   return 3
+    return 2
 
 # ─── LLM Executor ────────────────────────────────────────────────────────────
 def _load_env() -> dict:
@@ -203,6 +219,54 @@ def call_llm_burst(prompt: str) -> str:
     cmd = f"source ~/.claude/tier0.env 2>/dev/null && ~/.claude/bin/llm-burst '{safe[:400]}' 2>/dev/null"
     r = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=90)
     return r.stdout.strip() or r.stderr.strip() or "(no output)"
+
+def call_hermes_fc(prompt: str) -> str:
+    """
+    Hermes partner call — routes to local qwen2.5:7b via hermes-fc.
+    Used for: tool execution, structured output, file ops, code run, web.
+    Hermes uses LOCAL RAM (qwen2.5:7b) — complementary to MAE cloud blast.
+    Falls back to Ollama direct if hermes-fc unavailable.
+    """
+    hermes_fc = str(Path.home() / ".claude/bin/hermes-fc")
+    hermes_bin = str(Path.home() / ".local/bin/hermes")
+    ctx_file   = str(Path.home() / ".claude/mae-hermes-ctx.json")
+
+    # Write task to shared context so Hermes can reference MAE's goal
+    try:
+        import json as _json
+        ctx = {"task": prompt[:500], "source": "mae", "ts": datetime.now().isoformat()}
+        Path(ctx_file).write_text(_json.dumps(ctx))
+    except Exception:
+        pass
+
+    # Try hermes-fc first (structured / function calling mode)
+    if os.path.exists(hermes_fc):
+        try:
+            r = subprocess.run(
+                [hermes_fc, prompt[:400]],
+                capture_output=True, text=True, timeout=120
+            )
+            out = r.stdout.strip()
+            if out and not out.startswith("["):
+                return f"[HERMES-FC] {out}"
+        except Exception as e:
+            pass
+
+    # Try hermes chat -q (full tool-use mode)
+    if os.path.exists(hermes_bin):
+        try:
+            r = subprocess.run(
+                [hermes_bin, "chat", "-q", prompt[:400], "-Q"],
+                capture_output=True, text=True, timeout=120
+            )
+            out = r.stdout.strip()
+            if out:
+                return f"[HERMES] {out}"
+        except Exception as e:
+            pass
+
+    # Final fallback: Ollama direct
+    return call_ollama(prompt, model="qwen2.5:7b")
 
 # ─── Task Decomposer ─────────────────────────────────────────────────────────
 DECOMPOSE_PROMPT = """You are a task decomposer for an AI automation system.
@@ -362,6 +426,18 @@ def run_daily_ops():
     subprocess.run([str(TCC), "queue"])
 
 # ─── Specialist Agent Roles ───────────────────────────────────────────────────
+TOOL_TASK_KEYWORDS = [
+    "execute", "run", "search", "find", "fetch", "scrape", "browse", "read file",
+    "write file", "code", "script", "install", "check", "verify", "test", "deploy",
+    "create file", "list", "download", "upload", "extract", "parse", "call api",
+    "query", "database", "terminal", "shell", "command", "git", "build", "compile"
+]
+
+def is_tool_task(task: str) -> bool:
+    """Detect if a subtask needs Hermes tool execution vs cloud LLM thinking."""
+    t = task.lower()
+    return any(kw in t for kw in TOOL_TASK_KEYWORDS)
+
 SPECIALIST_ROLES = {
     "researcher":   "You are a research specialist. Find facts, data, and insights. Be thorough and cite specifics.",
     "strategist":   "You are a senior strategist. Think big picture, competitive positioning, and long-term impact.",
@@ -370,23 +446,28 @@ SPECIALIST_ROLES = {
     "tactician":    "You are an implementation tactician. Give step-by-step actionable execution plans.",
     "critic":       "You are a constructive critic. Find weaknesses, risks, and gaps in the approach.",
     "optimizer":    "You are an optimization expert. Find efficiencies, cost savings, and performance gains.",
+    # Hermes partner role — local tool execution, zero cloud cost
+    "executor":     "You are Hermes, a local AI agent with 30+ tools. Execute tasks using file, shell, web, code, and memory tools. Return concrete results.",
 }
 
 def run_specialist_agent(role: str, task: str, goal_context: str) -> dict:
-    """Run a single specialist agent on a specific task."""
+    """Run a single specialist agent on a specific task.
+    executor role → Hermes (local tools, qwen2.5:7b)
+    all other roles → Tier-0 cloud LLMs (zero local RAM)
+    """
     system = SPECIALIST_ROLES.get(role, "You are a helpful expert.")
     prompt = f"Context: {goal_context[:200]}\n\nYour task ({role}): {task}"
 
-    # Route to best LLM for the role
-    # Full Tier 0 routing: Groq/Gemini/DeepSeek/Ollama — every model participates
     role_model = {
-        "researcher": call_gemini,     # Gemini: best for research + long context
-        "strategist": call_deepseek,   # DeepSeek: best reasoning
-        "copywriter": call_groq,       # Groq: fastest for creative/copy
-        "analyst":    call_deepseek,   # DeepSeek: analytical precision
-        "tactician":  call_groq,       # Groq: fast execution plans
-        "critic":     call_gemini,     # Gemini: broad knowledge for critique
-        "optimizer":  call_llm_burst,  # llm-burst: best model wins for optimization
+        "researcher": call_gemini,      # Gemini: research + long context
+        "strategist": call_deepseek,    # DeepSeek: reasoning
+        "copywriter": call_groq,        # Groq: fastest for creative/copy
+        "analyst":    call_deepseek,    # DeepSeek: analytical precision
+        "tactician":  call_groq,        # Groq: fast execution plans
+        "critic":     call_gemini,      # Gemini: broad critique
+        "optimizer":  call_llm_burst,   # llm-burst: best model wins
+        # ↓ Hermes partner — local tool execution, cloud-independent
+        "executor":   call_hermes_fc,   # Hermes: qwen2.5:7b + 30 tools, zero API cost
     }
     fn = role_model.get(role, call_llm_burst)
 
@@ -405,13 +486,27 @@ def parallel_specialist_swarm(goal: str, sub_tasks: list) -> list:
     Parallel thread count capped by available RAM — never overloads machine.
     Returns list of results with role + output.
     """
-    # RAM-aware batching — ALL tasks run, but in waves to avoid memory spike
+    # ── Synergistic assignment: tool tasks → Hermes executor, thinking → cloud ──
+    # Tool tasks use LOCAL RAM (Hermes/qwen2.5:7b) — zero cloud cost
+    # Thinking tasks use ZERO LOCAL RAM (Groq/Gemini/DeepSeek) — pure network
+    # Both categories run simultaneously — no resource conflict
     free_ram = get_free_ram_gb()
-    batch_size = max_parallel_threads()  # concurrent threads per wave
-    p(f"  RAM: {free_ram}GB free → {batch_size} concurrent per wave (all {len(sub_tasks)} tasks will run)", "y")
+    batch_size = max_parallel_threads()
 
-    roles = list(SPECIALIST_ROLES.keys())
-    assignments = [(roles[i % len(roles)], task) for i, task in enumerate(sub_tasks)]
+    cloud_roles = ["researcher","strategist","copywriter","analyst","tactician","critic","optimizer"]
+    assignments = []
+    hermes_count = 0
+    for i, task in enumerate(sub_tasks):
+        if is_tool_task(task) and hermes_count < 2:  # max 2 concurrent Hermes tasks (RAM guard)
+            assignments.append(("executor", task))
+            hermes_count += 1
+            p(f"    → [executor/HERMES] {task[:60]}", "y")
+        else:
+            role = cloud_roles[i % len(cloud_roles)]
+            assignments.append((role, task))
+            p(f"    → [{role:12}/cloud] {task[:60]}", "c")
+
+    p(f"\n  ⚡ MAE+HERMES swarm: {len(assignments)} agents | {hermes_count} Hermes (local) + {len(assignments)-hermes_count} cloud", "g")
 
     results = [None] * len(assignments)
     lock = threading.Lock()
@@ -420,17 +515,24 @@ def parallel_specialist_swarm(goal: str, sub_tasks: list) -> list:
         r = run_specialist_agent(role, task, goal)
         with lock:
             results[idx] = r
-        p(f"    ✓ [{role:12}] {task[:55]}", "g")
+        icon = "🔧" if role == "executor" else "☁"
+        p(f"    ✓ {icon} [{role:12}] {task[:55]}", "g")
 
-    p(f"\n  ⚡ Launching ALL {len(assignments)} agents in wave batches of {batch_size}...", "g")
-    # Wave execution: every agent runs, batched to cap concurrent RAM usage
-    # Cloud API calls (Groq/Gemini/DeepSeek) use ~0MB RAM — only network threads
-    for wave_start in range(0, len(assignments), batch_size):
-        wave = list(enumerate(assignments[wave_start:wave_start + batch_size]))
-        threads = [threading.Thread(target=run, args=(wave_start + i, role, task))
-                   for i, (role, task) in wave]
-        for t in threads: t.start()
-        for t in threads: t.join(timeout=60)
+    # Cloud tasks: batch by batch_size (no RAM concern)
+    # Hermes tasks: always in separate wave (RAM guard — never concurrent with each other)
+    cloud_batch = [(i, r, t) for i, (r, t) in enumerate(assignments) if r != "executor"]
+    hermes_batch = [(i, r, t) for i, (r, t) in enumerate(assignments) if r == "executor"]
+
+    # Fire cloud wave first (fast, parallel)
+    for wave_start in range(0, len(cloud_batch), batch_size):
+        wave = cloud_batch[wave_start:wave_start + batch_size]
+        threads = [threading.Thread(target=run, args=(i, r, t)) for i, r, t in wave]
+        for th in threads: th.start()
+        for th in threads: th.join(timeout=60)
+
+    # Fire Hermes tasks sequentially (each needs local RAM — no overlap)
+    for i, r, t in hermes_batch:
+        run(i, r, t)
 
     return [r for r in results if r]
 
@@ -531,8 +633,10 @@ def cmd_run(args):
         except Exception as e:
             p(f"    ✗ {name}: {e}", "r")
 
-    # All Tier 0: cloud APIs (zero RAM) + Ollama local (queued after cloud)
-    # Ollama always runs — just after cloud APIs finish to avoid concurrent RAM spike
+    # Cloud blast runs simultaneously with Hermes tool execution (Phase 2)
+    # No Ollama here — Hermes executor already covered local inference in Phase 2
+    p(f"    Cloud: Groq-70B + Gemini-Flash + DeepSeek-V3 (zero local RAM)", "c")
+    p(f"    Local: Hermes/qwen2.5:7b already fired in Phase 2 (tool tasks)", "y")
     blast_threads = [
         threading.Thread(target=blast_run, args=("Groq-70B",    call_groq, goal, "llama-3.3-70b-versatile")),
         threading.Thread(target=blast_run, args=("Gemini-Flash", call_gemini, goal)),
@@ -541,14 +645,16 @@ def cmd_run(args):
     for t in blast_threads: t.start()
     for t in blast_threads: t.join(timeout=45)
 
-    # Ollama always runs — after cloud wave to avoid RAM contention
-    p(f"    + Ollama/Llama3 (local — queued after cloud wave)...", "c")
-    try:
-        ollama_out = call_ollama(goal[:400])
-        blast_results["Ollama-Llama3"] = ollama_out
-        p(f"    ✓ Ollama-Llama3", "g")
-    except Exception as e:
-        p(f"    ✗ Ollama: {e}", "r")
+    # Pull Hermes tool results from shared context if available
+    ctx_file = Path.home() / ".claude/mae-hermes-ctx.json"
+    if ctx_file.exists():
+        try:
+            ctx = json.loads(ctx_file.read_text())
+            if ctx.get("hermes_result"):
+                blast_results["Hermes-Local"] = ctx["hermes_result"]
+                p(f"    ✓ Hermes-Local (from shared ctx)", "g")
+        except Exception:
+            pass
 
     # ════════════════════════════════════════════════════════════════════════
     # PHASE 4 — Master synthesis: combine ALL agent outputs into ONE

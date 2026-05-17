@@ -88,7 +88,7 @@ These are often direct-hire with no middleman. Filter. Take top 4.
 **STEP 1: Deduplicate** — same job posted on multiple platforms = keep highest-scoring instance only
 
 **STEP 2: Build HTML Report**
-Save: `/Users/mc/Downloads/HMZ-BDM-Morning-[DATE].html`
+Save: `/Users/mc/Downloads/job-dashboards/HMZ-BDM-Morning-[DATE].html`
 - Header: "HMZ BDM MORNING REPORT — [DATE] — [N] JOBS · [N] PLATFORMS"
 - Platform sections with counts
 - Job cards: Score badge (≥80=green, 60-79=amber), Title, Company, Platform, Salary, Posted, Location, Apply button
@@ -100,7 +100,7 @@ Subject: "🎯 HMZ Morning — [N] Jobs / [N] Platforms — [DATE]"
 Body: top 15 jobs sorted by score, with apply links
 
 **STEP 4: Save latest**
-Copy to `/Users/mc/Downloads/HMZ-BDM-Latest.html`
+Copy to `/Users/mc/Downloads/job-dashboards/HMZ-BDM-Latest.html`
 
 **STEP 5: Mark complete (MANDATORY)**
 Run: `python3 /Users/mc/.claude/bin/hmz-bdm-state-update hmz-bdm-morning-sweep`

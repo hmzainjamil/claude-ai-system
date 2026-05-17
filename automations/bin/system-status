@@ -1,0 +1,67 @@
+#!/usr/bin/env bash
+source ~/.zshrc 2>/dev/null
+# system-status — full health check of the HMZ agent stack
+echo "=== HMZ SYSTEM STATUS ==="
+echo ""
+
+check() {
+  local name="$1"; local cmd="$2"
+  if eval "$cmd" >/dev/null 2>&1; then
+    echo "  ✓ $name"
+  else
+    echo "  ✗ $name"
+  fi
+}
+
+echo "[ MODEL LAYER ]"
+check "Sonnet default (settings.json)" "grep -q 'claude-sonnet-4-6' ~/.claude/settings.json"
+check "No Haiku as default" "! grep -q 'claude-haiku' ~/.claude/settings.json"
+check "GROQ_API_KEY set" "[ -n \"\$GROQ_API_KEY\" ]"
+check "OPENROUTER_API_KEY set" "[ -n \"\$OPENROUTER_API_KEY\" ]"
+check "KIMI_API_KEY set" "[ -n \"\$KIMI_API_KEY\" ]"
+
+echo ""
+echo "[ HERMES AGENT ]"
+HERMES_BIN=$(find -L "$HOME/.local/bin" -name "hermes" -perm +111 2>/dev/null | head -1)
+if [ -n "$HERMES_BIN" ]; then
+  VER=$("$HERMES_BIN" --version 2>/dev/null | head -1)
+  echo "  ✓ hermes binary: $HERMES_BIN ($VER)"
+else
+  echo "  ⏳ hermes: installing... (check: find ~/.hermes -name hermes -executable)"
+fi
+check "hermes config" "[ -f ~/.hermes/config.yaml ]"
+check "hermes .env" "[ -f ~/.hermes/.env ]"
+check "hermes-agent repo" "[ -d ~/installed-repos/hermes-agent ] && [ $(ls ~/installed-repos/hermes-agent | wc -l) -gt 5 ]"
+check "hermes-paperclip-adapter built" "[ -f ~/installed-repos/paperclip/server/node_modules/hermes-paperclip-adapter/dist/index.js ]"
+check "adapter v0.3.0" "grep -q '0.3.0' ~/installed-repos/paperclip/server/node_modules/hermes-paperclip-adapter/package.json"
+
+echo ""
+echo "[ SELF-EVOLUTION ]"
+check "hermes-agent-self-evolution installed" "cd ~/installed-repos/hermes-agent-self-evolution && python3 -c 'import evolution'"
+check "evolve-skill wrapper" "[ -x ~/.claude/bin/evolve-skill ]"
+check "hermes-fc wrapper" "[ -x ~/.claude/bin/hermes-fc ]"
+
+echo ""
+echo "[ FUNCTION CALLING ]"
+check "Hermes-Function-Calling repo" "[ -f ~/installed-repos/Hermes-Function-Calling/functioncall.py ]"
+check "hermes-fc API wrapper" "[ -x ~/.claude/bin/hermes-fc ]"
+
+echo ""
+echo "[ AUTOMATION ]"
+check "SessionStart hermes-autodetect hook" "grep -q 'hermes-autodetect' ~/.claude/settings.json"
+check "hermes-watch LaunchAgent" "launchctl list ai.hmz.hermes-watch 2>/dev/null | grep -q hermes"
+check "MAE hermes route" "[ -f ~/.claude/mae-routes/hermes.json ]"
+check "TCC hermes route" "grep -q 'hermes_local' ~/.claude/bin/tcc"
+check "SKILL.md routing entry" "grep -q 'hermes-agent-self-evolution' ~/.claude/skills/optimize-commands/SKILL.md"
+
+echo ""
+echo "[ PAPERCLIP ]"
+PCSTATUS=$(curl -s http://127.0.0.1:3100/api/health 2>/dev/null | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('version','?'))" 2>/dev/null)
+if [ -n "$PCSTATUS" ]; then
+  echo "  ✓ Paperclip: running v$PCSTATUS"
+else
+  echo "  ✗ Paperclip: not running (start: cd ~/installed-repos/paperclip && pnpm dev)"
+fi
+
+echo ""
+echo "Run anytime: system-status"

@@ -11,7 +11,8 @@ from pathlib import Path
 
 HOME       = Path.home()
 DATA_DIR   = HOME / ".claude/agency/data"
-REPORT_DIR = HOME / "Downloads"
+REPORT_DIR = HOME / "Downloads/job-dashboards"
+REPORT_DIR.mkdir(parents=True, exist_ok=True)
 TODAY      = datetime.date.today().strftime("%Y%m%d")
 NOW        = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
 NOW_FILE   = datetime.datetime.now().strftime("%Y%m%d-%H%M")
@@ -56,8 +57,12 @@ def generate_html(jobs, source):
     pk_no    = [j for j in jobs if j.get("pk_compatible") == "NO"]
     contracts= [j for j in jobs if "contract" in (j.get("job_type","") + j.get("description","") + str(j.get("client_info",""))).lower()]
 
-    # Sort: YES first, MAYBE second, NO last
-    sorted_jobs = pk_yes + pk_maybe + pk_no
+    # Sort by HMZ score (highest first)
+    sorted_jobs = sorted(jobs, key=lambda x: -x.get("hmz_score", 0))
+
+    apply_count  = len([j for j in jobs if j.get("hmz_rec") == "APPLY"])
+    verify_count = len([j for j in jobs if j.get("hmz_rec") == "VERIFY"])
+    skip_count   = len([j for j in jobs if j.get("hmz_rec") == "SKIP"])
 
     job_rows = ""
     for i, j in enumerate(sorted_jobs, 1):
@@ -67,25 +72,42 @@ def generate_html(jobs, source):
         posted   = j.get("client_info",{}).get("posted","") if isinstance(j.get("client_info"),dict) else j.get("posted_at","")
         url      = j.get("url","") or j.get("apply_url","")
         budget   = j.get("budget","")
-        source_p = j.get("source","indeed")
         pk_status= j.get("pk_compatible","MAYBE")
-        pk_rsn   = j.get("pk_reason","") or j.get("safe_to_apply","")
+        pk_rsn   = j.get("pk_reason","") or ""
         country  = j.get("client_info",{}).get("country","") if isinstance(j.get("client_info"),dict) else ""
+        hmz_sc   = j.get("hmz_score", 0)
+        hmz_rec  = j.get("hmz_rec", "VERIFY")
+        hmz_flags= j.get("hmz_flags", [])
 
-        row_class = "row-yes" if pk_status=="YES" else ("row-no" if pk_status=="NO" else "row-maybe")
-        apply_btn = f'<a href="{url}" target="_blank" class="apply-btn">Apply →</a>' if url else '<span class="no-url">No link</span>'
+        rec_color = {"APPLY":"#2ea043","VERIFY":"#d29922","SKIP":"#da3633"}.get(hmz_rec,"#8b949e")
+        rec_bg    = {"APPLY":"#0d2d1a","VERIFY":"#2d1f00","SKIP":"#2d0c0c"}.get(hmz_rec,"#161b22")
+        row_class = {"APPLY":"row-yes","VERIFY":"row-maybe","SKIP":"row-no"}.get(hmz_rec,"row-maybe")
+
+        score_bar_w = max(4, hmz_sc)
+        score_color = "#3fb950" if hmz_sc>=80 else ("#e3b341" if hmz_sc>=60 else "#f85149")
+
+        apply_btn = f'<a href="{url}" target="_blank" class="apply-btn rec-{hmz_rec.lower()}">{hmz_rec} →</a>' if url else f'<span class="no-url">{hmz_rec}</span>'
+
+        flags_html = ""
+        if hmz_flags:
+            flags_html = "<br>" + " ".join(f'<span class="flag-tag">{f}</span>' for f in hmz_flags)
 
         job_rows += f"""
         <tr class="{row_class}">
             <td class="rank">#{i}</td>
+            <td class="score-cell">
+                <div class="score-num" style="color:{score_color}">{hmz_sc}</div>
+                <div class="score-bar-bg"><div class="score-bar-fill" style="width:{score_bar_w}%;background:{score_color}"></div></div>
+            </td>
             <td class="title-cell">
                 <div class="job-title">{title}</div>
                 <div class="company">{company}</div>
+                {flags_html}
             </td>
             <td>{location}<br><small>{country}</small></td>
             <td>{salary_display(budget)}</td>
             <td>{posted or "—"}</td>
-            <td>{pk_badge(pk_status)}<br><small class="pk-reason">{pk_rsn[:60] if pk_rsn else ""}</small></td>
+            <td>{pk_badge(pk_status)}</td>
             <td>{apply_btn}</td>
         </tr>"""
 
@@ -171,6 +193,18 @@ def generate_html(jobs, source):
 
   .footer {{ text-align:center; color: var(--muted); font-size:12px; padding: 20px; border-top: 1px solid var(--border); }}
   small {{ color: var(--muted); font-size:11px; }}
+
+  .score-cell {{ width:70px; text-align:center; }}
+  .score-num {{ font-size:20px; font-weight:700; line-height:1; }}
+  .score-bar-bg {{ background:#30363d; border-radius:3px; height:4px; margin-top:4px; }}
+  .score-bar-fill {{ height:4px; border-radius:3px; transition:.3s; }}
+
+  .flag-tag {{ display:inline-block; background:#161b22; border:1px solid #30363d;
+    color:#8b949e; font-size:10px; padding:1px 6px; border-radius:10px; margin:2px 1px 0; }}
+
+  .apply-btn.rec-apply  {{ background:#238636; }}
+  .apply-btn.rec-verify {{ background:#9e6a03; }}
+  .apply-btn.rec-skip   {{ background:#6e3535; pointer-events:none; opacity:.6; }}
 </style>
 </head>
 <body>
@@ -188,27 +222,27 @@ def generate_html(jobs, source):
 <div class="stats">
   <div class="stat-card">
     <div class="stat-num">{len(jobs)}</div>
-    <div class="stat-label">Total Jobs Found</div>
+    <div class="stat-label">Total Jobs</div>
   </div>
   <div class="stat-card green">
-    <div class="stat-num">{len(pk_yes)}</div>
-    <div class="stat-label">✅ PK Safe (Apply Now)</div>
+    <div class="stat-num">{apply_count}</div>
+    <div class="stat-label">✅ APPLY (score ≥80)</div>
   </div>
   <div class="stat-card amber">
-    <div class="stat-num">{len(pk_maybe)}</div>
-    <div class="stat-label">⚠️ Verify Before Apply</div>
+    <div class="stat-num">{verify_count}</div>
+    <div class="stat-label">⚠️ VERIFY (60–79)</div>
   </div>
   <div class="stat-card red">
-    <div class="stat-num">{len(pk_no)}</div>
-    <div class="stat-label">❌ Blocked (Auth Required)</div>
+    <div class="stat-num">{skip_count}</div>
+    <div class="stat-label">❌ SKIP (&lt;60)</div>
   </div>
 </div>
 
 <div class="filter-bar">
   <span style="color:var(--muted);font-size:13px;align-self:center;">Filter:</span>
-  <button class="filter-btn active" onclick="filterRows('all')">All Jobs</button>
-  <button class="filter-btn" onclick="filterRows('row-yes')">✅ PK Safe Only</button>
-  <button class="filter-btn" onclick="filterRows('row-maybe')">⚠️ Verify Only</button>
+  <button class="filter-btn active" onclick="filterRows('all')">All</button>
+  <button class="filter-btn" onclick="filterRows('row-yes')">✅ APPLY only</button>
+  <button class="filter-btn" onclick="filterRows('row-maybe')">⚠️ VERIFY only</button>
 </div>
 
 <div class="table-wrap">
@@ -216,11 +250,12 @@ def generate_html(jobs, source):
     <thead>
       <tr>
         <th>#</th>
+        <th>Score</th>
         <th>Job Title / Company</th>
         <th>Location</th>
         <th>Salary / Rate</th>
         <th>Posted</th>
-        <th>PK Status</th>
+        <th>PK</th>
         <th>Action</th>
       </tr>
     </thead>

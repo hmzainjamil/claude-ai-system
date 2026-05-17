@@ -1,0 +1,274 @@
+#!/usr/bin/env bash
+# launch-hermes-bridge — M-chip UMA optimized coordinator
+#
+# APPLE M-CHIP ANALOGY:
+# ┌──────────────────────────────────────────────────────────────┐
+# │  M1 Pro — 32GB Unified Memory                                │
+# │                                                              │
+# │  P-cores (6) ──→ MAE cloud swarm (Groq/Gemini/DeepSeek)    │
+# │                   Zero RAM each — pure network threads       │
+# │                                                              │
+# │  Neural Engine ─→ Hermes + Ollama (qwen2.5:7b, ~8GB UMA)   │
+# │                   Stays loaded — 30min keep-alive           │
+# │                   Metal-accelerated inference                │
+# │                                                              │
+# │  E-cores (2) ──→ TCC register, ctx writes, keep-alive      │
+# │                   Always-on background ops                   │
+# │                                                              │
+# │  Unified Memory Bus → ~/.claude/mae-hermes-ctx.json         │
+# │   MAE writes subtasks ──→ Hermes reads tool tasks           │
+# │   Hermes writes results → MAE reads for synthesis           │
+# │   Zero copy — single shared file (like UMA)                 │
+# └──────────────────────────────────────────────────────────────┘
+#
+# POWER STATES (like macOS power management):
+#   AC + warm    → Full: all P-cores + Neural Engine simultaneous
+#   AC + hot     → Throttled: cloud only, Hermes queued
+#   Battery > 50% → Eco: Hermes only (Neural Engine, zero cloud cost)
+#   Battery < 50% → Minimal: lightweight Hermes, short tasks only
+#   RAM < 2GB    → Emergency: TCC queue only, no LLM spawn
+#
+# THERMAL THRESHOLDS (M1 Pro runs cool — higher limits than Intel):
+#   Wait:  CPU ≥ 70%
+#   Kill:  CPU ≥ 88%
+
+set -euo pipefail
+
+TASK=""
+MODE="auto"
+FLAG=""
+MAE_PID=""
+HERM_PID=""
+CTX="$HOME/.claude/mae-hermes-ctx.json"
+LOG_DIR="$HOME/.claude/tcc-logs"
+BRIDGE_LOG="$LOG_DIR/bridge-$(date +%Y%m%d_%H%M%S).log"
+PROFILE="$HOME/.claude/mac-profile.json"
+mkdir -p "$LOG_DIR"
+
+log() { echo "[BRIDGE $(date +%H:%M:%S)] $*" | tee -a "$BRIDGE_LOG"; }
+
+# ── KILL TRAP ─────────────────────────────────────────────────────
+cleanup() {
+  [[ -n "$MAE_PID" ]]  && kill "$MAE_PID"  2>/dev/null || true
+  [[ -n "$HERM_PID" ]] && kill "$HERM_PID" 2>/dev/null || true
+  "$HOME/.claude/bin/hermes-deactivate" 2>/dev/null || true
+}
+trap cleanup EXIT INT TERM
+
+# ── ARGS ──────────────────────────────────────────────────────────
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --mode)  MODE="$2"; shift 2 ;;
+    --report|--audit|--build|--automate|--plan) FLAG="$1"; shift ;;
+    --) shift; TASK="$*"; break ;;
+    *) TASK="${TASK:+$TASK }$1"; shift ;;
+  esac
+done
+[[ -z "$TASK" ]] && { echo "Usage: launch-hermes-bridge '<task>'" >&2; exit 1; }
+log "TASK=$TASK MODE=$MODE"
+
+# ── LOAD MAC PROFILE ──────────────────────────────────────────────
+WAIT_CPU=70; KILL_CPU=88; KEEP_ALIVE=30; HERMES_PARALLEL=3; BATTERY_MIN=50
+if [[ -f "$PROFILE" ]]; then
+  WAIT_CPU=$(python3 -c "import json; p=json.load(open('$PROFILE')); print(p['thermal']['wait_threshold'])" 2>/dev/null || echo 70)
+  KILL_CPU=$(python3 -c "import json; p=json.load(open('$PROFILE')); print(p['thermal']['kill_threshold'])" 2>/dev/null || echo 88)
+  KEEP_ALIVE=$(python3 -c "import json; p=json.load(open('$PROFILE')); print(p['hermes']['keep_alive_min'])" 2>/dev/null || echo 30)
+  HERMES_PARALLEL=$(python3 -c "import json; p=json.load(open('$PROFILE')); print(p['hermes']['max_parallel_tasks'])" 2>/dev/null || echo 3)
+  BATTERY_MIN=$(python3 -c "import json; p=json.load(open('$PROFILE')); print(p['thermal']['battery_threshold'])" 2>/dev/null || echo 50)
+fi
+log "PROFILE: wait_cpu=${WAIT_CPU}% kill_cpu=${KILL_CPU}% keep_alive=${KEEP_ALIVE}m hermes_par=${HERMES_PARALLEL}"
+
+# ── PROBES ────────────────────────────────────────────────────────
+get_cpu() {
+  top -l 1 -s 0 2>/dev/null \
+    | awk '/CPU usage/{gsub(/%/,""); print int($3+$5)}' 2>/dev/null || echo 0
+}
+
+get_ram_gb() {
+  python3 -c "
+import subprocess, re
+try:
+    out = subprocess.check_output(['vm_stat']).decode()
+    free  = int(re.search(r'Pages free:\s+(\d+)',     out).group(1))
+    inact = int(re.search(r'Pages inactive:\s+(\d+)', out).group(1))
+    print(f'{(free+inact)*4096/1024**3:.1f}')
+except: print('8.0')
+" 2>/dev/null || echo "8.0"
+}
+
+get_battery_pct() {
+  pmset -g batt 2>/dev/null | grep -oE '[0-9]+%' | head -1 | tr -d '%' || echo 100
+}
+
+on_battery() {
+  pmset -g batt 2>/dev/null | grep -q "Battery Power"
+}
+
+# Wait until CPU drops below threshold (max 60s — E-core task)
+wait_cool() {
+  local threshold="${1:-$WAIT_CPU}"
+  local waited=0; local cpu
+  cpu=$(get_cpu)
+  while [[ "$cpu" -ge "$threshold" && "$waited" -lt 60 ]]; do
+    log "E-CORE WAIT: CPU ${cpu}% ≥ ${threshold}% (${waited}s)"
+    sleep 4; waited=$((waited+4)); cpu=$(get_cpu)
+  done
+  log "READY: CPU ${cpu}%"
+}
+
+# Watchdog: kills PID if CPU exceeds kill threshold
+# Runs as background E-core task
+watch_phase() {
+  local pid="$1" max_sec="$2" kill_at="${3:-$KILL_CPU}"
+  local waited=0
+  while kill -0 "$pid" 2>/dev/null && [[ "$waited" -lt "$max_sec" ]]; do
+    sleep 3; waited=$((waited+3))
+    local cpu; cpu=$(get_cpu)
+    if [[ "$cpu" -ge "$kill_at" ]]; then
+      log "THERMAL WATCHDOG: CPU ${cpu}% ≥ ${kill_at}% — killing phase"
+      kill "$pid" 2>/dev/null || true; sleep 5; return 1
+    fi
+  done
+  kill -0 "$pid" 2>/dev/null && { kill "$pid" 2>/dev/null; return 1; }
+  return 0
+}
+
+# ── SYSTEM STATE → POWER MODE ─────────────────────────────────────
+CPU=$(get_cpu)
+RAM=$(get_ram_gb)
+RAM_INT=$(python3 -c "print(int(float('$RAM')))" 2>/dev/null || echo 4)
+BATT_PCT=$(get_battery_pct)
+BATTERY=false; on_battery && BATTERY=true
+
+log "SYSTEM: chip=M1-Pro ram=${RAM}GB cpu=${CPU}% battery=${BATTERY}(${BATT_PCT}%)"
+log "UMA: qwen2.5:7b≈8GB + OS≈6GB + headroom≈$((RAM_INT-14))GB"
+
+# ── POWER MODE (like macOS power states) ──────────────────────────
+if [[ "$RAM_INT" -lt 2 ]]; then
+  POWER="emergency"   # no LLMs, TCC queue only
+elif [[ "$BATTERY" == "true" && "$BATT_PCT" -lt "$BATTERY_MIN" ]]; then
+  POWER="minimal"     # tiny tasks, short keep-alive
+elif [[ "$BATTERY" == "true" ]]; then
+  POWER="eco"         # Neural Engine (Hermes) only, no cloud
+elif [[ "$CPU" -ge "$WAIT_CPU" ]]; then
+  POWER="throttled"   # wait + cloud only if clears
+else
+  POWER="full"        # all P-cores + Neural Engine simultaneous
+fi
+log "POWER MODE: $POWER"
+
+# Auto-detect orchestration mode
+if [[ "$MODE" == "auto" ]]; then
+  echo "$TASK" | grep -qiE "audit|360|https?://" && MODE="vertical" || \
+  echo "$TASK" | grep -qiE "ads|seo|geo|email|code|bug|hmz|bdm|lead" && MODE="horizontal" || \
+  MODE="vertical"
+  log "ORCH MODE → $MODE"
+fi
+
+# ── E-CORE OPS (always, lightweight, background) ──────────────────
+# These mirror Apple's E-cores: always-on, low power, instant
+
+log "E-CORE: TCC register"
+"$HOME/.claude/bin/tcc" add "$TASK" --priority high 2>/dev/null || true
+
+log "E-CORE: Unified Memory ctx init"
+python3 -c "
+import json, sys; from pathlib import Path
+ctx = {'task': sys.argv[1], 'mode': sys.argv[2], 'power': sys.argv[3],
+       'hermes_result': None, 'mae_subtasks': [], 'ts': __import__('datetime').datetime.now().isoformat()}
+Path('$CTX').write_text(json.dumps(ctx, indent=2))
+" "$TASK" "$MODE" "$POWER" 2>/dev/null || true
+
+log "E-CORE: Neural Engine keep-alive (${KEEP_ALIVE}m)"
+curl -sf "http://localhost:11434/api/chat" \
+  -d "{\"model\":\"qwen2.5:7b\",\"messages\":[],\"keep_alive\":\"${KEEP_ALIVE}m\"}" \
+  >/dev/null 2>&1 || true
+
+# ── P-CORE + NEURAL ENGINE OPS (power-mode gated) ─────────────────
+
+case "$POWER" in
+
+  # ── FULL: All P-cores (cloud) + Neural Engine (Hermes) simultaneous
+  full)
+    log "P-CORE: MAE cloud swarm (6 P-cores × Groq/Gemini/DeepSeek)"
+    log "NEURAL ENGINE: Hermes qwen2.5:7b local"
+    log "UNIFIED MEMORY: tool tasks route MAE→Hermes via $CTX"
+
+    # Neural Engine: Hermes warm + tool execution (local, Metal-accelerated)
+    (
+      "$HOME/.claude/bin/hermes-activate" >/dev/null 2>&1
+      result=$("$HOME/.local/bin/hermes" chat \
+        -q "[MAE PARTNER] Execute tool tasks for: $TASK. Use file/shell/web/code tools. Concise." \
+        -Q 2>/dev/null || echo "")
+      # Write result to Unified Memory bus
+      python3 -c "
+import json; from pathlib import Path
+p=Path('$CTX')
+try:
+  ctx=json.loads(p.read_text()); ctx['hermes_result']='''${result}'''[:1500]
+  p.write_text(json.dumps(ctx,indent=2))
+except: pass
+" 2>/dev/null || true
+    ) &
+    HERM_PID=$!
+
+    # P-cores: MAE cloud blast (zero UMA pressure — pure network)
+    python3 "$HOME/.claude/bin/mae" run "$TASK" >> "$BRIDGE_LOG" 2>&1 &
+    MAE_PID=$!
+
+    log "RUNNING: MAE(P-cores)=$MAE_PID  Hermes(NE)=$HERM_PID"
+
+    # E-core watchdogs for both phases
+    watch_phase "$HERM_PID" 90  "$KILL_CPU" &
+    watch_phase "$MAE_PID"  150 "$KILL_CPU" &
+
+    wait "$HERM_PID" 2>/dev/null || true; HERM_PID=""; log "Neural Engine done"
+    wait "$MAE_PID"  2>/dev/null || true; MAE_PID="";  log "P-cores done"
+    ;;
+
+  # ── ECO: Neural Engine only (battery, zero cloud cost)
+  eco)
+    log "ECO MODE: Neural Engine only (battery — no cloud spend)"
+    wait_cool "$WAIT_CPU"
+    "$HOME/.claude/bin/hermes-activate" >/dev/null 2>&1
+    "$HOME/.claude/bin/hermes-orchestrator" "$TASK" --mode "$MODE" \
+      >> "$BRIDGE_LOG" 2>&1 &
+    HERM_PID=$!
+    watch_phase "$HERM_PID" 90 "$KILL_CPU" &
+    wait "$HERM_PID" 2>/dev/null || true; HERM_PID=""
+    ;;
+
+  # ── THROTTLED: wait for cool, then cloud only (Hermes queued)
+  throttled)
+    log "THROTTLED: waiting for CPU to drop below ${WAIT_CPU}%"
+    wait_cool "$WAIT_CPU"
+    CPU_NOW=$(get_cpu)
+    if [[ "$CPU_NOW" -lt "$WAIT_CPU" ]]; then
+      log "THROTTLED → cloud only (Hermes queued for later)"
+      python3 "$HOME/.claude/bin/mae" run "$TASK" >> "$BRIDGE_LOG" 2>&1 &
+      MAE_PID=$!
+      watch_phase "$MAE_PID" 120 "$KILL_CPU" &
+      wait "$MAE_PID" 2>/dev/null || true; MAE_PID=""
+    else
+      log "THROTTLED → still hot, queuing both in TCC"
+      "$HOME/.claude/bin/tcc" add "HERMES: $TASK" --priority low 2>/dev/null || true
+    fi
+    ;;
+
+  # ── MINIMAL: battery < threshold, tiny Hermes task only
+  minimal)
+    log "MINIMAL: battery ${BATT_PCT}% < ${BATTERY_MIN}% — short Hermes only"
+    result=$("$HOME/.local/bin/hermes" chat -q "$TASK" -Q 2>/dev/null || echo "")
+    log "MINIMAL result: ${result:0:100}"
+    ;;
+
+  # ── EMERGENCY: no RAM — TCC queue only
+  emergency)
+    log "EMERGENCY: RAM < 2GB — queuing in TCC, no LLM spawn"
+    "$HOME/.claude/bin/tcc" add "QUEUED (low RAM): $TASK" --priority low 2>/dev/null || true
+    ;;
+
+esac
+
+log "BRIDGE DONE [power=$POWER mode=$MODE cpu=$(get_cpu)% ram=$(get_ram_gb)GB] → $BRIDGE_LOG"
+echo "[BRIDGE] DONE [$POWER]"

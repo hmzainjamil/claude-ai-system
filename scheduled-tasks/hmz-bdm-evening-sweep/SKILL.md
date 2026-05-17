@@ -86,7 +86,7 @@ Direct employer postings. Filter. Take top 4.
 Search for threads posted <12h in: r/PPC · r/FacebookAds · r/GoogleAds · r/digital_marketing · r/ecommerce
 Pick 3 threads where Zulqarnain can add genuine expert value (campaign structure, ROAS issues, bidding strategy, lead gen).
 Draft 3 insightful comments (150-250 words each) — expertise-first, solution-specific, never salesy.
-Save to: `/Users/mc/Downloads/HMZ-Reddit-Comments-[DATE].txt`
+Save to: `/Users/mc/Downloads/job-dashboards/HMZ-Reddit-Comments-[DATE].txt`
 
 ---
 
@@ -95,7 +95,7 @@ Save to: `/Users/mc/Downloads/HMZ-Reddit-Comments-[DATE].txt`
 **STEP 1: Deduplicate** — same job on multiple platforms = keep highest-scoring instance only
 
 **STEP 2: Build HTML Report**
-Save: `/Users/mc/Downloads/HMZ-BDM-Evening-[DATE].html`
+Save: `/Users/mc/Downloads/job-dashboards/HMZ-BDM-Evening-[DATE].html`
 - Dark theme
 - Header: "HMZ BDM EVENING REPORT — [DATE] — [N] JOBS · [N] PLATFORMS"
 - Platform sections with job counts
@@ -109,7 +109,7 @@ Subject: "🌙 HMZ Evening — [N] Jobs / [N] Platforms + Reddit Drafts — [DAT
 Body: top 15 jobs sorted by score + Reddit comment drafts + all apply links
 
 **STEP 4: Save latest**
-Copy to `/Users/mc/Downloads/HMZ-BDM-Latest.html`
+Copy to `/Users/mc/Downloads/job-dashboards/HMZ-BDM-Latest.html`
 
 **STEP 5: Mark complete (MANDATORY)**
 Run: `python3 /Users/mc/.claude/bin/hmz-bdm-state-update hmz-bdm-evening-sweep`

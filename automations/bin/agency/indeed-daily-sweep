@@ -1,47 +1,64 @@
 #!/usr/bin/env bash
-# Indeed Daily Sweep — runs Indeed MCP search + generates HTML report
-# Scheduled twice daily: 9 AM PKT (04:00 UTC) + 9 PM PKT (16:00 UTC)
-
-set -euo pipefail
+# Indeed Daily Sweep — LaunchAgent-safe version
+# Scheduled: 4:00 UTC (9 AM PKT) + 16:00 UTC (9 PM PKT)
+# NOTE: Platform MCP (151855b6) only works in interactive Claude sessions.
+# This script handles: cache check → score → HTML report → notify.
+# To populate cache with live data: run sweep interactively in Claude Code.
 
 BIN="$HOME/.claude/bin/agency"
 LOG="$HOME/.claude/agency/logs/indeed-sweep.log"
-REPORT_DIR="$HOME/Downloads"
+DATA="$HOME/.claude/agency/data"
+REPORT_DIR="$HOME/Downloads/job-dashboards"
+NOTIFY_DIR="$HOME/.claude/agency/notify"
 
-mkdir -p "$(dirname "$LOG")"
+mkdir -p "$REPORT_DIR" "$(dirname "$LOG")" "$NOTIFY_DIR"
 
-ts() { date '+%Y-%m-%d %H:%M:%S'; }
+ts()  { date '+%Y-%m-%d %H:%M:%S'; }
 log() { echo "[$(ts)] $*" | tee -a "$LOG"; }
 
-SWEEP="Morning"
-[[ $(date +%H) -ge 14 ]] && SWEEP="Evening"
+TODAY=$(date '+%Y%m%d')
+SWEEP="Morning"; [[ $(date +%H) -ge 14 ]] && SWEEP="Evening"
 
 log "=== Indeed Daily Sweep — $SWEEP ==="
-log "Step 1: Running Indeed MCP search..."
 
-# Run indeed-mcp-search via claude --print (uses live MCP connector)
-python3 "$BIN/indeed-mcp-search" >> "$LOG" 2>&1 || {
-    log "⚠️  MCP search failed or returned empty — continuing to report"
-}
+# ── Step 1: Re-score today's cache (always safe — no MCP needed) ──
+CACHE="$DATA/indeed_mcp_${TODAY}.json"
+if [[ -f "$CACHE" ]]; then
+    COUNT=$(python3 -c "import json; d=json.load(open('$CACHE')); print(d.get('count',len(d.get('jobs',[]))))" 2>/dev/null || echo 0)
+    if [[ "$COUNT" -gt 0 ]]; then
+        log "Cache found: $COUNT jobs — rescoring..."
+        python3 "$BIN/indeed-mcp-search" >> "$LOG" 2>&1 || log "Rescore: non-fatal error"
+    else
+        log "⚠️  Cache empty (0 jobs). MCP not available headlessly."
+        log "    ACTION REQUIRED: Open Claude Code and run an Indeed sweep to populate."
+        # Write a pending-sweep marker so next interactive session notices
+        echo "{\"pending\":true,\"date\":\"$TODAY\",\"sweep\":\"$SWEEP\"}" > "$NOTIFY_DIR/indeed-pending.json"
+    fi
+else
+    log "No cache for today — writing pending marker"
+    echo "{\"pending\":true,\"date\":\"$TODAY\",\"sweep\":\"$SWEEP\"}" > "$NOTIFY_DIR/indeed-pending.json"
+fi
 
-log "Step 2: Generating HTML report..."
-REPORT=$(python3 "$BIN/indeed-html-report" 2>> "$LOG") || true
-log "Report: $REPORT"
+# ── Step 2: Generate HTML report ──────────────────────────────────
+log "Step 2: Generating HTML dashboard..."
+REPORT_OUTPUT=$(python3 "$BIN/indeed-html-report" 2>&1) || true
+log "$REPORT_OUTPUT"
 
-log "Step 3: Sending email..."
-# Send report via Gmail MCP if available
+# Extract report path
 LATEST="$REPORT_DIR/Indeed-Jobs-LATEST.html"
+
+# ── Step 3: macOS notification (no MCP needed) ───────────────────
 if [[ -f "$LATEST" ]]; then
-    # Use claude to send via Gmail MCP
-    SUBJECT="Indeed Jobs — $SWEEP Sweep $(date '+%Y-%m-%d')"
-    BODY="Indeed job sweep complete. $SWEEP sweep results attached.\n\nReport saved: $LATEST\n\nOpen report: file://$LATEST"
+    APPLY_COUNT=$(python3 -c "
+import json; f='$CACHE'
+try:
+    d=json.load(open(f)); jobs=d.get('jobs',[])
+    print(len([j for j in jobs if j.get('hmz_rec')=='APPLY']))
+except: print(0)
+" 2>/dev/null || echo 0)
 
-    claude --print --no-color "Use the Gmail MCP create_draft tool to create an email draft:
-To: hmzainjamil@gmail.com
-Subject: $SUBJECT
-Body: $BODY
-
-Just create the draft, do not send it." >> "$LOG" 2>&1 || log "⚠️  Email draft creation failed (non-critical)"
+    osascript -e "display notification \"$APPLY_COUNT jobs to APPLY · $SWEEP sweep done\" with title \"HMZ Indeed Jobs\" subtitle \"$(date '+%H:%M')\" sound name \"Glass\"" 2>/dev/null || true
+    log "Notification sent: $APPLY_COUNT APPLY-ready jobs"
 fi
 
 log "=== Sweep complete ==="

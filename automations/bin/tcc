@@ -70,7 +70,7 @@ DEFAULT_ROUTES = {
         # pdf / doc
         "pdf|document|report|audit|presentation|pptx|docx": {
             "agent": "claude-code-subagent",
-            "model": "claude-haiku",
+            "model": "gemini",
             "skills": ["anthropic-skills:pdf","anthropic-skills:pptx"]
         },
         # workflow / automation
@@ -84,6 +84,12 @@ DEFAULT_ROUTES = {
             "agent": "paperclip",
             "model": "none",
             "skills": []
+        },
+        # hermes / nous research agent
+        "hermes|nous|self-evolve|evolve skill|hermes agent|function calling hermes": {
+            "agent": "hermes_local",
+            "model": "openrouter/deepseek",
+            "skills": ["~/.claude/agents/hermes-nous-agent.md"]
         }
     },
     "default": {
