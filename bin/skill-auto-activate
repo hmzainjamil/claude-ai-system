@@ -47,7 +47,7 @@ match() { echo "$PROMPT" | grep -qiE "$1"; }
 # ── TIER 0 MODEL ROUTING — always injected ───────────────────────
 TIER0="[TIER-0 ROUTING — ALWAYS ON]
 Sub-agents/parallel/internal tasks → TIER 0 ONLY. Never use Claude for internal processing.
-ORDER: Ollama(local) → DeepSeek-V3 → Gemini Flash → Groq → Mistral → OpenRouter → GPT-4o-mini → Kimi/Moonshot(262K) → AirLLM-70B(~/installed-repos/airllm/)
+ORDER: Ollama(local) → DeepSeek-V3 → Gemini Flash → Groq → Mistral → OpenRouter → GPT-4o-mini → Kimi/Moonshot(262K) → Kimi-K2-NIM(localhost:8000) → Ling-2.6-1T-vLLM(localhost:8000) → AirLLM-70B(~/installed-repos/airllm/)
 TIER 1 (last resort): Claude Haiku — only if ALL Tier 0 unavailable
 TIER 2 (final output only): Claude Sonnet/Opus — only if user explicitly requests
 AirLLM trigger: 'airllm'/'run 70b local'/'offline 70b' → from airllm import AutoModel
@@ -1174,5 +1174,81 @@ fi
 # ── OPENCLI VERSIONS ─────────────────────────────────────────────
 if match "opencli.*1\.7|opencli.*version|opencli.*update|opencli.*install"; then
   _repo "opencli-1.7.18" "~/installed-repos/opencli-1.7.18/" "OpenCLI v1.7.18 stable release"
+fi
+
+
+# ══════════════════════════════════════════════════════════════════
+# NEW REPOS 2026-05-19 — AgentScope · claude-watch · n8n-resources
+# Kimi K2 NIM · Ling-2.6-1T vLLM
+# ══════════════════════════════════════════════════════════════════
+
+# ── AGENTSCOPE — Alibaba multi-agent framework ───────────────────
+if match "agentscope|alibaba.*agent|agent.*scope|modelscope.*agent|agentscope.*workflow|agentscope.*studio|as\.pipe|agentscope.*rpc|agentscope.*monitor|distributed.*agent.*alibaba"; then
+  _repo "agentscope" "~/installed-repos/agentscope/" "Alibaba AgentScope — distributed multi-agent framework with RPC, studio UI, workflow pipelines"
+  echo "[AGENTSCOPE] pip install agentscope | Run studio: as_studio | RPC mode: agentscope.init(use_monitor=True)" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+fi
+
+# ── CLAUDE-WATCH — video → study notes skill ────────────────────
+if match "claude.?watch|watch.*video.*notes|video.*study.*notes|lecture.*notes.*ai|tutorial.*notes|yt.*notes|youtube.*notes.*claude|video.*transcript.*notes|watch.*lecture|study.*video|video.*to.*notes|ai.*watch.*video"; then
+  on claude-watch
+  echo "[CLAUDE-WATCH] Skill active → ~/.claude/skills/claude-watch/SKILL.md" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+  echo "[CLAUDE-WATCH] Usage: /claude-watch <video-url> [topic] | deps: yt-dlp + ffmpeg + OPENAI_API_KEY" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+  echo "[CLAUDE-WATCH] Output: ~/claude-watch/library/<slug>/notes.md + screenshots" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+fi
+
+# ── N8N RESOURCES — Pranathi n8n workflow templates ─────────────
+if match "n8n.*resource|pranathi.*n8n|n8n.*template.*pack|avatar.*agent.*n8n|cold.*email.*n8n|lead.*gen.*n8n|chatbot.*n8n|loom.*outreach.*n8n|elevenlabs.*n8n|heygen.*n8n"; then
+  _repo "n8n-resources" "~/installed-repos/n8n-resources/" "Pranathi n8n templates: Avatar Agent, Cold Email, Lead Gen, ChatBot, Loom Outreach, ElevenLabs+HeyGen Video"
+  echo "[N8N-RESOURCES] Templates: Avatar-Agent · Cold-Email · Lead-Gen · ChatBot · Loom-Outreach · ElevenLabs-Heygen-Video · Lead-Scraper" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+  echo "[N8N-RESOURCES] Dir: ~/installed-repos/n8n-resources/ | Import .json/.zip into n8n" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+fi
+
+# ── KIMI K2 — Moonshot AI NIM container (MoE, 1T params) ────────
+if match "kimi.?k2|kimi.*nim|moonshot.*nim|kimi.*1t|kimi.*moe|kimi.*1t.*variant|nvcr.*kimi|nvidia.*kimi|nim.*moonshot|kimi.*container|kimi.*docker|kimi.*vllm|kimi.*deploy|kimi.*serve|kimi.*inference|run.*kimi|deploy.*kimi"; then
+  echo "[KIMI-K2] NIM container: nvcr.io/nim/moonshotai/kimi-k2.6:1.7.0-variant" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+  echo "[KIMI-K2] Pull: docker pull nvcr.io/nim/moonshotai/kimi-k2.6:1.7.0-variant" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+  echo "[KIMI-K2] Run:  docker run -it --gpus all -p 8000:8000 nvcr.io/nim/moonshotai/kimi-k2.6:1.7.0-variant" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+  echo "[KIMI-K2] API:  curl -X POST http://localhost:8000/v1/chat/completions -H 'Content-Type: application/json' --data '{\"model\":\"kimi-k2.6\",\"messages\":[{\"role\":\"user\",\"content\":\"Hello\"}]}'" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+  echo "[KIMI-K2] Needs: NGC API key (nvcr.io login) + NVIDIA GPU" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+  echo "[KIMI-K2] macOS fallback: curl https://api.novita.ai/v3/openai/chat/completions -H 'Authorization: Bearer \$NOVITA_API_KEY' -d '{\"model\":\"moonshotai/kimi-k2\",\"messages\":[...]}'" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+  echo "[KIMI-K2] Alt: Moonshot API https://api.moonshot.ai/v1 model=moonshot-v1-128k (MOONSHOT_API_KEY)" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+fi
+
+# ── LING 2.6 1T — vLLM serve (InclusionAI) ──────────────────────
+if match "ling.?2\.6|ling.*1t|ling.*vllm|vllm.*ling|inclusionai.*ling|ling.*serve|serve.*ling|ling.*chat.*completion|ling.*localhost|ling.*1t.*vllm|run.*ling.*vllm|deploy.*ling|ling.*moe.*1t|ling.*2\.6.*1t|ling.*inference.*vllm"; then
+  echo "[LING-2.6-1T] Model: inclusionAI/Ling-2.6-1T (MoE 1T params)" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+  echo "[LING-2.6-1T] Serve: vllm serve 'inclusionAI/Ling-2.6-1T'" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+  echo "[LING-2.6-1T] API (OpenAI-compat): curl -X POST http://localhost:8000/v1/chat/completions -H 'Content-Type: application/json' --data '{\"model\":\"inclusionAI/Ling-2.6-1T\",\"messages\":[{\"role\":\"user\",\"content\":\"query\"}]}'" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+  echo "[LING-2.6-1T] Repo: ~/installed-repos/Ling/ | pip install vllm (needs GPU)" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+  echo "[LING-2.6-1T] Also available via novita API — NOVITA_API_KEY + endpoint: https://api.novita.ai/v3/openai" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+fi
+
+# ── VLLM — general vLLM serve/deploy ────────────────────────────
+if match "vllm|vllm.*serve|serve.*vllm|vllm.*deploy|vllm.*install|pip.*vllm|vllm.*api|vllm.*openai|vllm.*model|local.*llm.*serve|self.*host.*llm|serve.*local.*model|llm.*server.*local|openai.*compat.*local"; then
+  echo "[VLLM] Install: pip3 install vllm" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+  echo "[VLLM] Serve any HF model: vllm serve 'org/model-name' [--tensor-parallel-size N]" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+  echo "[VLLM] OpenAI-compatible endpoint: http://localhost:8000/v1" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+  echo "[VLLM] Models to try: inclusionAI/Ling-2.6-1T | DeepSeek-R1 | Qwen3 | Mistral | Llama3" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+fi
+
+# ── UPDATE PERMANENT TIER 0 — add Kimi K2 + Ling 2.6 to LLM list
+# (appends to always-on context so it appears every session)
+echo "[TIER-0 UPDATE] Kimi-K2 NIM: docker pull nvcr.io/nim/moonshotai/kimi-k2.6:1.7.0-variant → localhost:8000" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+echo "[TIER-0 UPDATE] Ling-2.6-1T: vllm serve inclusionAI/Ling-2.6-1T → localhost:8000 (OpenAI-compat)" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+
+
+# ── AI VERSUS — n8n viral shorts workflow ────────────────────────
+if match "ai.*versus|ai.*vs|versus.*workflow|viral.*short.*n8n|fight.*scene.*n8n|animal.*fight.*video|ai.*fight.*video|creatomate.*n8n|piapi.*flux|blotato.*n8n|flux.*video.*n8n|viral.*video.*automat|ai.*short.*video.*automat|scene.*creator.*n8n|matchup.*video|versus.*video.*automat|tiktok.*youtube.*n8n.*video|character.*fight.*automat"; then
+  _repo "AI-Versus-workflow" "~/installed-repos/n8n-resources/workflows/AI_Versus.json" "Viral AI vs AI shorts: GSheets → GPT-4.1 → PiAPI Flux1-dev images → Creatomate video → Blotato IG/TT/YT"
+  echo "[AI-VERSUS] Stack: OpenRouter(GPT-4.1) + PiAPI(Flux1-dev) + Creatomate + Blotato + Google Sheets" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+  echo "[AI-VERSUS] APIs needed: OPENROUTER_API_KEY | PIAPI_KEY | CREATOMATE_API_KEY + TEMPLATE_ID | BLOTATO_API_KEY | Google OAuth" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+  echo "[AI-VERSUS] Pipeline: GSheet(To Do) → 8 scenes → 16 close-up images → 8 winner scenes → Creatomate render → IG+TT+YT" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+  echo "[AI-VERSUS] Import: ~/installed-repos/n8n-resources/workflows/AI_Versus.json into n8n" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+fi
+
+# ── N8N VIDEO / CONTENT AUTOMATION (broader catch) ───────────────
+if match "creatomate|piapi|blotato|flux1.dev|flux.*image.*gen|piapi.*image|viral.*short.*automat|auto.*publish.*video|schedule.*post.*video|tiktok.*youtube.*automat"; then
+  echo "[VIDEO-AUTOMATE] AI_Versus workflow: ~/installed-repos/n8n-resources/workflows/AI_Versus.json" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+  echo "[VIDEO-AUTOMATE] n8n-resources templates: ~/installed-repos/n8n-resources/ (Avatar-Agent, Cold-Email, Lead-Gen, Loom-Outreach, ElevenLabs-HeyGen)" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
 fi
 

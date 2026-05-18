@@ -1,0 +1,9 @@
+#!/bin/bash
+set -e
+~/.local/bin/python3.11 -m venv /tmp/as_env
+/tmp/as_env/bin/pip install agentscope --no-deps -q
+/tmp/as_env/bin/pip install opentelemetry-api opentelemetry-sdk "opentelemetry-semantic-conventions>=0.44b0" \
+  dashscope python-socketio tiktoken python-frontmatter aiohttp mcp docstring_parser numpy shortuuid \
+  requests urllib3 certifi charset-normalizer idna typing_extensions json_repair json5 aiofiles \
+  aioitertools anthropic openai filetype sqlalchemy python-datauri sounddevice -q
+/tmp/as_env/bin/python -c "import agentscope; print('✅ agentscope:', agentscope.__version__)"

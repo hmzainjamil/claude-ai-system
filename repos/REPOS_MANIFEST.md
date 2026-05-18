@@ -1,18 +1,23 @@
-# HMZ All Repos — 47 total
-Last updated: Fri May 15 20:37:44 PKT 2026
+# HMZ All Repos — 53 total
+Last updated: Tue May 19 02:39:34 PKT 2026
 
 | Repo | Description | Clone |
 |---|---|---|
+| [G0DM0D3](https://github.com/hmzainjamil/G0DM0D3) | ``` | `gh repo clone hmzainjamil/G0DM0D3` |
+| [PMF_Google_Ads_Setup](https://github.com/hmzainjamil/PMF_Google_Ads_Setup) |  | `gh repo clone hmzainjamil/PMF_Google_Ads_Setup` |
 | [agentic-patterns-library](https://github.com/hmzainjamil/agentic-patterns-library) | 50+ production AI agent patterns — ReAct, RAG, multi-agent,  | `gh repo clone hmzainjamil/agentic-patterns-library` |
 | [ai-trader-setup](https://github.com/hmzainjamil/ai-trader-setup) | HKUDS AI-Trader + LLM stock trading agent setup and DigiMind | `gh repo clone hmzainjamil/ai-trader-setup` |
 | [claude-ai-agents](https://github.com/hmzainjamil/claude-ai-agents) | 🤖 All 210 Claude AI specialist agents — engineering, marketi | `gh repo clone hmzainjamil/claude-ai-agents` |
 | [claude-ai-automations](https://github.com/hmzainjamil/claude-ai-automations) | 🔧 Automation scripts — github-sync, skill-auto-activate, Lau | `gh repo clone hmzainjamil/claude-ai-automations` |
 | [claude-ai-skills](https://github.com/hmzainjamil/claude-ai-skills) | 🧠 All 45 Claude AI skills — website builder, lead gen, ads s | `gh repo clone hmzainjamil/claude-ai-skills` |
 | [claude-ai-system](https://github.com/hmzainjamil/claude-ai-system) | 🤖 Complete Claude AI automation system — 45 skills, 210 agen | `gh repo clone hmzainjamil/claude-ai-system` |
+| [claude-ai-system-backup](https://github.com/hmzainjamil/claude-ai-system-backup) | the behavioral OS that runs before every prompt | `gh repo clone hmzainjamil/claude-ai-system-backup` |
 | [claude-ai-workflows](https://github.com/hmzainjamil/claude-ai-workflows) | ⚙️ HMZ automated workflows — daily B2B lead sweeps, BDM morn | `gh repo clone hmzainjamil/claude-ai-workflows` |
 | [claude-document-system](https://github.com/hmzainjamil/claude-document-system) | 3-layer enterprise document pipeline — preflight guard + for | `gh repo clone hmzainjamil/claude-document-system` |
 | [claude-thermal-optimizer](https://github.com/hmzainjamil/claude-thermal-optimizer) | Auto-pause Ollama when Claude is idle — zero-config thermal  | `gh repo clone hmzainjamil/claude-thermal-optimizer` |
 | [daily-ads-audit](https://github.com/hmzainjamil/daily-ads-audit) | Autonomous Google Ads + GA4 daily audit — 3 clients, XLSX+PD | `gh repo clone hmzainjamil/daily-ads-audit` |
+| [digiminds-chatbot-kb](https://github.com/hmzainjamil/digiminds-chatbot-kb) |  | `gh repo clone hmzainjamil/digiminds-chatbot-kb` |
+| [fact-check-skill](https://github.com/hmzainjamil/fact-check-skill) | HMZ Fact-Check AI — 11-step SIFT+CRAAP pipeline, HTML card o | `gh repo clone hmzainjamil/fact-check-skill` |
 | [hermes-ai-system](https://github.com/hmzainjamil/hermes-ai-system) | Hermes — local Ollama AI orchestrator for Claude Code | auto | `gh repo clone hmzainjamil/hermes-ai-system` |
 | [higgsfield-cinema-ai](https://github.com/hmzainjamil/higgsfield-cinema-ai) | Higgsfield Cinema Studio automation — 29 camera movement pro | `gh repo clone hmzainjamil/higgsfield-cinema-ai` |
 | [hmz-ads-creative](https://github.com/hmzainjamil/hmz-ads-creative) | HMZ AI System — ads-creative (Hafiz Muhammad Zulqarnain) | `gh repo clone hmzainjamil/hmz-ads-creative` |
@@ -46,6 +51,7 @@ Last updated: Fri May 15 20:37:44 PKT 2026
 | [hmz-vercel](https://github.com/hmzainjamil/hmz-vercel) | HMZ AI System — vercel (Hafiz Muhammad Zulqarnain) | `gh repo clone hmzainjamil/hmz-vercel` |
 | [how-to-clone-website](https://github.com/hmzainjamil/how-to-clone-website) | AI website cloning with Claude Skills — clone any site struc | `gh repo clone hmzainjamil/how-to-clone-website` |
 | [mae-master-automation-engine](https://github.com/hmzainjamil/mae-master-automation-engine) | MAE — Master Automation Engine | parallel Tier 0 LLM blast + | `gh repo clone hmzainjamil/mae-master-automation-engine` |
+| [open-design](https://github.com/hmzainjamil/open-design) |  | `gh repo clone hmzainjamil/open-design` |
 | [proxima-mcp-setup](https://github.com/hmzainjamil/proxima-mcp-setup) | Proxima MCP wired into Claude Code — ask_all_ais across Chat | `gh repo clone hmzainjamil/proxima-mcp-setup` |
 | [tcc-task-command-center](https://github.com/hmzainjamil/tcc-task-command-center) | TCC — Task Command Center | parallel agent queue for Claude  | `gh repo clone hmzainjamil/tcc-task-command-center` |
 | [tier0-llm-router](https://github.com/hmzainjamil/tier0-llm-router) | Tier 0 LLM Router — blast Groq+Gemini+DeepSeek+GPT+Ollama in | `gh repo clone hmzainjamil/tier0-llm-router` |
