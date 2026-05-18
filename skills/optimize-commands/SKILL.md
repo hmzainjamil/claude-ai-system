@@ -4,7 +4,229 @@ description: "Ultra-fast token-efficient execution. token-turbo + caveman + para
 allowed-tools: Read, Grep, Glob, Bash, WebFetch, WebSearch, Write, Agent
 ---
 
-# optimize-commands — Always-On Default Behavior v3.0
+# optimize-commands — Always-On Default Behavior v4.0
+
+No command needed. Active every session from first prompt.
+
+---
+
+## SITUATIONAL INTELLIGENCE ENGINE — ALWAYS ON (no keywords required)
+
+**Every prompt is analyzed for INTENT + CONTEXT + GOAL, not just keywords.**
+
+Before responding to ANY prompt, silently run this 3-step inference:
+
+### STEP 1 — INTENT FINGERPRINT
+Classify what the user actually wants (not what words they used):
+
+| Intent Class | What it means | Even if prompt says... |
+|---|---|---|
+| `VERIFY` | User needs truth/accuracy check | "is this real", "heard that", "someone told me", "article says", "claim", "apparently", "supposedly", pastes news/text |
+| `PREDICT` | User wants outcome simulation or future deduction | "what will happen", "if X then Y", "simulate", "scenario", "what if", "consequences", "forecast" |
+| `BUILD_MODEL` | User wants to call/use an LLM | "call an api", "run inference", "use a model", "test this prompt", "send this to AI" |
+| `BUILD_SITE` | User wants a website/landing/UI | "page", "site", "landing", "frontend", "design this", "make it look like" |
+| `FIND_LEADS` | User wants contacts/businesses/prospects | "find X in Y city", "who sells", "who does", "get me contacts", "prospect list" |
+| `PREDICT_MARKET` | User wants market/trend/competitor intel | "what's trending", "analyze market", "competitors", "demand for X" |
+| `AUTOMATE` | User wants a workflow/pipeline | "every time X", "automate", "when this happens", "pipeline", "workflow" |
+| `AGENT_TASK` | User wants multi-agent orchestration | "have agents do", "run a team", "parallel", "orchestrate" |
+| `CODE` | User wants code written/fixed | any code-adjacent task |
+| `RESEARCH` | User wants factual/sourced info | "tell me about", "explain", "what is", "background on" |
+
+### STEP 2 — FULL INVENTORY RESOLVER (all 170 repos mapped)
+Map intent → best repo/skill combination. **No keyword match needed.**
+
+#### TRUTH / VERIFICATION
+| Situation | Repos activated |
+|---|---|
+| User questions a claim, news, stat, rumour | `fact-check-skill` → SIFT+CRAAP+HTML card |
+| Research needs sourcing/citations | `fact-check-skill` + `autoresearch` + `deer-flow` |
+| Scientific claim | `claude-scientific-skills` + `fact-check-skill` |
+
+#### PREDICTION / SIMULATION
+| Situation | Repos activated |
+|---|---|
+| Future scenario, "what if", consequence analysis | `MiroFish` (swarm sim) + `deer-flow` |
+| Market/trend/demand forecast | `deer-flow` + `AI-Trader` + `apify-market-research` |
+| Geopolitical / social prediction | `MiroFish` + `llm-agents-bundle/MIRAI` |
+| Stock / financial forecast | `AI-Trader` + `Hermes-Function-Calling` |
+
+#### LLM / MODEL USAGE
+| Situation | Repos activated |
+|---|---|
+| User wants to call/test an LLM | `Ling` (HF router) + `openrouter_api` + `anyclaude` |
+| Route between providers | `cc-copilot-bridge` + `openclawd` + `awesome-openrouter` |
+| Local inference | `ollama` + `autoresearch-local-llm` + `airllm` |
+| Multi-model compare | `Proxima` + `llm_council_skill` |
+| DeepSeek specifically | `deepseek-v3` + `JDeepSeek` |
+| Function calling / structured output | `Hermes-Function-Calling` |
+
+#### WEBSITE / UI / DESIGN
+| Situation | Repos activated |
+|---|---|
+| Build a website / landing page | `website-builder-setup` + `ui-ux-pro-max-skill-main` + `frontend-design` |
+| Clone an existing site | `ai-website-cloner-template` + `How-to-Clone-Website---Claude-Skills` |
+| Design audit / review | `claude-design-auditor-skill` + `ai-design-team` |
+| UI components | `ai-elements` + `ui-ux-design-pro-skill-main` |
+| Premium design spec | `design-md` + `ui-ux-pro-max-skill-main` |
+| Frontend code | `frontend-design` + `addyosmani-web-quality-skills` |
+
+#### LEADS / PROSPECTING
+| Situation | Repos activated |
+|---|---|
+| Find businesses/contacts in location | `lead-gen-ai` → Vibe Prospecting MCP + Apollo MCP |
+| Enrich a lead list | Apollo MCP + `composio` |
+| B2B outreach sequence | `ai-agency-claude` + `marketingskills` |
+
+#### SEO / AEO / GEO
+| Situation | Repos activated |
+|---|---|
+| SEO audit / optimization | `claude-seo` + `geo-seo-claude` + `addyosmani-agentic-seo` |
+| AI answer engine / GEO | `answer-engine-aeo` + `amplifying-ai-awesome-generative-engine-optimization` + `Ethirio-AEO-Generator` |
+| LLMs.txt / AI crawl | `apify-actor-llmstxt-generator` + `ngmisl-llmstxt` |
+| AEO scanner / rank check | `marketplace-aeorank-aeo-scanner` + `subconscious-systems-AEO` + `ai-search-guru-getcito` |
+
+#### MARKETING / ADS / CONTENT
+| Situation | Repos activated |
+|---|---|
+| Ad creative / copy | `ads-creative` + `ai-ads-claude` |
+| Marketing strategy / campaign | `ai-marketing-claude` + `marketing-skills` + `marketingskills` |
+| Social media / content | `agent-twitter-client` + `marketing-skills` |
+| Email / outreach | `ai-agency-claude` + `marketingskills` |
+
+#### SCRAPING / DATA EXTRACTION
+| Situation | Repos activated |
+|---|---|
+| Scrape any website | `apify-org/crawlee` + `apify-mcp-server` + `awesome-web-scraping` |
+| Structured data extraction | `apify-agent-skills` + `agent-skills` |
+| Web automation | `agent-browser` + `playwright-mcp-main` |
+| Zero-token web ops | `opencli` + `opencli-1.7.18` |
+
+#### AGENTS / ORCHESTRATION
+| Situation | Repos activated |
+|---|---|
+| Multi-agent task | `agency-agents` (259 agents) + `agent-orchestrator` |
+| Agent memory | `agentmemory` + `Awesome-Agent-Memory-main` + `claude-mem-main` |
+| Agent patterns / design | `awesome-agentic-patterns` + `500-AI-Agents-Projects` + `AGENT-ZERO` |
+| Self-evolving agent | `hermes-agent-self-evolution` |
+| Full agent stack | `hermes-agent` + `awesome-claude-agents` + `awesome-claude-code-toolkit` |
+| Paperclip OS | `paperclip` (zero-human company) |
+| Agent SDK | `agentapi` + `computesdk` |
+| Context engineering | `Agent-Skills-for-Context-Engineering-main` + `Awesome-Collection-Token-Reduction-main` |
+
+#### AUTOMATION / WORKFLOW / N8N
+| Situation | Repos activated |
+|---|---|
+| Automate any workflow | `n8nworkflows.xyz` (8,159 workflows) + `workflow` |
+| Google Workspace automation | `cli` (Google Workspace CLI) |
+| Task management | `claude-task-master` |
+| DevOps automation | `awesome-devops-mcp-servers` |
+
+#### MCP / PLUGINS / SKILLS
+| Situation | Repos activated |
+|---|---|
+| Find/install MCP servers | `awesome-mcp-servers` + `awesome-devops-mcp-servers` |
+| Build MCP server | `github-mcp-server` + `mcp-cli` |
+| Claude plugins | `claude-code-plugins` + `anthropic-claude-code-plugins` + `claude-code-plugins-marketplace` |
+| Skills collection | `antigravity-awesome-skills` + `awesome-claude-skills` + `composio-awesome-claude-skills` |
+| OpenClaw skills | `awesome-openclaw-skills` + `openclaw-skills-official` + `composio-openclaw` |
+| Vercel AI skills | `vercel-labs-skills` + `ai-sdk-provider` |
+
+#### VIDEO / MEDIA
+| Situation | Repos activated |
+|---|---|
+| Generate video locally | `LTX-Video` (Lightricks) |
+| AI ad videos | `ads-creative/arcads-claude-code` + `ads-creative/kie-ai-ad-builder` |
+
+#### DATABASE / BACKEND
+| Situation | Repos activated |
+|---|---|
+| Supabase integration | `supabase-js` + `supabase-flutter` + `supabase-swift` + `supabase-grafana` |
+| Realtime features | `realtime` (Supabase) |
+| Airtable | `airtable.js` + `pyairtable` + `airtable-py-pcorpet` |
+| Data/memory store | `agentmemory` + `memvid-main` + `graphify` |
+
+#### RESEARCH / DEEP ANALYSIS
+| Situation | Repos activated |
+|---|---|
+| Deep research on any topic | `deer-flow` + `autoresearch` |
+| Local LLM research | `autoresearch-local-llm` + `ollama` |
+| Auto research in background | `Auto-claude-code-research-in-sleep` |
+| Scientific literature | `claude-scientific-skills` |
+
+#### TOKEN / COST OPTIMIZATION
+| Situation | Repos activated |
+|---|---|
+| Reduce token usage | `Awesome-Collection-Token-Reduction-main` + `claude-token-efficient` + `caveman` |
+| Switch AI providers | `cc-copilot-bridge` + `anyclaude` |
+
+#### SECURITY / CODE REVIEW
+| Situation | Repos activated |
+|---|---|
+| Security audit | `claude-code-security-review-main` + `Fabric` |
+| Code review | `awesome-claude-code-toolkit` + `addyosmani-agent-engineer` |
+
+#### FABRIC / PATTERNS
+| Situation | Repos activated |
+|---|---|
+| Process text / distill info / extract wisdom | `Fabric` (Daniel Miessler — 200+ patterns) |
+| Summarize, analyze, extract | `Fabric` patterns |
+
+#### COMPUTER USE / MAC CONTROL
+| Situation | Repos activated |
+|---|---|
+| Control Mac/iOS | `ai_computer_use` |
+| Browser control | `agent-browser` + `playwright-mcp-main` |
+
+#### MISC UTILITIES
+| Situation | Repos activated |
+|---|---|
+| Avatars / UI assets | `avatar` |
+| Dashboard on device | `claude-dashboard-trmnl` |
+| Observability | `supabase-grafana` |
+| Build cache | `sccache` |
+| Realtime comms | `realtime` |
+
+### STEP 3 — CONFIDENCE THRESHOLD
+- **≥70% confident** on intent → silently activate repo/skill, proceed
+- **40–69%** → activate most likely + mention briefly ("using fact-check for this")
+- **<40%** → ask one clarifying question, then activate
+
+### EXAMPLES — Intent resolved WITHOUT keywords (full inventory):
+
+| User says | Repos auto-activated |
+|---|---|
+| "I saw a post saying vaccines cause autism" | `fact-check-skill` |
+| "If Trump wins 2028 what happens to crypto" | `MiroFish` + `deer-flow` + `AI-Trader` |
+| "Make me a page for my gym" | `website-builder-setup` + `ui-ux-pro-max` + `frontend-design` |
+| "I need dentists in Manchester" | `lead-gen-ai` → Vibe + Apollo |
+| "What would happen if OpenAI went open source" | `MiroFish` + `deer-flow` |
+| "My client wants 20 agents running" | `agency-agents` + `paperclip` + `agent-orchestrator` |
+| "Write a scraper for this site" | `apify-org/crawlee` + `agent-browser` |
+| "Is AAPL a buy right now" | `AI-Trader` + `Hermes-Function-Calling` + `deer-flow` |
+| "Distill this 50-page doc into key insights" | `Fabric` patterns |
+| "Rank my site for AI search" | `answer-engine-aeo` + `addyosmani-agentic-seo` + `geo-seo-claude` |
+| "Check my site's quality" | `addyosmani-web-quality-skills` + `claude-seo` |
+| "Run this locally without API cost" | `ollama` + `autoresearch-local-llm` |
+| "Compare GPT vs Claude vs Gemini on this" | `Proxima` + `llm_council_skill` |
+| "Build me an agent that remembers users" | `agentmemory` + `hermes-agent` + `claude-mem-main` |
+| "Make an ad video for my product" | `ads-creative/kie-ai-ad-builder` + `LTX-Video` |
+| "Automate my Gmail + Airtable" | `n8nworkflows.xyz` + `airtable.js` + `cli` |
+| "Recreate this competitor's website" | `ai-website-cloner-template` + `How-to-Clone-Website---Claude-Skills` |
+| "Something feels off about this article" | `fact-check-skill` + `Fabric` |
+| "Reduce my token costs" | `Awesome-Collection-Token-Reduction-main` + `claude-token-efficient` |
+| "Set up Supabase for my app" | `supabase-js` + `realtime` |
+| "Research this topic overnight" | `Auto-claude-code-research-in-sleep` + `deer-flow` |
+| "Is this startup worth investing in?" | `fact-check-skill` + `AI-Trader` + `deer-flow` |
+| "Write marketing copy for my SaaS" | `ai-marketing-claude` + `marketingskills` + `Fabric` |
+| "Find patterns in 100 agent projects" | `500-AI-Agents-Projects` + `awesome-agentic-patterns` |
+
+### COMPOUND INTENT — multiple repos fire simultaneously:
+- "Build a site + find leads in that niche" → `website-builder` + `lead-gen-ai`
+- "Verify this + predict market impact" → `fact-check` + `MiroFish`
+- "Automate outreach + track in Airtable" → `n8nworkflows.xyz` + `airtable.js` + `marketingskills`
+- "Research + write + post content" → `deer-flow` + `Fabric` + `marketing-skills` + `agent-twitter-client`
+
+---
 
 No command needed. Active every session from first prompt.
 
@@ -724,6 +946,62 @@ cd ~/installed-repos/llm-agents-bundle/stitch-skills  # Google Stitch skills
 3. **jobber** — autonomous job application agent (BDM pipeline enhancement)
 4. **cyber-security-llm-agents** — security audit capabilities
 5. **Stockagent** — financial analysis for client campaigns
+
+---
+
+## FACT-CHECK SKILL — AUTO-ROUTING (always-on)
+
+Skill: `~/.claude/skills/fact-check/SKILL.md`
+Repo: `~/installed-repos/fact-check-skill/`
+
+**Auto-routing triggers:** "fact check" / "is this true" / "verify claim" / "disinformation" / "fake news" / "check source" / "prebunk" / "media literacy" / "misinformation"
+
+| Mode | Trigger | Output |
+|---|---|---|
+| Standard | "fact check this" / paste URL/text | Full HTML Fact-Check Card |
+| Comparison | "compare these sources" / two URLs | Comparison Card |
+| Prebunking | "what false narratives about X" | Prebunking Briefing Card |
+| Quick | Simple yes/no question | Text verdict + sources |
+
+**Pipeline:** 11-step — claim decomp → multi-lang search → lateral reading → origin trace → 40+ red flag markers → MFS severity score → HTML card output (dark/light, mobile, WCAG AA)
+
+---
+
+## NEW REPOS 2026-05-18 — AUTO-ROUTING (always-on)
+
+| Prompt contains | Repo | Path | What it does |
+|---|---|---|---|
+| "ling" / "ling model" / "ling-lite" / "ling-plus" / "ling moe" / "inclusionai" / "ling coder" | Ling | `~/installed-repos/Ling/` | InclusionAI MoE LLMs — Ling-lite (16.8B/2.75B active, 128K ctx), Ling-plus (290B/28.8B active), Ling-coder. Call via HF router OpenAI-compat API. Needs `HF_TOKEN`. |
+| "mirofish" / "miro fish" / "swarm intelligence" / "ai prediction engine" / "digital world simulation" / "multi-agent prediction" / "parallel digital world" | MiroFish | `~/installed-repos/MiroFish/` | Swarm intelligence prediction engine — seeds real-world data → 1000s of agents simulate futures → prediction report. Docker stack. |
+| "llama c64" / "llama64" / "llama2 c64" / "commodore llm" / "c64 llm" / "tinystories c64" | llama2.c64 | `~/installed-repos/llama2.c64/` | Llama2 port to Commodore 64 — runs 260K tinystories model via REU. Novelty/research. |
+| "agency agents" / "the agency" / "ai specialists" / "agent personalities" / "agency team" / "agent roster" | agency-agents | `~/installed-repos/agency-agents/` | Production-ready AI agent personalities — specialists (frontend, reddit ninja, whimsy injector, reality checker etc). Install to Claude Code agents dir. |
+
+**Ling quick-start (HF router):**
+```python
+import os
+from openai import OpenAI
+client = OpenAI(base_url="https://router.huggingface.co/v1", api_key=os.environ["HF_TOKEN"])
+# Models: inclusionAI/Ling-lite-1.5  |  inclusionAI/Ling-plus  |  inclusionAI/Ling-2.6-1T:novita
+r = client.chat.completions.create(model="inclusionAI/Ling-lite-1.5", messages=[{"role":"user","content":"..."}])
+```
+
+**MiroFish quick-start:**
+```bash
+cd ~/installed-repos/MiroFish
+docker-compose up -d   # starts backend + frontend
+# UI at http://localhost:3000 — upload seed data → run prediction
+```
+
+**agency-agents install:**
+```bash
+ls ~/installed-repos/agency-agents/agents/   # browse all specialists
+cp ~/installed-repos/agency-agents/agents/*.md ~/.claude/agents/  # wire to Claude Code
+```
+
+**llm-burst routing — add Ling to model roster:**
+```bash
+~/.claude/bin/llm-burst --models ling-lite "your prompt"   # when HF_TOKEN set
+```
 
 ---
 

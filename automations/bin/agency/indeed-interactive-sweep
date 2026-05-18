@@ -1,0 +1,178 @@
+#!/usr/bin/env python3
+"""
+Indeed Interactive Sweep — runs INSIDE an active Claude Code session.
+Called by SessionStart hook. Uses Indeed MCP (151855b6) for real-time jobs.
+Merges results into today's cache, overwrites Apify-only data when available.
+"""
+import json, os, subprocess, datetime, re, sys
+from pathlib import Path
+
+HOME     = Path.home()
+DATA_DIR = HOME / ".claude/agency/data"
+LOG_DIR  = HOME / ".claude/agency/logs"
+REPORT   = HOME / "Downloads/job-dashboards"
+
+DATA_DIR.mkdir(parents=True, exist_ok=True)
+LOG_DIR.mkdir(parents=True, exist_ok=True)
+REPORT.mkdir(parents=True, exist_ok=True)
+
+TODAY    = datetime.date.today().strftime("%Y%m%d")
+DATE_ISO = datetime.date.today().isoformat()
+CACHE    = DATA_DIR / f"indeed_mcp_{TODAY}.json"
+LOG_PATH = LOG_DIR  / "indeed-interactive.log"
+
+def log(msg):
+    ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    line = f"[{ts}] {msg}"
+    print(line)
+    with open(LOG_PATH,"a") as f: f.write(line+"\n")
+
+SEARCHES = [
+    ("Google Ads PPC manager",          "remote", "US", "contract"),
+    ("Meta Facebook Ads specialist",     "remote", "US", "contract"),
+    ("performance marketing paid search","remote", "US", None),
+    ("SEM paid search specialist",       "remote", "US", None),
+    ("paid media buyer Google Ads",      "remote", "US", None),
+    ("Google Ads PPC specialist",        "remote", "CA", None),
+    ("paid ads performance marketing",   "remote", "CA", None),
+    ("Google Ads paid search",           "remote", "AU", None),
+]
+
+TITLE_BOOST = ["google ads","ppc","paid search","paid media","meta ads","facebook ads",
+               "media buyer","performance marketing","sem","paid advertising","paid social"]
+
+def score_job(title: str, pay: str, country: str) -> int:
+    t = title.lower()
+    s = 55
+    if any(k in t for k in TITLE_BOOST): s += 35
+    elif "digital marketing" in t: s += 10
+    # pay
+    for tok in re.findall(r'\d[\d,]+', pay.replace("$","")):
+        try:
+            v = float(tok.replace(",",""))
+            if v >= 80000: s += 15; break
+            if v >= 55000: s += 10; break
+            if 30 <= v <= 999: s += 12; break
+        except: pass
+    return min(s, 98)
+
+def run_mcp_search(search, location, country_code, job_type=None):
+    """Invoke claude --print to use Indeed MCP tool."""
+    jt_line = f'\njob_type="{job_type}"' if job_type else ""
+    prompt = f"""Use the search_jobs MCP tool (Indeed connector) with exactly:
+search="{search}"
+location="{location}"
+country_code="{country_code}"{jt_line}
+
+Return ONLY a raw JSON array. Each element must have:
+title, company, location, salary, job_type, posted_date, apply_url, job_id, country="{country_code}"
+
+If the tool returns 0 results, return [].
+Return ONLY the JSON array — no markdown, no explanation."""
+
+    try:
+        r = subprocess.run(
+            ["/Users/mc/.local/bin/claude", "--print", "--no-color", prompt],
+            capture_output=True, text=True, timeout=75,
+            env={**os.environ, "HOME": str(HOME)}
+        )
+        out = r.stdout.strip()
+        if not out or "Not logged in" in out or "not available" in out.lower():
+            return []
+        m = re.search(r'\[.*?\]', out, re.DOTALL)
+        if m:
+            return json.loads(m.group())
+    except Exception as e:
+        log(f"  MCP error: {e}")
+    return []
+
+def parse_job(raw: dict, country: str) -> dict:
+    title   = raw.get("title","") or raw.get("job_title","") or "N/A"
+    company = raw.get("company","") or raw.get("employer","") or "N/A"
+    pay     = str(raw.get("salary","") or raw.get("compensation","") or "N/A")
+    jtype   = raw.get("job_type","") or "N/A"
+    posted  = str(raw.get("posted_date","") or raw.get("date_posted","") or "N/A")[:10]
+    url     = raw.get("apply_url","") or raw.get("url","") or raw.get("job_url","") or ""
+    uid     = raw.get("job_id","") or url or f"{title}_{company}"
+
+    return {
+        "id":      uid,
+        "title":   title,
+        "company": company,
+        "location": raw.get("location","Remote") or "Remote",
+        "country": country.upper(),
+        "posted":  posted,
+        "type":    jtype,
+        "pay":     pay,
+        "url":     url,
+        "score":   score_job(title, pay, country),
+        "source":  "indeed_mcp",
+    }
+
+def main():
+    log("=== Indeed Interactive Sweep (MCP) ===")
+
+    # Check if already ran MCP today
+    if CACHE.exists():
+        try:
+            existing = json.loads(CACHE.read_text())
+            if existing.get("source","") == "indeed_mcp" and existing.get("count",0) > 0:
+                log(f"Already have Indeed MCP cache ({existing['count']} jobs) — skipping")
+                return
+        except: pass
+
+    mcp_jobs = []
+    seen     = set()
+
+    for search, loc, cc, jtype in SEARCHES:
+        log(f"  [{cc}] {search}...")
+        raw_list = run_mcp_search(search, loc, cc, jtype)
+        added = 0
+        for raw in raw_list:
+            j = parse_job(raw, cc)
+            uid = j["id"]
+            if uid in seen: continue
+            seen.add(uid)
+            mcp_jobs.append(j)
+            added += 1
+        log(f"    → {added} jobs")
+
+    if not mcp_jobs:
+        log("⚠️  Indeed MCP returned 0 jobs (not available in this session context)")
+        log("   Apify cache (if any) will be used by LaunchAgent sweep")
+        return
+
+    # Merge with existing Apify cache (keep Apify jobs not in MCP results)
+    merged = {j["id"]: j for j in mcp_jobs}
+    if CACHE.exists():
+        try:
+            old = json.loads(CACHE.read_text())
+            for j in old.get("jobs",[]):
+                if j["id"] not in merged:
+                    j["source"] = j.get("source","apify")  # keep as-is
+                    merged[j["id"]] = j
+        except: pass
+
+    all_jobs = sorted(merged.values(), key=lambda x: x.get("score",0), reverse=True)
+    mcp_count = len([j for j in all_jobs if j.get("source")=="indeed_mcp"])
+    src = "indeed_mcp+apify" if mcp_count < len(all_jobs) else "indeed_mcp"
+
+    cache_data = {"date": DATE_ISO, "count": len(all_jobs), "source": src, "jobs": all_jobs}
+    CACHE.write_text(json.dumps(cache_data, indent=2))
+    log(f"Cache updated: {len(all_jobs)} jobs ({mcp_count} from Indeed MCP)")
+
+    # Regenerate dashboard
+    subprocess.run(["/Users/mc/.claude/bin/agency/indeed-daily-sweep"],
+                   capture_output=True, timeout=60)
+
+    # Notify
+    top = len([j for j in all_jobs if j.get("score",0) >= 85])
+    subprocess.run([
+        "osascript", "-e",
+        f'display notification "{top} top matches · {len(all_jobs)} total · Indeed MCP" '
+        f'with title "HMZ Indeed Jobs" subtitle "Interactive sweep done" sound name "Glass"'
+    ], capture_output=True)
+    log(f"✅ Done: {len(all_jobs)} jobs | {top} top | source={src}")
+
+if __name__ == "__main__":
+    main()

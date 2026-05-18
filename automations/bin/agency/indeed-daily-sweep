@@ -1,64 +1,321 @@
 #!/usr/bin/env bash
-# Indeed Daily Sweep — LaunchAgent-safe version
-# Scheduled: 4:00 UTC (9 AM PKT) + 16:00 UTC (9 PM PKT)
-# NOTE: Platform MCP (151855b6) only works in interactive Claude sessions.
-# This script handles: cache check → score → HTML report → notify.
-# To populate cache with live data: run sweep interactively in Claude Code.
+# Indeed Daily Sweep v3
+# ─────────────────────────────────────────────────────────────────
+# ARCHITECTURE:
+#   Indeed MCP (151855b6) = Claude.ai platform connector.
+#   It CANNOT run headlessly — it only works inside an active
+#   interactive Claude Code session (web/desktop).
+#
+#   Strategy:
+#   1. If today's cache already has Indeed MCP data → skip fetch,
+#      just regenerate the HTML dashboard.
+#   2. If no cache → run Apify valig/indeed-jobs-scraper (headless,
+#      API-based, works 24/7 from LaunchAgent).
+#   3. When user opens Claude Code interactively, a SessionStart hook
+#      runs indeed-interactive-sweep which uses Indeed MCP and
+#      overwrites/enriches the Apify cache with real-time results.
+#
+#   Result: dashboard always has jobs (Apify baseline), and gets
+#   enriched with Indeed MCP data every time user opens Claude Code.
+# ─────────────────────────────────────────────────────────────────
+
+set -euo pipefail
 
 BIN="$HOME/.claude/bin/agency"
 LOG="$HOME/.claude/agency/logs/indeed-sweep.log"
 DATA="$HOME/.claude/agency/data"
 REPORT_DIR="$HOME/Downloads/job-dashboards"
-NOTIFY_DIR="$HOME/.claude/agency/notify"
+APIFY_TOKEN_FILE="$HOME/.claude/agency/apify_token"
 
-mkdir -p "$REPORT_DIR" "$(dirname "$LOG")" "$NOTIFY_DIR"
+mkdir -p "$REPORT_DIR" "$(dirname "$LOG")" "$DATA"
 
 ts()  { date '+%Y-%m-%d %H:%M:%S'; }
 log() { echo "[$(ts)] $*" | tee -a "$LOG"; }
 
 TODAY=$(date '+%Y%m%d')
+DATE_ISO=$(date '+%Y-%m-%d')
 SWEEP="Morning"; [[ $(date +%H) -ge 14 ]] && SWEEP="Evening"
-
-log "=== Indeed Daily Sweep — $SWEEP ==="
-
-# ── Step 1: Re-score today's cache (always safe — no MCP needed) ──
 CACHE="$DATA/indeed_mcp_${TODAY}.json"
+
+log "=== Indeed Daily Sweep v3 — $SWEEP ==="
+
+# ── 1. Check existing cache ───────────────────────────────────────
+CACHE_COUNT=0
+CACHE_SOURCE="none"
 if [[ -f "$CACHE" ]]; then
-    COUNT=$(python3 -c "import json; d=json.load(open('$CACHE')); print(d.get('count',len(d.get('jobs',[]))))" 2>/dev/null || echo 0)
-    if [[ "$COUNT" -gt 0 ]]; then
-        log "Cache found: $COUNT jobs — rescoring..."
-        python3 "$BIN/indeed-mcp-search" >> "$LOG" 2>&1 || log "Rescore: non-fatal error"
-    else
-        log "⚠️  Cache empty (0 jobs). MCP not available headlessly."
-        log "    ACTION REQUIRED: Open Claude Code and run an Indeed sweep to populate."
-        # Write a pending-sweep marker so next interactive session notices
-        echo "{\"pending\":true,\"date\":\"$TODAY\",\"sweep\":\"$SWEEP\"}" > "$NOTIFY_DIR/indeed-pending.json"
-    fi
+    CACHE_COUNT=$(python3 -c "import json; d=json.load(open('$CACHE')); print(d.get('count',len(d.get('jobs',[]))))" 2>/dev/null || echo 0)
+    CACHE_SOURCE=$(python3 -c "import json; d=json.load(open('$CACHE')); print(d.get('source','unknown'))" 2>/dev/null || echo "unknown")
+fi
+
+if [[ "$CACHE_COUNT" -gt 0 ]]; then
+    log "Cache found: $CACHE_COUNT jobs (source: $CACHE_SOURCE) — skipping fetch"
 else
-    log "No cache for today — writing pending marker"
-    echo "{\"pending\":true,\"date\":\"$TODAY\",\"sweep\":\"$SWEEP\"}" > "$NOTIFY_DIR/indeed-pending.json"
+    # ── 2. Apify fetch (headless fallback) ────────────────────────
+    log "No cache — running Apify indeed scraper (headless mode)..."
+
+    APIFY_TOKEN=""
+    [[ -f "$APIFY_TOKEN_FILE" ]] && APIFY_TOKEN=$(cat "$APIFY_TOKEN_FILE" | tr -d '[:space:]')
+    [[ -z "$APIFY_TOKEN" ]] && APIFY_TOKEN="${APIFY_API_TOKEN:-}"
+
+    if [[ -z "$APIFY_TOKEN" ]]; then
+        log "⚠️  No Apify token at $APIFY_TOKEN_FILE — cannot fetch headlessly."
+        log "    Open Claude Code to run Indeed MCP sweep manually."
+        echo "{\"pending\":true,\"date\":\"$TODAY\",\"sweep\":\"$SWEEP\",\"reason\":\"no_apify_token\"}" \
+            > "$DATA/../notify/indeed-pending.json"
+        exit 1
+    fi
+
+    TMPJOBS=$(mktemp -d)
+    SEARCHES=(
+        "Google Ads PPC manager|remote|us"
+        "Meta Facebook Ads specialist|remote|us"
+        "performance marketing paid search|remote|us"
+        "SEM PPC paid search specialist|remote|us"
+        "paid ads media buyer remote|remote|us"
+        "Google Ads PPC specialist|remote|ca"
+        "paid search performance marketing|remote|ca"
+        "paid media Google Ads|remote|au"
+    )
+
+    for item in "${SEARCHES[@]}"; do
+        IFS='|' read -r QUERY LOC CC <<< "$item"
+        OUTFILE="$TMPJOBS/${CC}_$(echo "$QUERY" | tr ' ' '_' | cut -c1-30).json"
+        log "  [$CC] $QUERY..."
+        HTTP=$(curl -s -o "$OUTFILE" -w "%{http_code}" \
+            -X POST "https://api.apify.com/v2/acts/valig~indeed-jobs-scraper/run-sync-get-dataset-items?token=${APIFY_TOKEN}&timeout=90" \
+            -H "Content-Type: application/json" \
+            -d "{\"country\":\"${CC}\",\"title\":\"${QUERY}\",\"location\":\"${LOC}\",\"limit\":15,\"datePosted\":\"7\"}" \
+            2>/dev/null || echo "000")
+        if [[ "$HTTP" == "200" ]]; then
+            CNT=$(python3 -c "import json; print(len(json.load(open('$OUTFILE'))))" 2>/dev/null || echo 0)
+            log "    → $CNT jobs"
+        else
+            log "    ⚠️  HTTP $HTTP"
+        fi
+        sleep 2
+    done
+
+    # Merge + score → cache
+    python3 << PYEOF
+import json, os, glob, datetime
+
+tmpdir = "$TMPJOBS"
+cache_path = "$CACHE"
+date_str = "$DATE_ISO"
+
+TITLE_BOOST = ["google ads","ppc","paid search","paid media","meta ads","facebook ads",
+               "media buyer","performance marketing","sem","paid advertising","paid social"]
+TITLE_OK    = ["digital marketing","seo","marketing manager","marketing specialist"]
+
+all_jobs = []
+seen = set()
+
+for f in glob.glob(f"{tmpdir}/*.json"):
+    try:
+        items = json.load(open(f))
+        if not isinstance(items, list):
+            continue
+        for item in items:
+            uid = item.get("key") or item.get("url","")
+            if uid in seen: continue
+            seen.add(uid)
+
+            title = (item.get("title","") or "").lower()
+            score = 50
+
+            if any(k in title for k in TITLE_BOOST): score += 35
+            elif any(k in title for k in TITLE_OK):  score += 15
+            else: score += 5
+
+            loc = item.get("location",{}) or {}
+            country = (loc.get("countryCode") or "US").upper()
+            # Skip non-target countries
+            if country not in ("US","CA","AU","GB"): continue
+
+            sal = item.get("baseSalary",{}) or {}
+            pay_min = sal.get("min", 0)
+            unit = sal.get("unitOfWork","")
+            if unit == "YEAR" and pay_min >= 80000: score += 15
+            elif unit == "YEAR" and pay_min >= 55000: score += 10
+            elif unit == "HOUR" and pay_min >= 30: score += 12
+            elif pay_min == 0: score += 5  # unknown pay, don't penalize
+
+            jt_vals = list((item.get("jobTypes",{}) or {}).values())
+            jtype = ", ".join(jt_vals[:1]) or "N/A"
+
+            sal_str = "N/A"
+            if pay_min:
+                pay_max = sal.get("max", pay_min)
+                cur = sal.get("currencyCode","USD")
+                if unit == "YEAR":
+                    sal_str = f"${pay_min:,.0f}–${pay_max:,.0f}/yr"
+                elif unit == "HOUR":
+                    sal_str = f"${pay_min:.0f}–${pay_max:.0f}/hr"
+                else:
+                    sal_str = f"${pay_min:,.0f}/mo"
+                if cur != "USD": sal_str = f"{cur} " + sal_str
+
+            dp = item.get("datePublished","")[:10] if item.get("datePublished") else "N/A"
+            emp = item.get("employer",{}) or {}
+
+            all_jobs.append({
+                "id": uid,
+                "title": item.get("title","N/A"),
+                "company": emp.get("name","N/A") or "N/A",
+                "location": loc.get("city","Remote") or "Remote",
+                "country": country,
+                "posted": dp,
+                "type": jtype,
+                "pay": sal_str,
+                "url": item.get("jobUrl") or item.get("url",""),
+                "score": min(score, 98),
+                "source": "apify"
+            })
+    except Exception as e:
+        print(f"  parse error {f}: {e}")
+
+all_jobs.sort(key=lambda x: x["score"], reverse=True)
+result = {"date": date_str, "count": len(all_jobs), "source": "apify", "jobs": all_jobs}
+with open(cache_path,"w") as f: json.dump(result, f, indent=2)
+print(f"Cached {len(all_jobs)} jobs → {cache_path}")
+PYEOF
+
+    rm -rf "$TMPJOBS"
+    CACHE_COUNT=$(python3 -c "import json; d=json.load(open('$CACHE')); print(d.get('count',0))" 2>/dev/null || echo 0)
+    log "Apify sweep done: $CACHE_COUNT jobs cached"
 fi
 
-# ── Step 2: Generate HTML report ──────────────────────────────────
-log "Step 2: Generating HTML dashboard..."
-REPORT_OUTPUT=$(python3 "$BIN/indeed-html-report" 2>&1) || true
-log "$REPORT_OUTPUT"
+# ── 3. Generate HTML dashboard ────────────────────────────────────
+log "Generating dashboard..."
+python3 << PYEOF
+import json, datetime, os
 
-# Extract report path
-LATEST="$REPORT_DIR/Indeed-Jobs-LATEST.html"
+cache_path = "$CACHE"
+report_dir = "$REPORT_DIR"
 
-# ── Step 3: macOS notification (no MCP needed) ───────────────────
-if [[ -f "$LATEST" ]]; then
-    APPLY_COUNT=$(python3 -c "
-import json; f='$CACHE'
 try:
-    d=json.load(open(f)); jobs=d.get('jobs',[])
-    print(len([j for j in jobs if j.get('hmz_rec')=='APPLY']))
-except: print(0)
+    data = json.load(open(cache_path))
+except:
+    print("No cache — skip dashboard"); exit(0)
+
+jobs = sorted(data.get("jobs",[]), key=lambda x: x.get("score",0), reverse=True)
+top  = [j for j in jobs if j.get("score",0) >= 85]
+source = data.get("source","unknown")
+date_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+
+BADGE = {
+    "us": ("background:#162a4a;color:#64b5f6","US"),
+    "ca": ("background:#1a3a2a;color:#81c784","CA"),
+    "au": ("background:#3a2a1a;color:#ffb74d","AU"),
+    "gb": ("background:#2a1a3a;color:#ce93d8","GB"),
+}
+
+def badge(cc):
+    st,lb = BADGE.get(cc.lower(), ("background:#2a2a2a;color:#aaa", cc))
+    return f'<span style="display:inline-block;padding:1px 6px;border-radius:4px;font-size:10px;{st};margin-left:5px">{lb}</span>'
+
+def score_chip(s):
+    if s >= 90: cls = "background:#0d3a1a;color:#4caf74"
+    elif s >= 75: cls = "background:#1a2a0d;color:#8bc34a"
+    else: cls = "background:#2a1a0d;color:#ff9800"
+    return f'<span style="display:inline-block;padding:1px 8px;border-radius:10px;font-size:12px;font-weight:600;{cls}">{s}</span>'
+
+def src_tag(j):
+    s = j.get("source","")
+    if s == "indeed_mcp": return '<span style="color:#2164f3;font-size:10px;margin-left:4px">●mcp</span>'
+    if s == "apify":      return '<span style="color:#555;font-size:10px;margin-left:4px">◆apify</span>'
+    return ""
+
+def rows(jlist):
+    out = ""
+    for j in jlist:
+        s = j.get("score",0)
+        hot = '<span style="color:#ff5252;font-size:10px;font-weight:700;margin-left:4px">HOT</span>' if s >= 93 else ""
+        cc  = j.get("country","US")
+        out += (f'<tr><td>{score_chip(s)}</td>'
+                f'<td><a href="{j["url"]}" target="_blank">{j["title"]}</a>{hot}{src_tag(j)}</td>'
+                f'<td>{j["company"]}{badge(cc)}</td>'
+                f'<td style="color:#aaa">{j["pay"]}</td>'
+                f'<td style="color:#777">{j["type"]}</td>'
+                f'<td style="color:#555">{j["posted"]}</td></tr>')
+    return out
+
+STYLE = """
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#0f0f0f;color:#e0e0e0;margin:0;padding:24px}
+h1{color:#2164f3;margin:0 0 4px}
+.meta{color:#666;font-size:12px;margin-bottom:22px}
+.stats{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:26px}
+.stat{background:#161616;border:1px solid #222;border-radius:8px;padding:12px 18px;min-width:100px}
+.sn{font-size:26px;font-weight:700;color:#2164f3}.sl{font-size:11px;color:#666;margin-top:2px}
+.sec{font-size:11px;font-weight:600;color:#888;margin:22px 0 8px;text-transform:uppercase;letter-spacing:1.5px;border-bottom:1px solid #1e1e1e;padding-bottom:6px}
+table{width:100%;border-collapse:collapse;margin-bottom:24px}
+th{background:#141414;color:#666;font-size:10px;text-transform:uppercase;letter-spacing:.5px;padding:8px 12px;text-align:left;border-bottom:1px solid #1e1e1e}
+td{padding:9px 12px;border-bottom:1px solid #161616;font-size:13px;vertical-align:middle}
+tr:hover td{background:#131313}
+a{color:#2164f3;text-decoration:none;font-weight:500}a:hover{text-decoration:underline}
+.pill{display:inline-block;padding:3px 10px;border-radius:12px;font-size:11px;margin-right:6px}
+.mcp-pill{background:#102040;color:#4499dd;border:1px solid #1e3a60}
+.apy-pill{background:#1a1a1a;color:#555;border:1px solid #252525}
+"""
+
+US = len([j for j in jobs if j.get("country")=="US"])
+CA = len([j for j in jobs if j.get("country")=="CA"])
+AU = len([j for j in jobs if j.get("country")=="AU"])
+
+src_note = ""
+if "mcp" in source.lower() and "apify" in source.lower():
+    src_note = '<span class="pill mcp-pill">Indeed MCP</span><span class="pill apy-pill">+Apify</span>'
+elif "mcp" in source.lower():
+    src_note = '<span class="pill mcp-pill">Indeed MCP (real-time)</span>'
+else:
+    src_note = '<span class="pill apy-pill">Apify (headless)</span>'
+
+html = f"""<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">
+<title>Indeed Jobs — {date_str}</title>
+<style>{STYLE}</style></head><body>
+<h1>Indeed Jobs Dashboard</h1>
+<div class="meta">Updated: {date_str} &nbsp;·&nbsp; {src_note}</div>
+<div class="stats">
+  <div class="stat"><div class="sn">{len(jobs)}</div><div class="sl">Total Jobs</div></div>
+  <div class="stat"><div class="sn">{len(top)}</div><div class="sl">🔥 Top (85+)</div></div>
+  <div class="stat"><div class="sn">{US}</div><div class="sl">🇺🇸 US</div></div>
+  <div class="stat"><div class="sn">{CA}</div><div class="sl">🇨🇦 Canada</div></div>
+  <div class="stat"><div class="sn">{AU}</div><div class="sl">🇦🇺 AU</div></div>
+</div>
+<div class="sec">🔥 Top Matches — Apply First</div>
+<table>
+<tr><th>Score</th><th>Title</th><th>Company</th><th>Pay</th><th>Type</th><th>Posted</th></tr>
+{rows(top)}
+</table>
+<div class="sec">All Other Jobs</div>
+<table>
+<tr><th>Score</th><th>Title</th><th>Company</th><th>Pay</th><th>Type</th><th>Posted</th></tr>
+{rows([j for j in jobs if j.get("score",0) < 85])}
+</table>
+<div style="margin-top:36px;color:#222;font-size:11px">HMZ Job Pipeline v3 · Indeed MCP (interactive) + Apify (headless fallback)</div>
+</body></html>"""
+
+ts = datetime.datetime.now().strftime("%Y-%m-%d-%H%M")
+path   = f"{report_dir}/HMZ-Indeed-MCP-{ts}.html"
+latest = f"{report_dir}/HMZ-Indeed-MCP-Latest.html"
+for p in (path, latest):
+    with open(p,"w") as f: f.write(html)
+print(f"Dashboard: {path}")
+print(f"Total: {len(jobs)}  Top85+: {len(top)}  US:{US}  CA:{CA}  AU:{AU}")
+PYEOF
+
+# ── 4. macOS notification ─────────────────────────────────────────
+LATEST="$REPORT_DIR/HMZ-Indeed-MCP-Latest.html"
+if [[ -f "$LATEST" && "$CACHE_COUNT" -gt 0 ]]; then
+    TOP=$(python3 -c "
+import json
+d=json.load(open('$CACHE'))
+print(len([j for j in d.get('jobs',[]) if j.get('score',0)>=85]))
 " 2>/dev/null || echo 0)
-
-    osascript -e "display notification \"$APPLY_COUNT jobs to APPLY · $SWEEP sweep done\" with title \"HMZ Indeed Jobs\" subtitle \"$(date '+%H:%M')\" sound name \"Glass\"" 2>/dev/null || true
-    log "Notification sent: $APPLY_COUNT APPLY-ready jobs"
+    SRC=$(python3 -c "
+import json; d=json.load(open('$CACHE')); print(d.get('source','?'))
+" 2>/dev/null || echo "?")
+    osascript -e "display notification \"$TOP top matches · $CACHE_COUNT total · src=$SRC\" with title \"HMZ Indeed Jobs\" subtitle \"$SWEEP sweep — $(date '+%H:%M')\" sound name \"Glass\"" 2>/dev/null || true
+    log "✅ Done: $CACHE_COUNT jobs | $TOP top | source=$SRC"
 fi
-
 log "=== Sweep complete ==="

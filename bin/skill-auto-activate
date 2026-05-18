@@ -39,6 +39,52 @@ on() {
 }
 match() { echo "$PROMPT" | grep -qiE "$1"; }
 
+# ══════════════════════════════════════════════════════════════════
+# PERMANENT ALWAYS-ON BLOCK — fires every single prompt, no conditions
+# Tier 0 routing + Caveman + Token reduction + LLM alternatives
+# ══════════════════════════════════════════════════════════════════
+
+# ── TIER 0 MODEL ROUTING — always injected ───────────────────────
+TIER0="[TIER-0 ROUTING — ALWAYS ON]
+Sub-agents/parallel/internal tasks → TIER 0 ONLY. Never use Claude for internal processing.
+ORDER: Ollama(local) → DeepSeek-V3 → Gemini Flash → Groq → Mistral → OpenRouter → GPT-4o-mini → Kimi/Moonshot(262K) → AirLLM-70B(~/installed-repos/airllm/)
+TIER 1 (last resort): Claude Haiku — only if ALL Tier 0 unavailable
+TIER 2 (final output only): Claude Sonnet/Opus — only if user explicitly requests
+AirLLM trigger: 'airllm'/'run 70b local'/'offline 70b' → from airllm import AutoModel
+Kimi: 262K ctx, Opus replacement. OpenRouter: unified endpoint for all models.
+RULE: Every token saved on sub-tasks = more quota for user-facing responses."
+echo "$TIER0" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+
+# ── CAVEMAN MODE — always on ─────────────────────────────────────
+on caveman
+CAVEMAN="[CAVEMAN — ALWAYS ON] No filler. No hedging. Fragments OK. Max 120 words unless code/data. Drop: Sure/Certainly/Additionally/Furthermore/Basically/Simply/Actually. Pattern: [thing][action][reason]."
+echo "$CAVEMAN" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+
+# ── TOKEN REDUCTION — always on ──────────────────────────────────
+on token-turbo; on compress; on compact-guard; on context-compression; on context-window-management; on summarize
+TOKEN="[TOKEN REDUCTION — ALWAYS ON]
+Skills active: token-turbo, compress, compact-guard, context-compression, context-window-management, summarize
+Repos: ~/installed-repos/Awesome-Collection-Token-Reduction-main/ | ~/installed-repos/claude-token-efficient/
+Rules: compress all sub-agent outputs before returning. Bullet>paragraph. Table>list. Abbreviate repeating patterns. Never re-state the question. Never summarize what you're about to do — just do it."
+echo "$TOKEN" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+
+# ── LLM ALTERNATIVES CONTEXT — always available ──────────────────
+LLMS="[LLM ALTERNATIVES — ALWAYS AVAILABLE]
+Local:       Ollama → ollama run <model> | AirLLM 70B → ~/installed-repos/airllm/
+Fast/free:   Groq → groq API (llama3/mixtral) | Gemini Flash → GEMINI_API_KEY | DeepSeek-V3 → api.deepseek.com
+Routing:     OpenRouter → ~/installed-repos/openrouter_api/ (unified endpoint)
+Long-ctx:    Kimi/Moonshot 262K → ~/installed-repos/anyclaude/ | Ling 1T → novita API (NOVITA_API_KEY)
+MoE large:  Ling-plus-290B, Ling-1T → ~/installed-repos/Ling/
+Council:     Multi-model consensus → ~/installed-repos/llm_council_skill/
+Reasoning:  DeepSeek-R1 → ~/installed-repos/DeepSeek-R1/ | JDeepSeek (Java) → ~/installed-repos/JDeepSeek/
+Subconscious: ~/installed-repos/subconscious-systems-ollama-subc/ (Ollama sub-agent loop)
+USE: Pick cheapest/fastest model that can handle the task. Never default to Claude when Tier 0 works."
+echo "$LLMS" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+
+# ── L99 + OODA + CODE MANDATE — always on ────────────────────────
+echo "[L99] Max performance. Full capability. No hedging. Best output always." >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+echo "[OODA] Observe→Orient→Decide→Act every task. No flip-flopping. No stalling." >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+
 # ── ADS / ADVERTISING ────────────────────────────────────────────
 if match "ads?|advert|campaign|facebook ads?|meta ads?|google ads?|ppc|roas|ctr|cpc|ad set|ad creative|ad copy|paid social|paid media|media buy"; then
   on ads-strategy; on ads-copy; on ads-creative; on ads-keywords; on ads-competitors; on ads-audience; on ads-funnel; on ads-landing
@@ -546,3 +592,587 @@ fi
 if echo "$PROMPT" | grep -iE "find.?remote.?job|wfh job|job search|ppc job|remote work pakistan|job opening" > /dev/null; then
   echo "wfh-job-finder-pakistan" >> ~/.claude/active-skills.txt
 fi
+
+# ══════════════════════════════════════════════════════════════════
+# SITUATIONAL INTELLIGENCE ENGINE — v2 (2026-05-18)
+# Intent-based activation for full 170-repo inventory
+# Replaces keyword guessing with semantic intent fingerprinting
+# ══════════════════════════════════════════════════════════════════
+
+# ── INTENT: VERIFY / FACT-CHECK ──────────────────────────────────
+# Triggers: claim verification, source checking, truth testing, hallucination audit
+if match "fact.?check|verify.*claim|check.*true|is it true|source.*claim|debunk|misinform|hallucin|fake news|confirm.*fact|validate.*claim|cross.?check|truth.*test|real or fake|check this stat|check the source|cite.*source|evidence.?based|primary source"; then
+  on fact-check
+  echo "[INTENT:VERIFY] fact-check activated → ~/.claude/skills/fact-check/SKILL.md" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+  echo "[FACT-CHECK] Modes: 1=Quick(bullet) 2=Deep(scored) 3=Educational(tips) 4=Codex(only)" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+  echo "[FACT-CHECK] Repos: ~/installed-repos/fact-check-skill/ | ~/installed-repos/autoresearch/ | ~/installed-repos/deer-flow/" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+fi
+
+# ── INTENT: DEEP RESEARCH / SYNTHESIS ────────────────────────────
+if match "deep research|comprehensive research|research pipeline|research report|synthesize.*research|deer.?flow|bytedance research|multi.?source research|research agent|autonomous research|auto research|sleep research|research while sleep"; then
+  echo "[INTENT:RESEARCH] deer-flow activated → ~/installed-repos/deer-flow/" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+  echo "[INTENT:RESEARCH] autoresearch → ~/installed-repos/autoresearch/" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+  echo "[INTENT:RESEARCH] Auto-claude-research → ~/installed-repos/Auto-claude-code-research-in-sleep/" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+  echo "[INTENT:RESEARCH] Run: cd ~/installed-repos/deer-flow && python run_deepresearch.py 'topic'" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+fi
+
+# ── INTENT: PREDICTION / SIMULATION / MARKET FORECAST ────────────
+if match "predict|forecast|simulation|simulate|swarm.*intel|swarm.*agent|mirofish|miro.*fish|collective.*behav|emergent.*behav|agent.*swarm|swarm.*model|market.*predict|price.*predict|trend.*predict|ai.*trader|stock.*predict|quantitative.*model|stochastic|monte carlo|time.*series|predict.*market|predict.*price|predict.*trend"; then
+  echo "[INTENT:PREDICT] MiroFish swarm engine → ~/installed-repos/MiroFish/" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+  echo "[INTENT:PREDICT] Run: cd ~/installed-repos/MiroFish && docker-compose up" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+  echo "[INTENT:PREDICT] AI-Trader → ~/installed-repos/AI-Trader/ | deer-flow → ~/installed-repos/deer-flow/" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+fi
+
+# ── INTENT: LLM / MODEL INFERENCE (esp. MoE, large models) ───────
+if match "ling.*llm|inclus.*ai|ling.*moe|moe.*model|mixture.*expert|ling.*290b|ling.*1t|novita.*ling|inclus.*ling|run.*moe|deploy.*moe|moe.*inference|efficient.*llm|low.?resource.*llm|multilingual.*llm"; then
+  echo "[INTENT:LLM] Ling MoE → ~/installed-repos/Ling/" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+  echo "[INTENT:LLM] Models: Ling-lite-16.8B | Ling-plus-290B | Ling-1T (novita API)" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+  echo "[INTENT:LLM] Endpoint: https://api.novita.ai/v3/openai (needs NOVITA_API_KEY)" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+  echo "[INTENT:LLM] Docs: ~/installed-repos/Ling/README.md | inference/ | tech_report/" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+fi
+
+# ── INTENT: RETRO / EDGE COMPUTE / LLAMA ON HARDWARE ─────────────
+if match "llama.*c64|commodore.*64|c64.*llm|llama.*6502|retro.*ai|llm.*raspberry|llm.*microcontro|tiny.*llm|llm.*embedded|8.?bit.*ai|run llm on|llm on hardware"; then
+  echo "[INTENT:EDGE] llama2.c64 → ~/installed-repos/llama2.c64/" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+  echo "[INTENT:EDGE] Run Llama2 on Commodore 64 via REU — see README for REU setup" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+fi
+
+# ── INTENT: AGENT PERSONALITY / SPECIALIST AGENT SELECTION ───────
+if match "specialist agent|agent personality|which agent|agent.*role|best agent|hire agent|259.*agent|207.*agent|agency.*agent|agent library|agent roster|agent.*specialist|pick.*agent|select.*agent|agent.*select|agent.*inventory|agent.*catalog"; then
+  echo "[INTENT:AGENTS] 259 agents in ~/.claude/agents/ (207 from agency-agents + 52 existing)" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+  echo "[INTENT:AGENTS] List: ls ~/.claude/agents/ | wc -l" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+  echo "[INTENT:AGENTS] Repo: ~/installed-repos/agency-agents/ | all .md personalities" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+fi
+
+# ── INTENT: TOKEN / CONTEXT REDUCTION ────────────────────────────
+if match "reduce token|token limit|context.*window|compress context|token.*efficient|token.*optim|save.*token|token.*reduc|context.*compress|long context|context.*overflow|hit.*limit"; then
+  echo "[INTENT:TOKENS] Awesome-Collection-Token-Reduction → ~/installed-repos/Awesome-Collection-Token-Reduction/" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+  echo "[INTENT:TOKENS] claude-token-efficient → ~/installed-repos/claude-token-efficient-editing/" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+  on token-turbo; on compress; on compact-guard; on context-compression; on context-window-management
+fi
+
+# ── INTENT: N8N AUTOMATION WORKFLOWS ────────────────────────────
+if match "n8n|workflow automat|automate.*workflow|8159.*workflow|workflow.*template|n8n.*node|n8n.*trigger|zapier.*alternative|make.*workflow|workflow.*json"; then
+  echo "[INTENT:AUTOMATE] n8nworkflows.xyz → ~/installed-repos/n8nworkflows.xyz/ (8159 templates)" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+  echo "[INTENT:AUTOMATE] Use: ls ~/installed-repos/n8nworkflows.xyz/workflows/ | grep 'keyword'" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+fi
+
+# ── INTENT: MCP / PLUGIN DISCOVERY ──────────────────────────────
+if match "mcp server|mcp plugin|add.*mcp|find.*mcp|mcp.*tool|awesome.*mcp|claude.*plugin|claude.*extension|openclaw"; then
+  echo "[INTENT:MCP] awesome-mcp-servers → ~/installed-repos/awesome-mcp-servers/" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+  echo "[INTENT:MCP] openclaw-skills → ~/installed-repos/openclaw-skills/" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+  echo "[INTENT:MCP] claude-code-plugins → ~/installed-repos/claude-code-plugins/" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+fi
+
+# ── INTENT: SEO / AEO / GEO ──────────────────────────────────────
+if match "seo|search engine optim|answer engine|aeo|geo.*seo|generative engine optim|rank.*google|rank.*ai|ai.*search.*rank|schema markup|technical seo|backlink|keyword research|serp|organic.*traffic"; then
+  on geo; on geo-technical; on geo-content; on geo-schema
+  echo "[INTENT:SEO] claude-seo → ~/installed-repos/claude-seo/" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+  echo "[INTENT:SEO] answer-engine-aeo → ~/installed-repos/answer-engine-aeo/" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+  echo "[INTENT:SEO] amplifying-ai-GEO → ~/installed-repos/amplifying-ai-awesome-GEO/" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+fi
+
+# ── INTENT: VIDEO GENERATION ─────────────────────────────────────
+if match "generate.*video|ai.*video|video.*gen|ltx.*video|lightricks|video.*diffus|text.*to.*video|image.*to.*video|video.*ad|video.*creative"; then
+  echo "[INTENT:VIDEO] LTX-Video → ~/installed-repos/LTX-Video/ (Lightricks)" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+  echo "[INTENT:VIDEO] ads-creative/kie-ai → ~/installed-repos/ads-creative/kie-ai-ad-builder/" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+fi
+
+# ── INTENT: DATABASE / MEMORY / STORAGE ──────────────────────────
+if match "supabase|database.*agent|agent.*memory|store.*memory|persistent.*memory|airtable.*db|vector.*store|memory.*store|knowledge.*base.*db"; then
+  echo "[INTENT:DB] supabase-js → ~/installed-repos/supabase-js/" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+  echo "[INTENT:DB] agentmemory → ~/installed-repos/agentmemory/" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+fi
+
+# ── INTENT: TEXT PATTERNS / CONTENT TRANSFORMATION ───────────────
+if match "fabric pattern|daniel miessler|extract wisdom|extract.*pattern|summarize.*youtube|summarize.*video|pattern.*text|text.*transform|ai.*pattern"; then
+  echo "[INTENT:FABRIC] Fabric → ~/installed-repos/fabric/ (200+ patterns by Daniel Miessler)" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+  echo "[INTENT:FABRIC] Run: fabric --list | fabric -p extract_wisdom 'input'" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+fi
+
+
+# ══════════════════════════════════════════════════════════════════
+# FULL INVENTORY RESOLVER — ALL 171 REPOS (2026-05-18)
+# Every repo mapped. Intent-first, no keywords needed.
+# ══════════════════════════════════════════════════════════════════
+
+_repo() {
+  local name="$1" path="$2" note="$3"
+  echo "[REPO:$name] $path — $note" >> "$HOME/.claude/tier0-context.txt" 2>/dev/null || true
+}
+
+# ── 500 AI AGENT PROJECTS ────────────────────────────────────────
+if match "500.*agent|agent project|agent example|agent template|agent demo|ai agent list|agent collection|agent ideas|agent use case"; then
+  _repo "500-AI-Agents-Projects" "~/installed-repos/500-AI-Agents-Projects/" "500 real-world AI agent project ideas + implementations"
+fi
+
+# ── AGENT-ZERO ───────────────────────────────────────────────────
+if match "agent.?zero|a0 agent|autonomous agent|zero.?shot agent|self.?evolv.*agent|autonomous.*loop|agent.*zero"; then
+  _repo "AGENT-ZERO" "~/installed-repos/AGENT-ZERO/" "Fully autonomous AI agent — self-evolving, tool-using"
+fi
+
+# ── DEEPSEEK R1 / V3 ────────────────────────────────────────────
+if match "deepseek|deepseek.?r1|deepseek.?v3|r1.*model|jdeepseek|deepseek.*reason|chain.*thought.*model"; then
+  _repo "DeepSeek-R1" "~/installed-repos/DeepSeek-R1/" "DeepSeek R1 reasoning model"
+  _repo "JDeepSeek" "~/installed-repos/JDeepSeek/" "Java DeepSeek client"
+  _repo "deepseek-v3" "~/installed-repos/deepseek-v3/" "DeepSeek V3 implementation"
+fi
+
+# ── AGENT SKILLS / CONTEXT ENGINEERING ─────────────────────────
+if match "context engineer|context.*skill|agent.*context|context.*agent|context window engineer|context.*optim.*agent"; then
+  _repo "Agent-Skills-Context-Engineering" "~/installed-repos/Agent-Skills-for-Context-Engineering-main/" "Context engineering patterns for agents"
+  _repo "agent-skills" "~/installed-repos/agent-skills/" "General agent skill library"
+fi
+
+# ── AUTO RESEARCH ───────────────────────────────────────────────
+if match "auto.*research|research.*auto|research.*sleep|sleep.*research|overnight.*research|background.*research|autonomous.*research|local.*llm.*research|research.*local.*llm"; then
+  _repo "Auto-claude-research-sleep" "~/installed-repos/Auto-claude-code-research-in-sleep/" "Run research tasks while sleeping — auto Claude Code pipeline"
+  _repo "autoresearch" "~/installed-repos/autoresearch/" "Autonomous research pipeline"
+  _repo "autoresearch-local" "~/installed-repos/autoresearch-local-llm/" "Local LLM version of autoresearch"
+  _repo "n-autoresearch" "~/installed-repos/n-autoresearch/" "N-agent autoresearch variant"
+fi
+
+# ── AGENT MEMORY ────────────────────────────────────────────────
+if match "agent.*memory|memory.*agent|persist.*memory|agent.*remember|awesome.*agent.*memory|agent.*recall|memory.*persist|agent.*store.*memory"; then
+  _repo "Awesome-Agent-Memory" "~/installed-repos/Awesome-Agent-Memory-main/" "Curated list of agent memory systems + patterns"
+  _repo "agentmemory" "~/installed-repos/agentmemory/" "Agent memory store implementation"
+  _repo "memvid" "~/installed-repos/memvid-main/" "Video-based memory for agents"
+  _repo "claude-mem" "~/installed-repos/claude-mem-main/" "Claude persistent memory module"
+fi
+
+# ── ETHIRIO AEO GENERATOR ────────────────────────────────────────
+if match "ethirio|aeo generator|answer engine optim|aeo.*content|generative.*content.*aeo|answer.*engine.*generat"; then
+  _repo "Ethirio-AEO-Generator" "~/installed-repos/Ethirio-AEO-Generator/" "Answer Engine Optimization content generator"
+fi
+
+# ── GPTs COLLECTION ──────────────────────────────────────────────
+if match "gpts|openai gpts|custom gpt|gpt.*system prompt|gpt.*instruction|openai.*assistant.*prompts|gpt collection"; then
+  _repo "GPTs" "~/installed-repos/GPTs/" "Collection of OpenAI GPT system prompts + instructions"
+fi
+
+# ── HERMES FUNCTION CALLING ──────────────────────────────────────
+if match "hermes.*function|function.*call.*local|hermes.*fc|local.*function.*call|structured.*output.*local|json.*output.*local|hermes.*tool.*use"; then
+  _repo "Hermes-Function-Calling" "~/installed-repos/Hermes-Function-Calling/" "Local function calling via Hermes model"
+fi
+
+# ── AI WEBSITE CLONER ────────────────────────────────────────────
+if match "clone.*website|website.*clone|copy.*site|replicate.*site|clone.*site|ai.*clone.*web|site.*clone|web.*clone|mood.*global.*clone"; then
+  _repo "ai-website-cloner" "~/installed-repos/ai-website-cloner-template/" "Claude skill: clone any website with AI"
+  _repo "How-to-Clone-Website" "~/installed-repos/How-to-Clone-Website---Claude-Skills/" "Step-by-step website cloning Claude skill"
+fi
+
+# ── PERSONAL AI INFRASTRUCTURE ───────────────────────────────────
+if match "personal.*infra|ai.*infra|personal.*ai.*setup|ai.*homelab|self.*host.*ai|local.*ai.*stack|ai.*stack.*personal|personal.*stack"; then
+  _repo "Personal_AI_Infrastructure" "~/installed-repos/Personal_AI_Infrastructure/" "Full personal AI infrastructure setup + config"
+fi
+
+# ── ADDYOSMANI SKILLS ────────────────────────────────────────────
+if match "addyosmani|agent.*engineer.*skill|agentic.*seo.*skill|web.*quality.*skill|addy osmani|performance.*skill|web.*audit.*skill"; then
+  _repo "addyosmani-agent-engineer" "~/installed-repos/addyosmani-agent-engineer/" "Agent engineering patterns by Addy Osmani"
+  _repo "addyosmani-agentic-seo" "~/installed-repos/addyosmani-agentic-seo/" "Agentic SEO toolkit by Addy Osmani"
+  _repo "addyosmani-web-quality" "~/installed-repos/addyosmani-web-quality-skills/" "Web quality skills by Addy Osmani"
+fi
+
+# ── AGENT BROWSER ────────────────────────────────────────────────
+if match "agent.*browser|browser.*agent|browser.*automat|playwright.*agent|puppeteer.*agent|headless.*agent|web.*agent.*browse|browse.*web.*agent|scrape.*agent.*browser"; then
+  _repo "agent-browser" "~/installed-repos/agent-browser/" "Browser automation agent — playwright-based scraping"
+fi
+
+# ── AGENT ORCHESTRATOR ───────────────────────────────────────────
+if match "agent.*orchestrat|orchestrat.*agent|multi.*agent.*orchestrat|swarm.*orchestrat|agent.*coordinator|orchestrat.*multi.*agent"; then
+  _repo "agent-orchestrator" "~/installed-repos/agent-orchestrator/" "Multi-agent orchestration framework"
+fi
+
+# ── AGENT TWITTER CLIENT ─────────────────────────────────────────
+if match "twitter.*agent|agent.*twitter|tweet.*agent|x.*agent.*post|auto.*tweet|twitter.*automat|post.*twitter.*auto"; then
+  _repo "agent-twitter-client" "~/installed-repos/agent-twitter-client/" "Twitter/X automation agent client"
+fi
+
+# ── AGENTAPI ─────────────────────────────────────────────────────
+if match "agentapi|agent.*api.*server|agent.*http.*api|expose.*agent.*api|agent.*rest.*api"; then
+  _repo "agentapi" "~/installed-repos/agentapi/" "REST API wrapper for AI agents"
+fi
+
+# ── AGENTS.MD ────────────────────────────────────────────────────
+if match "agents\.md|agents.*md.*standard|agent.*markdown|agent.*spec.*md|standardize.*agent"; then
+  _repo "agentsmd" "~/installed-repos/agentsmd-agents.md/" "agents.md standard — define agent capabilities in markdown"
+fi
+
+# ── AI COLLECTIONS ───────────────────────────────────────────────
+if match "free.*ai.*tool|free.*ai|ai.*tool.*free|free.*model|open.*ai.*tool"; then
+  _repo "free-ai-tools" "~/installed-repos/free-ai-tools/" "Curated free AI tools collection"
+  _repo "ai" "~/installed-repos/ai/" "General AI resources collection"
+fi
+
+# ── AI ADS / MARKETING ───────────────────────────────────────────
+if match "ai.*ads.*claude|claude.*ads|ai.*marketing.*claude|claude.*marketing|ai.*ad.*generat|marketing.*skill.*ai"; then
+  _repo "ai-ads-claude" "~/installed-repos/ai-ads-claude/" "AI ads generation with Claude"
+  _repo "ai-agency-claude" "~/installed-repos/ai-agency-claude/" "AI agency workflows with Claude"
+  _repo "ai-marketing-claude" "~/installed-repos/ai-marketing-claude/" "AI marketing automations with Claude"
+  _repo "marketing-skills" "~/installed-repos/marketing-skills/" "Marketing skill library"
+  _repo "marketingskills" "~/installed-repos/marketingskills/" "Extended marketing skills"
+fi
+
+# ── AI DESIGN TEAM ───────────────────────────────────────────────
+if match "ai.*design.*team|design.*team.*ai|ai.*designer|design.*agent|ui.*design.*agent|brand.*design.*ai|ai.*brand.*design"; then
+  _repo "ai-design-team" "~/installed-repos/ai-design-team/" "AI-powered design team — multi-agent design workflow"
+fi
+
+# ── AI ELEMENTS ──────────────────────────────────────────────────
+if match "ai.*element|element.*ai|component.*ai|ai.*component.*lib|ai.*ui.*element"; then
+  _repo "ai-elements" "~/installed-repos/ai-elements/" "AI-powered UI element library"
+fi
+
+# ── AI ENGINEERING FROM SCRATCH ──────────────────────────────────
+if match "ai.*engineer.*scratch|build.*ai.*scratch|ai.*from.*scratch|llm.*from.*scratch|transformer.*scratch|train.*model.*scratch"; then
+  _repo "ai-engineering-from-scratch" "~/installed-repos/ai-engineering-from-scratch/" "Build AI systems from scratch — fundamentals + code"
+fi
+
+# ── AI SDK PROVIDER ──────────────────────────────────────────────
+if match "ai.*sdk|vercel.*ai.*sdk|ai.*provider.*sdk|sdk.*provider|unified.*ai.*sdk|ai.*sdk.*provider"; then
+  _repo "ai-sdk-provider" "~/installed-repos/ai-sdk-provider/" "Vercel AI SDK provider interface"
+fi
+
+# ── AI SEARCH GURU / GETCITO ────────────────────────────────────
+if match "ai.*search.*guru|getcito|cito.*search|ai.*search.*optim|search.*guru|ai.*discoverability"; then
+  _repo "ai-search-guru-getcito" "~/installed-repos/ai-search-guru-getcito/" "AI search optimization — getcito framework"
+fi
+
+# ── AI COMPUTER USE ──────────────────────────────────────────────
+if match "computer.*use.*ai|ai.*computer.*use|desktop.*automat.*ai|screen.*ai|ai.*screen.*control|ai.*mouse.*keyboard"; then
+  _repo "ai_computer_use" "~/installed-repos/ai_computer_use/" "AI computer use automation toolkit"
+fi
+
+# ── AIRTABLE ────────────────────────────────────────────────────
+if match "airtable.*py|pyairtable|airtable.*python|python.*airtable"; then
+  _repo "airtable-py" "~/installed-repos/airtable-py-pcorpet/" "Python Airtable client (pcorpet)"
+  _repo "pyairtable" "~/installed-repos/pyairtable/" "Official Python Airtable SDK"
+fi
+
+# ── GEO / AEO / GENERATIVE ENGINE OPTIMIZATION ─────────────────
+if match "generative.*engine.*optim|geo.*seo|amplifying.*geo|aeo.*rank|marketplace.*aeo|aeo.*scanner|answer.*engine.*rank|subconscious.*aeo|ngmisl.*llmstxt|izak.*geo"; then
+  _repo "amplifying-ai-GEO" "~/installed-repos/amplifying-ai-awesome-generative-engine-optimization/" "Awesome GEO resource list"
+  _repo "geo-seo-claude" "~/installed-repos/geo-seo-claude/" "GEO+SEO skill for Claude"
+  _repo "marketplace-aeo" "~/installed-repos/marketplace-aeorank-aeo-scanner/" "AEO rank scanner marketplace plugin"
+  _repo "subconscious-AEO" "~/installed-repos/subconscious-systems-AEO/" "Subconscious Systems AEO toolkit"
+  _repo "ngmisl-llmstxt" "~/installed-repos/ngmisl-llmstxt/" "llms.txt generator"
+  _repo "izak-GEO-tools" "~/installed-repos/izak-fisher-generative-engine-optimization-tools/" "Izak Fisher GEO tools"
+  _repo "apify-llmstxt" "~/installed-repos/apify-actor-llmstxt-generator/" "Apify actor: llms.txt generator"
+  _repo "Ethirio-AEO" "~/installed-repos/Ethirio-AEO-Generator/" "AEO content generator"
+fi
+
+# ── ANTHROPIC SDK / PLUGINS ─────────────────────────────────────
+if match "anthropic.*sdk|anthropic.*go|go.*anthropic|anthropic.*skill|anthropic.*plugin|claude.*plugin.*official"; then
+  _repo "anthropic-sdk-go" "~/installed-repos/anthropic-sdk-go/" "Official Anthropic Go SDK"
+  _repo "anthropic-skills" "~/installed-repos/anthropic-skills/" "Official Anthropic skill library"
+  _repo "anthropic-claude-code-plugins" "~/installed-repos/anthropic-claude-code-plugins/" "Official Claude Code plugins"
+fi
+
+# ── ANTIGRAVITY SKILLS ───────────────────────────────────────────
+if match "antigravity|idea.*to.*action|daily.*log.*skill|document.*api.*skill|repo.*infographic"; then
+  _repo "antigravity-skills" "~/installed-repos/antigravity-awesome-skills/" "Antigravity skill pack: idea_to_action, daily_log, document_api, repo_infographic"
+fi
+
+# ── ANYCLAUDE ────────────────────────────────────────────────────
+if match "anyclaude|any.*claude|claude.*any|route.*claude|claude.*router|claude.*fallback|claude.*multi.*key"; then
+  _repo "anyclaude" "~/installed-repos/anyclaude/" "Route between multiple Claude API keys"
+fi
+
+# ── APIFY ECOSYSTEM ─────────────────────────────────────────────
+if match "apify.*skill|apify.*agent|apify.*mcp|apify.*org|apify.*cli|crawlee|apify.*n8n|apify.*cursor"; then
+  _repo "apify-agent-skills" "~/installed-repos/apify-agent-skills/" "Apify agent skill library"
+  _repo "apify-mcp-server" "~/installed-repos/apify-mcp-server/" "Apify MCP server"
+  _repo "apify-org" "~/installed-repos/apify-org/" "Apify org repos: crawlee, mcpc, n8n, cursor integrations"
+fi
+
+# ── AWESOME COLLECTIONS ─────────────────────────────────────────
+if match "awesome.*claude|awesome.*ai.*app|awesome.*devops.*mcp|awesome.*gemini|awesome.*mcp|awesome.*openclaw|awesome.*openrouter|awesome.*web.*scrap|awesome.*agent.*skill|awesome.*agentic|awesome.*claude.*agent|awesome.*claude.*code|awesome.*claude.*plugin|awesome.*claude.*skill"; then
+  _repo "awesome-ai-apps" "~/installed-repos/awesome-ai-apps/" "Curated awesome AI apps"
+  _repo "awesome-claude" "~/installed-repos/awesome-claude/" "Awesome Claude resources"
+  _repo "awesome-claude-agents" "~/installed-repos/awesome-claude-agents/" "Awesome Claude agents"
+  _repo "awesome-claude-code" "~/installed-repos/awesome-claude-code/" "Awesome Claude Code resources"
+  _repo "awesome-claude-code-toolkit" "~/installed-repos/awesome-claude-code-toolkit/" "Claude Code toolkit"
+  _repo "awesome-claude-plugins" "~/installed-repos/awesome-claude-plugins/" "Awesome Claude plugins"
+  _repo "awesome-claude-skills" "~/installed-repos/awesome-claude-skills/" "Awesome Claude skills"
+  _repo "awesome-devops-mcp" "~/installed-repos/awesome-devops-mcp-servers/" "Awesome DevOps MCP servers"
+  _repo "awesome-gemini-gcp" "~/installed-repos/awesome-gemini-for-google-cloud/" "Awesome Gemini for GCP"
+  _repo "awesome-openclaw" "~/installed-repos/awesome-openclaw/" "Awesome OpenClaw resources"
+  _repo "awesome-openclaw-skills" "~/installed-repos/awesome-openclaw-skills/" "Awesome OpenClaw skills"
+  _repo "awesome-openrouter" "~/installed-repos/awesome-openrouter/" "Awesome OpenRouter models + usage"
+  _repo "awesome-web-scraping" "~/installed-repos/awesome-web-scraping/" "Awesome web scraping tools"
+  _repo "awesome-agent-skills" "~/installed-repos/awesome-agent-skills/" "Awesome agent skills"
+  _repo "awesome-agentic-patterns" "~/installed-repos/awesome-agentic-patterns/" "50+ production agent design patterns"
+fi
+
+# ── BLINK ────────────────────────────────────────────────────────
+if match "blink.*app|blink.*web|blink.*ui|blink.*framework|blink.*build"; then
+  _repo "blink" "~/installed-repos/blink/" "Blink framework"
+fi
+
+# ── CC-COPILOT-BRIDGE ────────────────────────────────────────────
+if match "cc.*copilot|copilot.*bridge|claude.*copilot|copilot.*claude|github.*copilot.*claude|bridge.*copilot"; then
+  _repo "cc-copilot-bridge" "~/installed-repos/cc-copilot-bridge/" "Bridge Claude Code ↔ GitHub Copilot"
+fi
+
+# ── CHATBOT ──────────────────────────────────────────────────────
+if match "build.*chatbot|chatbot.*template|chatbot.*framework|deploy.*chatbot|custom.*chatbot"; then
+  _repo "chatbot" "~/installed-repos/chatbot/" "Chatbot implementation template"
+fi
+
+# ── CLAUDE CODE ECOSYSTEM ────────────────────────────────────────
+if match "claude.*code.*best.*practice|claude.*code.*guide|claude.*code.*ultimate|claude.*code.*template|claude.*code.*security|everything.*claude.*code|claude.*nvim|claude.*dashboard|claudecode"; then
+  _repo "claude-code-best-practice" "~/installed-repos/claude-code-best-practice/" "Best practice guide for Claude Code"
+  _repo "claude-code-ultimate-guide" "~/installed-repos/claude-code-ultimate-guide/" "Ultimate Claude Code guide"
+  _repo "claude-code-templates" "~/installed-repos/claude-code-templates/" "Claude Code starter templates"
+  _repo "claude-code-security-review" "~/installed-repos/claude-code-security-review-main/" "Security review skill for Claude Code"
+  _repo "everything-claude-code" "~/installed-repos/everything-claude-code/" "Everything you need for Claude Code"
+  _repo "claudecode-nvim" "~/installed-repos/claudecode.nvim/" "Claude Code Neovim plugin"
+  _repo "claude-dashboard-trmnl" "~/installed-repos/claude-dashboard-trmnl/" "Claude dashboard for TRMNL e-ink display"
+fi
+
+# ── CLAUDE COWORK ────────────────────────────────────────────────
+if match "cowork|claude.*cowork|cowork.*guide|parallel.*claude|multi.*session.*claude"; then
+  _repo "claude-cowork-guide" "~/installed-repos/claude-cowork-guide/" "Claude CoWork — parallel session management guide"
+fi
+
+# ── CLAUDE SKILLS / OFFICE / SCIENTIFIC ─────────────────────────
+if match "claude.*office.*skill|office.*skill|word.*excel.*skill|spreadsheet.*skill|document.*skill.*claude|scientific.*skill|science.*skill.*claude"; then
+  _repo "claude-office-skills" "~/installed-repos/claude-office-skills/" "Office productivity skills for Claude"
+  _repo "claude-scientific-skills" "~/installed-repos/claude-scientific-skills/" "Scientific research skills for Claude"
+  _repo "claude-skills" "~/installed-repos/claude-skills/" "General Claude skill library"
+  _repo "skills-main" "~/installed-repos/skills-main/" "Main skills collection"
+fi
+
+# ── CLAUDE DESIGN AUDITOR ────────────────────────────────────────
+if match "design.*audit|audit.*design|ui.*audit|visual.*audit|design.*review.*claude|claude.*design.*audit"; then
+  _repo "claude-design-auditor" "~/installed-repos/claude-design-auditor-skill/" "Design audit skill for Claude"
+fi
+
+# ── CLAUDE TASK MASTER ───────────────────────────────────────────
+if match "task.*master|claude.*task.*master|task.*breakdown.*claude|sprint.*task.*claude|project.*task.*ai"; then
+  _repo "claude-task-master" "~/installed-repos/claude-task-master/" "Task decomposition + management for Claude"
+fi
+
+# ── CLAW CODE / OPENCLAW ─────────────────────────────────────────
+if match "claw.*code|openclaw|openclawd|opencli|claw.*skill|openclaw.*skill"; then
+  _repo "claw-code" "~/installed-repos/claw-code/" "ClawCode — OpenClaw CLI tool"
+  _repo "openclaw" "~/installed-repos/openclaw/" "OpenClaw framework"
+  _repo "openclawd" "~/installed-repos/openclawd/" "OpenClaw daemon"
+  _repo "opencli" "~/installed-repos/opencli/" "OpenCLI"
+  _repo "openclaw-skills-official" "~/installed-repos/openclaw-skills-official/" "Official OpenClaw skills"
+  _repo "openclaw-extension" "~/installed-repos/opencli-extension/" "OpenCLI extension"
+fi
+
+# ── CLI TOOLKIT ──────────────────────────────────────────────────
+if match "cli.*toolkit|cli.*util|command.*line.*util|cli.*automat|bash.*automat|shell.*util|cli.*script"; then
+  _repo "cli" "~/installed-repos/cli/" "CLI utility toolkit"
+fi
+
+# ── COMPOSIO ─────────────────────────────────────────────────────
+if match "composio|composio.*skill|composio.*claude|composio.*agent|composio.*openclaw|app.*integration.*ai|250.*tool.*composio"; then
+  _repo "composio" "~/installed-repos/composio/" "Composio — 250+ app integrations for AI agents"
+  _repo "composio-awesome-claude" "~/installed-repos/composio-awesome-claude-skills/" "Composio + Claude skill library"
+  _repo "composio-openclaw" "~/installed-repos/composio-openclaw/" "Composio + OpenClaw integration"
+fi
+
+# ── COMPUTESDK ───────────────────────────────────────────────────
+if match "computesdk|compute.*sdk|cloud.*compute.*sdk|gpu.*sdk|distributed.*compute"; then
+  _repo "computesdk" "~/installed-repos/computesdk/" "Distributed compute SDK"
+fi
+
+# ── DEER-FLOW ────────────────────────────────────────────────────
+# (already covered in RESEARCH intent above — this catches direct name refs)
+if match "deer.?flow|bytedance.*flow|bytedance.*research"; then
+  _repo "deer-flow" "~/installed-repos/deer-flow/" "ByteDance deep research pipeline"
+fi
+
+# ── DESIGN MD ────────────────────────────────────────────────────
+if match "design.*md|design.*markdown|design.*spec.*md|ui.*spec.*md|component.*spec.*md"; then
+  _repo "design-md" "~/installed-repos/design-md/" "Design specification in markdown format"
+fi
+
+# ── DIGIMINDS SPECKIT ────────────────────────────────────────────
+if match "speckit|spec.*kit|digiminds.*spec|sdd.*spec|6.*step.*spec|spec.*plan.*implement"; then
+  _repo "digiminds-speckit" "~/installed-repos/digiminds-speckit/" "SpecKit — 6-step SDD framework"
+fi
+
+# ── DENGINEPROBLEM AGENTS ────────────────────────────────────────
+if match "dengineproblem|engine.*problem.*agent|problem.*solving.*agent|diagnosis.*agent|root.*cause.*agent"; then
+  _repo "dengineproblem-agents" "~/installed-repos/dengineproblem-agents/" "Problem-diagnosis agent collection"
+fi
+
+# ── FRONTEND DESIGN ──────────────────────────────────────────────
+if match "frontend.*design|design.*frontend|ui.*component.*design|react.*design|tailwind.*design|css.*design.*system"; then
+  _repo "frontend-design" "~/installed-repos/frontend-design/" "Frontend design system + components"
+fi
+
+# ── G0DM0D3 / SUPERPOWERS ────────────────────────────────────────
+# (already matched above — catches extra variants)
+if match "superpowers|superpower.*skill|l99.*mode|max.*capability.*mode|full.*power.*mode"; then
+  _repo "superpowers" "~/installed-repos/superpowers-main/" "L99 superpowers skill — max capability mode"
+fi
+
+# ── GITHUB MCP SERVER ────────────────────────────────────────────
+if match "github.*mcp|mcp.*github|github.*tool.*mcp|github.*api.*mcp|pull.*request.*mcp|issue.*mcp.*github"; then
+  _repo "github-mcp-server" "~/installed-repos/github-mcp-server/" "GitHub MCP server — PR, issues, code via MCP"
+fi
+
+# ── GRAPHIFY ─────────────────────────────────────────────────────
+if match "graphify|graph.*visualiz|code.*graph|dependency.*graph|repo.*graph|codebase.*graph|knowledge.*graph.*code"; then
+  _repo "graphify" "~/installed-repos/graphify/" "Code graph visualization + knowledge graph builder"
+fi
+
+# ── HERMES AGENT ECOSYSTEM ───────────────────────────────────────
+if match "hermes.*agent|hermes.*evolv|hermes.*self|hermes.*paperclip|hermes.*adapt"; then
+  _repo "hermes-agent" "~/installed-repos/hermes-agent/" "Hermes orchestrator agent"
+  _repo "hermes-self-evolution" "~/installed-repos/hermes-agent-self-evolution/" "Self-evolving Hermes agent"
+  _repo "hermes-paperclip-adapter" "~/installed-repos/hermes-paperclip-adapter/" "Hermes ↔ Paperclip bridge"
+fi
+
+# ── HYPER ────────────────────────────────────────────────────────
+if match "hyper.*terminal|hyper.*term|hyper.*config|hyper.*plugin"; then
+  _repo "hyper" "~/installed-repos/hyper/" "Hyper terminal configuration + plugins"
+fi
+
+# ── KNOWLEDGE WORK PLUGINS ───────────────────────────────────────
+if match "knowledge.*work.*plugin|knowledge.*plugin|knowledge.*skill|knowledge.*base.*plugin|pkm.*plugin"; then
+  _repo "knowledge-work-plugins" "~/installed-repos/knowledge-work-plugins/" "Knowledge work plugins for Claude"
+fi
+
+# ── LLM AGENTS BUNDLE ────────────────────────────────────────────
+if match "llm.*agent.*bundle|agent.*bundle|mirai.*agent|llm.*bundle|agent.*suite|full.*agent.*suite"; then
+  _repo "llm-agents-bundle" "~/installed-repos/llm-agents-bundle/" "Full LLM agent bundle incl. MIRAI, stock agent, security agent"
+fi
+
+# ── LLM COUNCIL SKILL ────────────────────────────────────────────
+if match "llm.*council|council.*skill|multi.*llm.*vote|llm.*committee|model.*council|consensus.*llm|llm.*ensemble"; then
+  _repo "llm_council" "~/installed-repos/llm_council_skill/" "LLM Council — multi-model consensus voting skill"
+fi
+
+# ── MATTPOCOCK SKILLS ────────────────────────────────────────────
+if match "mattpocock|grill.*docs|prototype.*skill|zoom.*out.*prd|to.*prd.*skill|triage.*skill|improve.*arch.*skill|typescript.*skill"; then
+  _repo "mattpocock-skills" "~/installed-repos/mattpocock-skills/" "Matt Pocock skills: diagnose, grill_with_docs, zoom_out_to_prd, triage"
+fi
+
+# ── MCP CLI ──────────────────────────────────────────────────────
+if match "mcp.*cli|cli.*mcp|mcp.*command.*line|run.*mcp.*cli|mcp.*terminal"; then
+  _repo "mcp-cli" "~/installed-repos/mcp-cli/" "MCP CLI — run/test MCP servers from terminal"
+fi
+
+# ── MICROSOFT (AI TOOLS) ────────────────────────────────────────
+if match "microsoft.*ai|azure.*ai|microsoft.*agent|azure.*openai|microsoft.*skill"; then
+  _repo "microsoft" "~/installed-repos/microsoft/" "Microsoft AI tools + Azure integrations"
+fi
+
+# ── OBSIDIAN SKILLS ──────────────────────────────────────────────
+if match "obsidian.*skill|obsidian.*plugin.*skill|obsidian.*ai|note.*taking.*ai|pkm.*ai|obsidian.*claude"; then
+  _repo "obsidian-skills" "~/installed-repos/obsidian-skills-main/" "Obsidian PKM skills for Claude"
+fi
+
+# ── OLLAMA ECOSYSTEM ────────────────────────────────────────────
+if match "ollama|local.*llm|run.*local|local.*model|offline.*model|llama.*local|mistral.*local|qwen.*local|subconscious.*ollama"; then
+  _repo "ollama" "~/installed-repos/ollama/" "Ollama — run LLMs locally"
+  _repo "subconscious-ollama" "~/installed-repos/subconscious-systems-ollama-subc/" "Subconscious Systems + Ollama integration"
+fi
+
+# ── OPENCODE ─────────────────────────────────────────────────────
+if match "opencode|open.*code.*cli|sst.*opencode|opencode.*terminal|opencode.*cli"; then
+  _repo "opencode" "~/installed-repos/opencode/" "OpenCode — SST open-source coding CLI"
+fi
+
+# ── OPENROUTER ───────────────────────────────────────────────────
+if match "openrouter|open.*router|route.*model|model.*router|openrouter.*api|llm.*routing|openrouter.*key"; then
+  _repo "openrouter_api" "~/installed-repos/openrouter_api/" "OpenRouter API client — unified LLM routing"
+fi
+
+# ── PAPERCLIP ────────────────────────────────────────────────────
+# (already handled in always-on check — extra detail here)
+if match "paperclip.*ai|paperclip.*os|zero.*human.*company|autonomous.*company.*os|paperclip.*agent"; then
+  _repo "paperclip" "~/installed-repos/paperclip/" "Paperclip AI — zero-human company OS (http://127.0.0.1:3100)"
+fi
+
+# ── PLAYWRIGHT MCP ───────────────────────────────────────────────
+if match "playwright.*mcp|mcp.*playwright|browser.*mcp|web.*testing.*mcp|e2e.*mcp|playwright.*tool.*mcp"; then
+  _repo "playwright-mcp" "~/installed-repos/playwright-mcp-main/" "Playwright MCP server — browser automation via MCP"
+fi
+
+# ── PRO WORKFLOW ─────────────────────────────────────────────────
+if match "pro.*workflow|workflow.*pro|professional.*workflow|workflow.*template.*pro|structured.*workflow"; then
+  _repo "pro-workflow" "~/installed-repos/pro-workflow/" "Professional workflow templates"
+fi
+
+# ── REALTIME ─────────────────────────────────────────────────────
+if match "realtime.*ai|ai.*realtime|real.?time.*llm|streaming.*ai|live.*ai|websocket.*ai|realtime.*voice"; then
+  _repo "realtime" "~/installed-repos/realtime/" "Realtime AI streaming + WebSocket integration"
+fi
+
+# ── RTK MASTER ───────────────────────────────────────────────────
+if match "rtk|redux.*toolkit|redux.*master|state.*management.*redux|rtk.*query|redux.*slice"; then
+  _repo "rtk-master" "~/installed-repos/rtk-master/" "Redux Toolkit master guide + patterns"
+fi
+
+# ── SCCACHE ──────────────────────────────────────────────────────
+if match "sccache|compiler.*cache|build.*cache|rust.*cache|compile.*speed|build.*speed"; then
+  _repo "sccache" "~/installed-repos/sccache/" "sccache — shared compilation cache (Rust/C++)"
+fi
+
+# ── SHAIKH WARSI ─────────────────────────────────────────────────
+if match "shaikh.*warsi|warsi.*skill|shaikh.*claude|warsi.*claude"; then
+  _repo "ShaikhWarsi" "~/installed-repos/ShaikhWarsi/" "ShaikhWarsi Claude skill collection"
+fi
+
+# ── SUPABASE ECOSYSTEM ───────────────────────────────────────────
+if match "supabase.*flutter|supabase.*swift|supabase.*grafana|supabase.*monitor|supabase.*mobile|flutter.*supabase|swift.*supabase"; then
+  _repo "supabase-flutter" "~/installed-repos/supabase-flutter/" "Supabase Flutter SDK"
+  _repo "supabase-swift" "~/installed-repos/supabase-swift/" "Supabase Swift SDK"
+  _repo "supabase-grafana" "~/installed-repos/supabase-grafana/" "Supabase Grafana monitoring"
+fi
+
+# ── UI/UX PRO MAX / DESIGN PRO ───────────────────────────────────
+if match "ui.*ux.*pro|ux.*pro.*max|design.*pro.*skill|premium.*ui.*skill|ui.*design.*skill|pro.*ux.*skill"; then
+  _repo "ui-ux-design-pro" "~/installed-repos/ui-ux-design-pro-skill-main/" "UI/UX design pro skill"
+  _repo "ui-ux-pro-max" "~/installed-repos/ui-ux-pro-max-skill-main/" "UI/UX Pro Max skill — premium design system"
+fi
+
+# ── VERCEL ECOSYSTEM ─────────────────────────────────────────────
+if match "vercel|vercel.*deploy|vercel.*labs|vercel.*skill|deploy.*vercel|vercel.*edge|vercel.*function"; then
+  _repo "vercel" "~/installed-repos/vercel/" "Vercel CLI + deployment toolkit"
+  _repo "vercel-labs-skills" "~/installed-repos/vercel-labs-skills/" "Vercel Labs experimental skills"
+fi
+
+# ── WORKFLOW ─────────────────────────────────────────────────────
+if match "workflow.*tool|build.*workflow|workflow.*builder|create.*workflow|workflow.*design"; then
+  _repo "workflow" "~/installed-repos/workflow/" "General workflow builder"
+fi
+
+# ── SPECKIT + DIGIMINDS ──────────────────────────────────────────
+# already covered above via match "speckit"
+
+# ── CLAUDE SEO ───────────────────────────────────────────────────
+if match "claude.*seo|seo.*claude|claude.*rank|rank.*with.*claude"; then
+  _repo "claude-seo" "~/installed-repos/claude-seo/" "Claude SEO optimization skill"
+fi
+
+# ── ANSWER ENGINE AEO ────────────────────────────────────────────
+if match "answer.*engine|aeo.*optim|featured.*snippet|zero.*click|voice.*search.*optim"; then
+  _repo "answer-engine-aeo" "~/installed-repos/answer-engine-aeo/" "Answer Engine Optimization toolkit"
+fi
+
+# ── CLAUDE TOKEN EFFICIENT ───────────────────────────────────────
+if match "token.*efficient|efficient.*token|efficient.*edit|token.*edit|patch.*token"; then
+  _repo "claude-token-efficient" "~/installed-repos/claude-token-efficient/" "Token-efficient editing patterns for Claude"
+fi
+
+# ── AWESOME TOKEN REDUCTION ─────────────────────────────────────
+if match "token.*reduction|reduce.*context|awesome.*token"; then
+  _repo "Awesome-Token-Reduction" "~/installed-repos/Awesome-Collection-Token-Reduction-main/" "Curated token reduction techniques"
+fi
+
+# ── LLM_COUNCIL / MULTI-MODEL CONSENSUS ─────────────────────────
+# already covered
+
+# ── OPENCLI VERSIONS ─────────────────────────────────────────────
+if match "opencli.*1\.7|opencli.*version|opencli.*update|opencli.*install"; then
+  _repo "opencli-1.7.18" "~/installed-repos/opencli-1.7.18/" "OpenCLI v1.7.18 stable release"
+fi
+
