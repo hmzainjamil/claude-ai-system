@@ -1,5 +1,5 @@
-# HMZ All Repos — 53 total
-Last updated: Tue May 19 02:39:34 PKT 2026
+# HMZ All Repos — 57 total
+Last updated: Tue May 19 02:48:46 PKT 2026
 
 | Repo | Description | Clone |
 |---|---|---|
@@ -7,6 +7,8 @@ Last updated: Tue May 19 02:39:34 PKT 2026
 | [PMF_Google_Ads_Setup](https://github.com/hmzainjamil/PMF_Google_Ads_Setup) |  | `gh repo clone hmzainjamil/PMF_Google_Ads_Setup` |
 | [agentic-patterns-library](https://github.com/hmzainjamil/agentic-patterns-library) | 50+ production AI agent patterns — ReAct, RAG, multi-agent,  | `gh repo clone hmzainjamil/agentic-patterns-library` |
 | [ai-trader-setup](https://github.com/hmzainjamil/ai-trader-setup) | HKUDS AI-Trader + LLM stock trading agent setup and DigiMind | `gh repo clone hmzainjamil/ai-trader-setup` |
+| [antigravity-awesome-skills](https://github.com/hmzainjamil/antigravity-awesome-skills) | HMZ AI System — antigravity-awesome-skills (Hafiz Muhammad Z | `gh repo clone hmzainjamil/antigravity-awesome-skills` |
+| [caveman](https://github.com/hmzainjamil/caveman) | HMZ AI System — caveman (Hafiz Muhammad Zulqarnain) | `gh repo clone hmzainjamil/caveman` |
 | [claude-ai-agents](https://github.com/hmzainjamil/claude-ai-agents) | 🤖 All 210 Claude AI specialist agents — engineering, marketi | `gh repo clone hmzainjamil/claude-ai-agents` |
 | [claude-ai-automations](https://github.com/hmzainjamil/claude-ai-automations) | 🔧 Automation scripts — github-sync, skill-auto-activate, Lau | `gh repo clone hmzainjamil/claude-ai-automations` |
 | [claude-ai-skills](https://github.com/hmzainjamil/claude-ai-skills) | 🧠 All 45 Claude AI skills — website builder, lead gen, ads s | `gh repo clone hmzainjamil/claude-ai-skills` |
@@ -15,10 +17,12 @@ Last updated: Tue May 19 02:39:34 PKT 2026
 | [claude-ai-workflows](https://github.com/hmzainjamil/claude-ai-workflows) | ⚙️ HMZ automated workflows — daily B2B lead sweeps, BDM morn | `gh repo clone hmzainjamil/claude-ai-workflows` |
 | [claude-document-system](https://github.com/hmzainjamil/claude-document-system) | 3-layer enterprise document pipeline — preflight guard + for | `gh repo clone hmzainjamil/claude-document-system` |
 | [claude-thermal-optimizer](https://github.com/hmzainjamil/claude-thermal-optimizer) | Auto-pause Ollama when Claude is idle — zero-config thermal  | `gh repo clone hmzainjamil/claude-thermal-optimizer` |
+| [claude-watch](https://github.com/hmzainjamil/claude-watch) | Claude session watcher — monitors active Claude Code session | `gh repo clone hmzainjamil/claude-watch` |
 | [daily-ads-audit](https://github.com/hmzainjamil/daily-ads-audit) | Autonomous Google Ads + GA4 daily audit — 3 clients, XLSX+PD | `gh repo clone hmzainjamil/daily-ads-audit` |
 | [digiminds-chatbot-kb](https://github.com/hmzainjamil/digiminds-chatbot-kb) |  | `gh repo clone hmzainjamil/digiminds-chatbot-kb` |
 | [fact-check-skill](https://github.com/hmzainjamil/fact-check-skill) | HMZ Fact-Check AI — 11-step SIFT+CRAAP pipeline, HTML card o | `gh repo clone hmzainjamil/fact-check-skill` |
 | [hermes-ai-system](https://github.com/hmzainjamil/hermes-ai-system) | Hermes — local Ollama AI orchestrator for Claude Code | auto | `gh repo clone hmzainjamil/hermes-ai-system` |
+| [hermes-paperclip-adapter](https://github.com/hmzainjamil/hermes-paperclip-adapter) | Wire Hermes NousResearch agent as Paperclip AI employee — au | `gh repo clone hmzainjamil/hermes-paperclip-adapter` |
 | [higgsfield-cinema-ai](https://github.com/hmzainjamil/higgsfield-cinema-ai) | Higgsfield Cinema Studio automation — 29 camera movement pro | `gh repo clone hmzainjamil/higgsfield-cinema-ai` |
 | [hmz-ads-creative](https://github.com/hmzainjamil/hmz-ads-creative) | HMZ AI System — ads-creative (Hafiz Muhammad Zulqarnain) | `gh repo clone hmzainjamil/hmz-ads-creative` |
 | [hmz-ai](https://github.com/hmzainjamil/hmz-ai) | HMZ AI System — ai (Hafiz Muhammad Zulqarnain) | `gh repo clone hmzainjamil/hmz-ai` |
