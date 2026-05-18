@@ -22,3 +22,5 @@ __pycache__/
 
 # Node
 node_modules/
+skills-archive/airtable-sdk/
+skills-archive/
