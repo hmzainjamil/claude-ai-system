@@ -7,7 +7,7 @@ set -euo pipefail
 
 OWNER="hmzainjamil"
 GH="/opt/homebrew/bin/gh"
-TOKEN="${GITHUB_TOKEN:-GITHUB_PAT_REDACTED}"
+TOKEN="${GITHUB_TOKEN:-[REDACTED_GITHUB_TOKEN]}"
 LOG="$HOME/.claude/logs/auto-github-push.log"
 
 mkdir -p "$(dirname "$LOG")"
