@@ -21,6 +21,17 @@ DATE_ISO = datetime.date.today().isoformat()
 CACHE    = DATA_DIR / f"indeed_mcp_{TODAY}.json"
 LOG_PATH = LOG_DIR  / "indeed-interactive.log"
 
+# ── TOKEN GUARD — skip if already swept today ─────────────────────────────
+# Prevents 8x claude --print calls (token burn) on every session open.
+# Force re-run: delete ~/.claude/agency/data/indeed_mcp_YYYYMMDD.json
+SWEEP_LOCK = DATA_DIR / f".sweep_done_{TODAY}"
+FORCE      = "--force" in sys.argv
+
+if SWEEP_LOCK.exists() and not FORCE:
+    # Already ran today — exit silently, zero tokens burned
+    sys.exit(0)
+# ─────────────────────────────────────────────────────────────────────────────
+
 def log(msg):
     ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     line = f"[{ts}] {msg}"
@@ -173,6 +184,8 @@ def main():
         f'with title "HMZ Indeed Jobs" subtitle "Interactive sweep done" sound name "Glass"'
     ], capture_output=True)
     log(f"✅ Done: {len(all_jobs)} jobs | {top} top | source={src}")
+    # Write lock — prevents re-run until tomorrow
+    SWEEP_LOCK.touch()
 
 if __name__ == "__main__":
     main()

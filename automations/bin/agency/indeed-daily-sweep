@@ -36,6 +36,10 @@ TODAY=$(date '+%Y%m%d')
 DATE_ISO=$(date '+%Y-%m-%d')
 SWEEP="Morning"; [[ $(date +%H) -ge 14 ]] && SWEEP="Evening"
 CACHE="$DATA/indeed_mcp_${TODAY}.json"
+SWEEP_LOCK="$DATA/.sweep_done_${TODAY}"
+
+# Clear yesterday's lock files (older than 1 day) so next session re-enriches
+find "$DATA" -name ".sweep_done_*" -mtime +0 -delete 2>/dev/null || true
 
 log "=== Indeed Daily Sweep v3 — $SWEEP ==="
 
