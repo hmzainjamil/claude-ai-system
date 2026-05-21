@@ -1,0 +1,29 @@
+{
+  "run_date": "2026-05-20",
+  "task": "DigiMinds Competitor Intel Engine",
+  "report_file": "~/Downloads/competitor-intel-20260520.txt",
+  "paperclip_api_status": "404 - api/projects/<id>/tasks route not found, queued locally",
+  "intel_tasks": [
+    {
+      "title": "INTEL: 2026-05-20 — Underpriced Google Ads retainer vs market mid-tier",
+      "finding": "Market mid-tier $1.5K-$5K/mo. Stratagem $2.5K/mo <$30K budget. DigiMinds ~40% underpriced.",
+      "opportunity": "Raise retainer floor to $2.5K/mo. Frame as Growth Tier + Looker dashboard.",
+      "urgency": "high",
+      "owner": "Sales / DigiMinds Ops"
+    },
+    {
+      "title": "INTEL: 2026-05-20 — Real-time reporting gap, clients want Looker dashboard",
+      "finding": "#1 industry complaint = opaque reporting. Competitors send static monthly PDFs.",
+      "opportunity": "Launch real-time Looker Studio as default deliverable. Auto-piped Google Ads+Meta+GA4.",
+      "urgency": "high",
+      "owner": "Lars + tech lead"
+    },
+    {
+      "title": "INTEL: 2026-05-20 — Meta Advantage+ AI creative proven +45% ROAS",
+      "finding": "FULLBEAUTY case: +45% ROAS, +22% CVR, +36% CTR via Advantage+. Industry avg 2.79x-3.61x.",
+      "opportunity": "Standardize Advantage+ SOP this week. Launch AI Creative Velocity tier +$500/mo.",
+      "urgency": "high",
+      "owner": "Lars + creative team"
+    }
+  ]
+}
