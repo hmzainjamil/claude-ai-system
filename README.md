@@ -1,5 +1,26 @@
 # claude-ai-system
 
+<!-- HMZ PORTFOLIO CONTEXT START -->
+<p align="center">
+  <a href="https://github.com/hmzainjamil/claude-ai-system">Repository</a> ·
+  <a href="https://github.com/hmzainjamil/claude-ai-system/issues">Issues</a> ·
+  <a href="https://github.com/hmzainjamil/claude-ai-system/commits/main">Commits</a>
+</p>
+
+<p align="center">
+  <img alt="Last commit" src="https://img.shields.io/github/last-commit/hmzainjamil/claude-ai-system.svg">
+  <img alt="Repository size" src="https://img.shields.io/github/repo-size/hmzainjamil/claude-ai-system.svg">
+  <img alt="Visibility" src="https://img.shields.io/badge/visibility-public-blue">
+  <img alt="Status" src="https://img.shields.io/badge/status-active-success">
+</p>
+
+> Portfolio context: active public repository in the HMZ GitHub portfolio. Repository scope, capabilities, commands, and evidence remain defined by the source tree and the sections below.
+
+<!-- HMZ PORTFOLIO CONTEXT END -->
+
+---
+
+
 > **The complete Claude AI operating system — 45 skills, 210 agents, MAE engine, Paperclip CEO** — HMZ's full agency stack as code — daily lead pipelines, doc factory, MAE goal decomposition, Paperclip co-founder, scheduled tasks, and the n8n workflows that run DigiMinds.com on autopilot
 
 <p align="center">
