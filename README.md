@@ -1,5 +1,11 @@
 # claude-ai-system
 
+<!-- HMZ PORTFOLIO STANDARD -->
+> **Portfolio status:** active · **Visibility:** public · **Source of truth:** this repository's current source tree.
+>
+> This README follows the HMZ portfolio documentation standard. Claims about features, performance, production status, integrations, and results are only considered verified when supported by repository evidence.
+<!-- END HMZ PORTFOLIO STANDARD -->
+
 <!-- HMZ PORTFOLIO CONTEXT START -->
 <p align="center">
   <a href="https://github.com/hmzainjamil/claude-ai-system">Repository</a> ·
