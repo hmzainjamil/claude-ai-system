@@ -7,6 +7,7 @@ Repository documentation map, ownership, and confidence. The repository is a per
 | [Getting started](getting-started.md) | Safe inspection and selective adaptation | Commands are examples; review each file before use |
 | [Architecture](architecture.md) | Conceptual overview | Historical claims; verify against current scripts and Claude Code behavior |
 | [Skills reference](skills-reference.md) | Skill inventory | Generated snapshot dated 2026-05-10; may be stale |
+| [Apify Actor README guidance](../skills/apify-actor-development/references/actor-readme.md) | First-party Actor documentation guidance | Claims require Actor/source and current platform evidence; review data boundaries and applicable obligations |
 | [Agents reference](agents-reference.md) | Agent inventory | Generated snapshot dated 2026-05-10; may be stale |
 | [Terminology](terminology.md) | Project vocabulary | Definitions do not establish implementation |
 | [System map](../SYSTEM_MAP.md) | Historical triggers, flows, and schedules | Verify every path and external integration before relying on it |
