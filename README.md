@@ -20,7 +20,7 @@ A public snapshot of Claude Code skills, agent definitions, scripts, configurati
 - `scheduled-tasks/`, `n8n-workflows/`: task and workflow files; external services and schedules are not verified by their presence
 - `config/`: setup notes, settings, and architecture records
 - `docs/`: getting-started notes, architecture overview, and skill/agent references
-- `installed-repos/`: selected documentation copied from other projects; these copies may be stale and retain upstream ownership
+- `installed-repos/`: selected README/documentation snapshots from other projects; these are not complete upstream checkouts, so some relative links may point to files or assets not included here. Content may be stale and retains upstream ownership.
 - `SYSTEM_MAP.md`: historical system map. Verify every path, trigger, provider, schedule, and delivery step before relying on it
 
 See the [documentation index](docs/README.md) for the guides and their evidence status.
